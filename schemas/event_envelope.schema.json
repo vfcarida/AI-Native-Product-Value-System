@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/event_envelope.schema.json",
+  "title": "Event Envelope",
+  "description": "Standard envelope for inter-agent and orchestration events",
+  "type": "object",
+  "required": ["id", "version", "timestamp", "source", "type", "data"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique event identifier"
+    },
+    "version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event creation time (ISO 8601)"
+    },
+    "source": {
+      "type": "string",
+      "description": "Agent or component that emitted event"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "stage.started",
+        "stage.completed",
+        "stage.failed",
+        "agent.invoked",
+        "agent.completed",
+        "policy.evaluated",
+        "approval.requested",
+        "approval.granted",
+        "approval.denied"
+      ],
+      "description": "Event type"
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Value stream run identifier"
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "OpenTelemetry trace ID"
+    },
+    "data": {
+      "type": "object",
+      "description": "Event-specific payload"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "correlation_id": {"type": "string"},
+        "causation_id": {"type": "string"}
+      }
+    }
+  },
+  "additionalProperties": false
+}

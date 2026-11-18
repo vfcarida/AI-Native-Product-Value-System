@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/outcome.schema.json",
+  "title": "Outcome Hypothesis",
+  "description": "Testable hypothesis about product outcome with measurable success criteria",
+  "type": "object",
+  "required": ["id", "version", "created", "problem_id", "hypothesis", "success_criteria"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^outcome-[a-z0-9-]+$",
+      "description": "Unique identifier linked to problem"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "problem_id": {
+      "type": "string",
+      "pattern": "^problem-[a-z0-9-]+$",
+      "description": "Reference to problem statement"
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 50,
+      "maxLength": 3000,
+      "description": "Testable hypothesis about user/business outcome"
+    },
+    "success_criteria": {
+      "type": "object",
+      "required": ["primary_metric", "baseline", "target"],
+      "properties": {
+        "primary_metric": {
+          "type": "object",
+          "required": ["name", "unit", "measurement_method"],
+          "properties": {
+            "name": {"type": "string"},
+            "unit": {"type": "string"},
+            "measurement_method": {"type": "string"}
+          }
+        },
+        "baseline": {
+          "type": "number",
+          "description": "Current baseline value"
+        },
+        "target": {
+          "type": "number",
+          "description": "Target value for success"
+        },
+        "guardrails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "threshold", "direction"],
+            "properties": {
+              "metric": {"type": "string"},
+              "threshold": {"type": "number"},
+              "direction": {
+                "type": "string",
+                "enum": ["above", "below"]
+              }
+            }
+          },
+          "description": "Metrics that must not regress"
+        }
+      }
+    },
+    "evidence_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["qualitative", "quantitative", "technical"]
+          },
+          "description": {"type": "string"},
+          "mandatory": {"type": "boolean", "default": true}
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

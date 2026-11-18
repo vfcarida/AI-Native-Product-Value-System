@@ -1,0 +1,49 @@
+namespace ProductValueSystem {
+    // Agent roles in the system
+    entity AgentRole {
+        name: String,
+        trustLevel: String  // "low", "medium", "high"
+    };
+
+    // Individual agent instances
+    entity Agent {
+        role: AgentRole,
+        version: String,
+        costBudget: Decimal,
+        allowedEnvironments: Set<String>
+    };
+
+    // Tools that agents can invoke
+    entity Tool {
+        classification: String,  // "read", "write", "external"
+        riskLevel: String,       // "low", "medium", "high"
+        dataAccess: Set<String>, // "filesystem", "network", "database"
+        requiresApproval: Bool
+    };
+
+    // Actions agents can perform
+    entity Action = {
+        "read",
+        "write",
+        "execute",
+        "deploy",
+        "query",
+        "call",
+        "approve"
+    };
+
+    // Execution environments
+    entity Environment {
+        name: String,
+        classification: String  // "sandbox", "staging", "production"
+    };
+
+    // Context attributes for policy evaluation
+    type Context = {
+        environment: String,
+        has_human_approval: Bool,
+        cost_so_far: Decimal,
+        iteration_count: Long,
+        stage: String
+    };
+}

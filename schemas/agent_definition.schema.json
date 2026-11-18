@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/agent_definition.schema.json",
+  "title": "Agent Definition",
+  "description": "Configuration defining an agent's capabilities, constraints, and permissions",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "pvs.ai/v1alpha1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "AgentDefinition"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "description": {"type": "string"}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["objective", "model", "allowedTools", "autonomy"],
+      "properties": {
+        "objective": {
+          "type": "string",
+          "description": "Agent's purpose and goals"
+        },
+        "model": {
+          "type": "object",
+          "required": ["provider", "model"],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": ["openai", "anthropic", "google", "azure", "local"]
+            },
+            "model": {"type": "string"},
+            "temperature": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_tokens": {"type": "integer", "minimum": 1}
+          }
+        },
+        "allowedTools": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Tool names this agent may use"
+        },
+        "deniedTools": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Explicitly forbidden tools"
+        },
+        "autonomy": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4,
+              "description": "Autonomy level (0=advise, 4=supervised autonomy)"
+            },
+            "maxIterations": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10
+            },
+            "maxCostUsd": {
+              "type": "number",
+              "minimum": 0
+            },
+            "humanApproval": {
+              "type": "object",
+              "properties": {
+                "requiredFor": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "schema"],
+            "properties": {
+              "type": {"type": "string"},
+              "schema": {"type": "string", "format": "uri"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

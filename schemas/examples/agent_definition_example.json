@@ -1,0 +1,43 @@
+{
+  "apiVersion": "pvs.ai/v1alpha1",
+  "kind": "AgentDefinition",
+  "metadata": {
+    "name": "specification-agent",
+    "version": "0.1.0",
+    "description": "Generates machine-readable, testable product specifications from outcome hypotheses"
+  },
+  "spec": {
+    "objective": "Generate detailed, testable specifications from validated outcome hypotheses.",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "temperature": 0.2,
+      "max_tokens": 4096
+    },
+    "allowedTools": [
+      "knowledge.query",
+      "spec.template.load",
+      "spec.validate"
+    ],
+    "deniedTools": [
+      "repo.commit",
+      "prod.deploy"
+    ],
+    "autonomy": {
+      "level": 2,
+      "maxIterations": 5,
+      "maxCostUsd": 1.5,
+      "humanApproval": {
+        "requiredFor": [
+          "new.external.dependency"
+        ]
+      }
+    },
+    "outputs": [
+      {
+        "type": "specification",
+        "schema": "https://pvs.ai/schemas/specification.schema.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/problem.schema.json",
+  "title": "Problem Statement",
+  "description": "Structured representation of a product problem or opportunity",
+  "type": "object",
+  "required": ["id", "version", "created", "statement", "context", "constraints"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^problem-[a-z0-9-]+$",
+      "description": "Unique identifier (e.g., problem-payment-flow-001)"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version for forward compatibility"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of creation"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of last update"
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 2000,
+      "description": "Clear description of the problem or opportunity"
+    },
+    "context": {
+      "type": "object",
+      "required": ["user_segment", "business_context"],
+      "properties": {
+        "user_segment": {
+          "type": "string",
+          "description": "Target user segment (e.g., 'retail customers', 'merchants')"
+        },
+        "business_context": {
+          "type": "string",
+          "description": "Business rationale and strategic alignment"
+        },
+        "market_evidence": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "References to market research, customer feedback"
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["synthetic_only"],
+      "properties": {
+        "no_pii": {
+          "type": "boolean",
+          "default": true,
+          "description": "Must not use personally identifiable information"
+        },
+        "synthetic_only": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use synthetic data only (no production data)"
+        },
+        "max_cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum cost budget for value stream run"
+        },
+        "deadline": {
+          "type": "string",
+          "format": "date",
+          "description": "Target completion date (YYYY-MM-DD)"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created_by": {"type": "string"},
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

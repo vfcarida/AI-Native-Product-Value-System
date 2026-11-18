@@ -1,0 +1,18 @@
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "version": "1.0",
+  "timestamp": "2026-11-18T10:45:10Z",
+  "source": "specification-agent",
+  "type": "stage.completed",
+  "run_id": "run-001",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "data": {
+    "stage": "specification",
+    "artifact_id": "spec-payment-flow-001",
+    "status": "completed"
+  },
+  "metadata": {
+    "correlation_id": "corr-run-001",
+    "causation_id": "cause-outcome-001"
+  }
+}

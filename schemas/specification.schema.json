@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/specification.schema.json",
+  "title": "Product Specification",
+  "description": "Machine-readable, testable specification for implementation",
+  "type": "object",
+  "required": ["id", "version", "created", "outcome_id", "functional_requirements", "quality_attributes"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^spec-[a-z0-9-]+$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "outcome_id": {
+      "type": "string",
+      "pattern": "^outcome-[a-z0-9-]+$",
+      "description": "Reference to outcome hypothesis"
+    },
+    "functional_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "acceptance_criteria"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^FR-[0-9]{3}$"
+          },
+          "description": {"type": "string"},
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["must", "should", "could"]
+          }
+        }
+      }
+    },
+    "quality_attributes": {
+      "type": "object",
+      "properties": {
+        "performance": {
+          "type": "object",
+          "properties": {
+            "response_time_p95_ms": {"type": "number"},
+            "throughput_rps": {"type": "number"}
+          }
+        },
+        "reliability": {
+          "type": "object",
+          "properties": {
+            "availability_percent": {"type": "number"},
+            "error_budget_percent": {"type": "number"}
+          }
+        },
+        "security": {
+          "type": "object",
+          "properties": {
+            "authentication_required": {"type": "boolean"},
+            "data_classification": {
+              "type": "string",
+              "enum": ["public", "internal", "confidential", "restricted"]
+            }
+          }
+        }
+      }
+    },
+    "architecture_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "decision", "rationale"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^ADR-[0-9]{3}$"},
+          "title": {"type": "string"},
+          "decision": {"type": "string"},
+          "rationale": {"type": "string"},
+          "alternatives": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "contract"],
+        "properties": {
+          "name": {"type": "string"},
+          "type": {
+            "type": "string",
+            "enum": ["REST", "GraphQL", "gRPC", "Queue", "Stream"]
+          },
+          "contract": {
+            "type": "string",
+            "description": "OpenAPI spec URL, proto file, etc."
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

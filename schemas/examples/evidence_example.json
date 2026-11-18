@@ -1,0 +1,23 @@
+{
+  "id": "evidence-spec-review-001",
+  "version": 1,
+  "created": "2026-11-18T10:45:00Z",
+  "type": "review",
+  "subject_id": "spec-payment-flow-001",
+  "verdict": "pass",
+  "score": 0.94,
+  "rationale": "Specification defines deterministic acceptance criteria, explicit Decimal arithmetic ADR, and complete quality attributes with no PII exposure.",
+  "artifacts": [
+    {
+      "name": "architecture_review_report",
+      "path": "artifacts/runs/run-001/review/architecture_review.json",
+      "mime_type": "application/json"
+    }
+  ],
+  "agent_id": "architecture-review-agent",
+  "metadata": {
+    "run_id": "run-001",
+    "stage": "review",
+    "duration_seconds": 3.4
+  }
+}

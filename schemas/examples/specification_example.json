@@ -1,0 +1,59 @@
+{
+  "id": "spec-payment-flow-001",
+  "version": 1,
+  "created": "2026-11-18T10:30:00Z",
+  "outcome_id": "outcome-payment-flow-001",
+  "functional_requirements": [
+    {
+      "id": "FR-001",
+      "description": "Calculate net settlement amount and itemized fee breakdown for each synthetic payment transaction.",
+      "acceptance_criteria": [
+        "Given a gross transaction amount and merchant tier, return exact fee and net settlement",
+        "Sum of net settlement and fee equals gross amount to 2 decimal places"
+      ],
+      "priority": "must"
+    },
+    {
+      "id": "FR-002",
+      "description": "Generate daily reconciliation summary grouping transactions by settlement status and flagging discrepancies.",
+      "acceptance_criteria": [
+        "All settled transactions are aggregated by date",
+        "Mismatched settlement totals are flagged with discrepancy code"
+      ],
+      "priority": "must"
+    }
+  ],
+  "quality_attributes": {
+    "performance": {
+      "response_time_p95_ms": 50.0,
+      "throughput_rps": 500.0
+    },
+    "reliability": {
+      "availability_percent": 99.9,
+      "error_budget_percent": 0.1
+    },
+    "security": {
+      "authentication_required": true,
+      "data_classification": "internal"
+    }
+  },
+  "architecture_decisions": [
+    {
+      "id": "ADR-001",
+      "title": "Use Decimal Arithmetic for Fee and Settlement Calculations",
+      "decision": "Represent all currency calculations using fixed-point Decimal arithmetic with explicit HALF_UP rounding.",
+      "rationale": "Prevents floating-point representation drift during multi-transaction reconciliation.",
+      "alternatives": [
+        "IEEE 754 float64",
+        "Integer minor currency units (cents)"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "ReconciliationService",
+      "type": "REST",
+      "contract": "https://pvs.ai/contracts/reconciliation-openapi.yaml"
+    }
+  ]
+}

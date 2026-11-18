@@ -1,0 +1,45 @@
+{
+  "id": "outcome-payment-flow-001",
+  "version": 1,
+  "created": "2026-11-18T10:15:00Z",
+  "problem_id": "problem-payment-flow-001",
+  "hypothesis": "If we provide automated daily reconciliation and transparent tiered fee breakdowns for small merchants, then weekly administrative reconciliation time will decrease by at least 40% without increasing support ticket volume.",
+  "success_criteria": {
+    "primary_metric": {
+      "name": "weekly_reconciliation_minutes",
+      "unit": "minutes",
+      "measurement_method": "Synthetic merchant workflow timer telemetry"
+    },
+    "baseline": 120.0,
+    "target": 72.0,
+    "guardrails": [
+      {
+        "metric": "reconciliation_discrepancy_rate",
+        "threshold": 0.001,
+        "direction": "below"
+      },
+      {
+        "metric": "checkout_success_rate",
+        "threshold": 0.995,
+        "direction": "above"
+      }
+    ]
+  },
+  "evidence_requirements": [
+    {
+      "type": "qualitative",
+      "description": "Synthetic merchant interview synthesis confirming top reconciliation friction points",
+      "mandatory": true
+    },
+    {
+      "type": "quantitative",
+      "description": "Baseline reconciliation time distribution across synthetic merchant cohorts",
+      "mandatory": true
+    },
+    {
+      "type": "technical",
+      "description": "Deterministic ledger balance verification across 1,000 synthetic transactions",
+      "mandatory": true
+    }
+  ]
+}

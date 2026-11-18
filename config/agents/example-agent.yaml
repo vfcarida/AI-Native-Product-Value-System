@@ -1,0 +1,49 @@
+apiVersion: pvs.ai/v1alpha1
+kind: AgentDefinition
+
+metadata:
+  name: example-agent
+  version: 0.1.0
+
+spec:
+  objective: >
+    Example agent demonstrating configuration structure.
+
+  capabilities:
+    - example.capability
+
+  requiredTools:
+    - tool.example
+
+  model:
+    provider: openai
+    model: gpt-4
+    temperature: 0.2
+
+  allowedTools:
+    - knowledge.query
+    - synthesis.generate
+
+  deniedTools:
+    - prod.deploy
+    - secrets.read
+
+  autonomy:
+    maxIterations: 5
+    maxCostUsd: 1.50
+    maxDurationSeconds: 300
+
+  inputSchema: "https://pvs.ai/schemas/problem.schema.json"
+  outputSchema: "https://pvs.ai/schemas/outcome.schema.json"
+
+  systemPrompt: |
+    You are an example agent.
+    Your purpose is to demonstrate configuration.
+
+  examples:
+    - input:
+        id: "example-1"
+        statement: "Example problem"
+      output:
+        id: "outcome-1"
+        hypothesis: "Example outcome"
