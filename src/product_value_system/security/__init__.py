@@ -7,6 +7,15 @@ from product_value_system.security.command_sanitization import (
     CommandInjectionError,
     CommandSanitizer,
 )
+from product_value_system.security.input_validator import (
+    InputValidator as PromptInputValidator,
+)
+from product_value_system.security.input_validator import (
+    SecurityError,
+)
+from product_value_system.security.input_validator import (
+    ValidationResult as PromptValidationResult,
+)
 from product_value_system.security.output_sanitization import OutputSanitizer
 from product_value_system.security.path_validation import (
     PathTraversalError,
@@ -25,7 +34,10 @@ __all__ = [
     "OutputSanitizer",
     "PathTraversalError",
     "PathValidator",
+    "PromptInputValidator",
+    "PromptValidationResult",
     "SecretDetector",
+    "SecurityError",
     "ValidationError",
     "redact_dict",
 ]

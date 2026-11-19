@@ -51,16 +51,31 @@ class PolicyEngine:
     logs all decisions for audit trail.
     """
 
-    def __init__(self, policies_dir: Path | str = "policies") -> None:
+    def __init__(
+        self,
+        policies_dir: Path | str = "policies",
+        policies_file: Path | str | None = None,
+        schema_file: Path | str | None = None,
+    ) -> None:
         """
         Initialize policy engine.
 
         Args:
             policies_dir: Directory containing Cedar policies and schema
+            policies_file: Optional explicit path to .cedar policy file
+            schema_file: Optional explicit path to .cedarschema file
         """
         self.policies_dir = Path(policies_dir)
-        self.policies_file = self.policies_dir / "agent_authorization.cedar"
-        self.schema_file = self.policies_dir / "schema.cedarschema"
+        self.policies_file = (
+            Path(policies_file)
+            if policies_file is not None
+            else self.policies_dir / "agent_authorization.cedar"
+        )
+        self.schema_file = (
+            Path(schema_file)
+            if schema_file is not None
+            else self.policies_dir / "schema.cedarschema"
+        )
 
         if not self.policies_file.exists():
             raise FileNotFoundError(f"Policies not found: {self.policies_file}")
@@ -300,15 +315,19 @@ class PolicyEngine:
                 timestamp=datetime.now(UTC),
             )
 
-        # Permit checks
-        if role_name == "discovery" and action == "query" and resource_id == "knowledge_base":
-            if env == "sandbox":
-                return AuthorizationDecision(
-                    decision=Decision.ALLOW,
-                    reason="Discovery agent permitted to query knowledge_base in sandbox",
-                    policies_matched=["policy_permit_discovery_query"],
-                    timestamp=datetime.now(UTC),
-                )
+        # Permit checks (1-to-1 mirror of policies/agent_authorization.cedar)
+        if (
+            role_name == "discovery"
+            and action in {"query", "call"}
+            and resource_id == "knowledge_base"
+            and env == "sandbox"
+        ):
+            return AuthorizationDecision(
+                decision=Decision.ALLOW,
+                reason="Discovery agent permitted to access knowledge_base in sandbox",
+                policies_matched=["policy_permit_discovery_query"],
+                timestamp=datetime.now(UTC),
+            )
 
         if (
             role_name == "specification"
@@ -321,6 +340,19 @@ class PolicyEngine:
                 decision=Decision.ALLOW,
                 reason="Specification agent permitted to access spec_editor in sandbox",
                 policies_matched=["policy_permit_specification_rw"],
+                timestamp=datetime.now(UTC),
+            )
+
+        if (
+            role_name == "build"
+            and action == "deploy"
+            and (env == "production" or "production" in resource_id)
+            and has_approval
+        ):
+            return AuthorizationDecision(
+                decision=Decision.ALLOW,
+                reason="Build agent permitted to deploy to production with human approval",
+                policies_matched=["policy_permit_build_prod_deploy"],
                 timestamp=datetime.now(UTC),
             )
 
@@ -367,22 +399,6 @@ class PolicyEngine:
                 policies_matched=["policy_permit_review_read"],
                 timestamp=datetime.now(UTC),
             )
-
-        if env == "sandbox":
-            if action in {"read", "query", "call"}:
-                return AuthorizationDecision(
-                    decision=Decision.ALLOW,
-                    reason="Read/tool operations allowed in sandbox",
-                    policies_matched=["policy_permit_sandbox_read"],
-                    timestamp=datetime.now(UTC),
-                )
-            if action in {"write", "execute"} and iteration_count < 10:
-                return AuthorizationDecision(
-                    decision=Decision.ALLOW,
-                    reason="Write operations allowed in sandbox (under iteration limit)",
-                    policies_matched=["policy_permit_sandbox_write"],
-                    timestamp=datetime.now(UTC),
-                )
 
         return AuthorizationDecision(
             decision=Decision.DENY,

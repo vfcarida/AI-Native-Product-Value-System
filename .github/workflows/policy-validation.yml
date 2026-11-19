@@ -1,0 +1,54 @@
+name: Policy Validation
+
+on:
+  pull_request:
+    paths:
+      - 'policies/**'
+      - 'src/product_value_system/policy/**'
+      - 'scripts/validate-policy-sync.py'
+      - 'tests/policy/**'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-policies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Cedar CLI
+        run: |
+          cargo install cedar-policy-cli --locked
+          cedar --version
+
+      - name: Install Python dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run Cedar policy sync validation (strict CLI mode)
+        run: |
+          python scripts/validate-policy-sync.py \
+            --verbose \
+            --require-cedar-cli \
+            --output policy-validation-report.json
+
+      - name: Run pytest policy validation suite
+        run: pytest tests/policy/test_policy_fallback_sync.py -v
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808  # v4.3.3
+        with:
+          name: policy-validation-report
+          path: policy-validation-report.json
+          if-no-files-found: ignore

@@ -2,11 +2,14 @@
 Main harness implementation.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+
+from opentelemetry import trace
 
 from product_value_system.adapters.mock_adapter import MockModelAdapter
 from product_value_system.adapters.model_adapter import (
@@ -28,6 +31,14 @@ from product_value_system.harness.memory import Memory
 from product_value_system.harness.tools import ToolRegistry
 from product_value_system.observability.tracing import traced
 from product_value_system.policy.engine import PolicyEngine
+from product_value_system.security.input_validator import (
+    InputValidator as PromptInputValidator,
+)
+from product_value_system.security.input_validator import (
+    SecurityError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,6 +67,7 @@ class Harness:
         guardrails: Guardrails | None = None,
         checkpoint_dir: Path | None = None,
         model_adapter: ModelAdapter | None = None,
+        input_validator: PromptInputValidator | None = None,
     ) -> None:
         """
         Initialize harness.
@@ -67,11 +79,15 @@ class Harness:
             guardrails: Safety constraints
             checkpoint_dir: Directory for checkpoints (optional)
             model_adapter: Model adapter for LLM invocations (optional)
+            input_validator: Prompt injection input validator (optional)
         """
         self.context = context or ExecutionContext(run_id="default-run")
         self.budget = budget or Budget()
         self.guardrails = guardrails or Guardrails()
         self.model_adapter: ModelAdapter = model_adapter or MockModelAdapter()
+        self.input_validator: PromptInputValidator = (
+            input_validator or PromptInputValidator()
+        )
 
         resolved_policy_engine = policy_engine or PolicyEngine()
         self.tools = ToolRegistry(resolved_policy_engine)
@@ -111,12 +127,31 @@ class Harness:
         normalized: list[AdapterMessage] = []
         for msg in messages:
             if isinstance(msg, AdapterMessage):
+                role_str = msg.role.value
+                content_str = msg.content
                 normalized.append(msg)
             else:
                 role_str = str(msg.get("role", "user"))
                 content_str = str(msg.get("content", ""))
                 normalized.append(AdapterMessage(role=Role(role_str), content=content_str))
                 self.memory.add_message(role_str, content_str)
+
+            if role_str == "user":
+                validation = self.input_validator.validate(content_str)
+                if validation.risk_level in {"MEDIUM", "HIGH", "CRITICAL"}:
+                    self._log_security_event(
+                        event_type="prompt_injection_detected",
+                        risk_level=validation.risk_level,
+                        patterns=validation.matched_patterns,
+                        categories=validation.categories,
+                    )
+                    if not validation.is_valid:
+                        self.violations.append(validation.reason)
+                        raise SecurityError(
+                            f"Input blocked: {validation.reason}",
+                            risk_level=validation.risk_level,
+                            matched_patterns=validation.matched_patterns,
+                        )
 
         response = await self.model_adapter.invoke(
             messages=normalized,
@@ -134,6 +169,37 @@ class Harness:
 
         self.memory.add_message("assistant", response.content)
         return response
+
+    def _log_security_event(
+        self,
+        event_type: str,
+        risk_level: str,
+        patterns: list[str],
+        categories: list[str],
+    ) -> None:
+        """Log adversarial input security event to OpenTelemetry and logger.
+
+        Note: Only logs attack metadata (event type, risk level, categories,
+        and matched rule descriptions) — never logs full raw prompt content.
+        """
+        span = trace.get_current_span()
+        span.add_event(
+            name="security.prompt_injection",
+            attributes={
+                "security.event_type": event_type,
+                "security.risk_level": risk_level,
+                "security.categories": ",".join(categories),
+                "security.patterns_matched": ",".join(patterns),
+                "security.pattern_count": len(patterns),
+            },
+        )
+        logger.warning(
+            "Security event: %s (risk=%s, categories=%s, matched=%d)",
+            event_type,
+            risk_level,
+            ",".join(categories),
+            len(patterns),
+        )
 
     @traced("harness.check_constraints")
     def check_constraints(self, iteration: int) -> None:

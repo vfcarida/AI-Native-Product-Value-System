@@ -65,7 +65,7 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 
 ### Security & Deployment Scale
 - **Single-machine deployment**: Uses local SQLite (`pvs.db`) and Docker containers (not microVMs such as Firecracker/gVisor, nor Kubernetes).
-- **Regex secret detection & policy sync**: Secret scanning uses regex patterns (ML-based detection planned in EVO-024); automated Cedar CLI vs. Python fallback drift validation is planned in EVO-005.
+- **Regex secret detection**: Secret scanning uses regex patterns (ML-based detection planned in EVO-024). Cedar policy / Python fallback synchronization is verified automatically via `scripts/validate-policy-sync.py` and CI (`.github/workflows/policy-validation.yml`).
 
 See [Roadmap](#roadmap) for versioned plans and [THREAT_MODEL.md](docs/THREAT_MODEL.md) for security analysis.
 
@@ -199,6 +199,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[How-To Guides](docs/howto/README.md)** — Custom agents, Cedar policies, judges, model adapters, troubleshooting
 - **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
+- **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
+- **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
 - **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Secret scanning and redaction controls
 
 ---
@@ -237,8 +239,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ Real SSE streaming for OpenAI & Anthropic adapters (EVO-002)
 - ✅ Real integration test suite with cost guardrails (EVO-003)
 - ✅ Honest README & capability alignment (EVO-004)
-- 📋 Cedar policy / Python fallback sync validation (EVO-005)
-- 📋 Adversarial prompt injection test suite (EVO-006)
+- ✅ Cedar policy / Python fallback sync validation (EVO-005)
+- ✅ Adversarial prompt injection test suite (EVO-006)
 - 📋 Enhanced cost budget guards (EVO-007)
 
 ### v0.3 — Simulation & Multi-Source Evidence

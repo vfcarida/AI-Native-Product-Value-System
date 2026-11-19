@@ -1,0 +1,170 @@
+# OWASP LLM-01 Prompt Injection Pattern Database (EVO-006)
+#
+# Severity levels:
+# - CRITICAL: System prompt extraction, role/delimiter hijack, jailbreak override
+# - HIGH:     Instruction override, safety bypass, unrestricted persona adoption
+# - MEDIUM:   Task deflection, suspicious redirection patterns
+
+direct_injection:
+  - pattern: "ignore\\s+(?:all\\s+)?(?:previous|prior|above|earlier)\\s+instructions"
+    severity: HIGH
+    description: "Classic instruction override attempt"
+
+  - pattern: "forget\\s+(?:all\\s+)?(?:prior|previous|earlier)\\s+(?:context|instructions|rules)"
+    severity: HIGH
+    description: "Context/rule erasure attempt"
+
+  - pattern: "(?:output|print|reveal|show|display|dump|leak)\\s+(?:your|the|all)?\\s*system\\s+prompt"
+    severity: CRITICAL
+    description: "System prompt extraction attempt"
+
+  - pattern: "(?:reveal|expose|dump|print)\\s+(?:your|all|the)?\\s*(?:configuration|secrets|credentials|api\\s*keys|hidden\\s+instructions)"
+    severity: CRITICAL
+    description: "Sensitive configuration or secret extraction"
+
+  - pattern: "disregard\\s+(?:all\\s+)?(?:safety|security|previous|prior|above|system)\\s*(?:guidelines|rules|instructions|constraints|policies)?"
+    severity: HIGH
+    description: "Safety guideline disregard attempt"
+
+  - pattern: "skip\\s+all\\s+(?:previous|prior)\\s+(?:rules|instructions|constraints)"
+    severity: HIGH
+    description: "Rule skipping directive"
+
+  - pattern: "override\\s+(?:all\\s+)?(?:system|safety|security|previous)\\s+(?:instructions|prompts|rules|controls)"
+    severity: CRITICAL
+    description: "Direct system override attempt"
+
+  - pattern: "new\\s+(?:system\\s+)?instructions\\s*:"
+    severity: HIGH
+    description: "Injected replacement instructions header"
+
+  - pattern: "from\\s+now\\s+on\\s*,?\\s*(?:you\\s+must|only\\s+follow|ignore|obey\\s+only)"
+    severity: HIGH
+    description: "Behavioral persistence hijack"
+
+  - pattern: "verbatim\\s+(?:copy|text|contents)\\s+of\\s+(?:your|the)\\s+(?:initial|system)\\s+prompt"
+    severity: CRITICAL
+    description: "Verbatim prompt exfiltration"
+
+  - pattern: "repeat\\s+(?:everything|all\\s+text|the\\s+words)\\s+(?:above|before\\s+this)"
+    severity: HIGH
+    description: "Prompt echo exfiltration"
+
+  - pattern: "exfiltrate\\s+(?:data|secrets|keys|tokens|context)"
+    severity: CRITICAL
+    description: "Explicit exfiltration instruction"
+
+jailbreak:
+  - pattern: "\\bDAN\\s+mode\\b"
+    severity: CRITICAL
+    description: "Do Anything Now jailbreak"
+
+  - pattern: "do\\s+anything\\s+now"
+    severity: CRITICAL
+    description: "Expanded DAN jailbreak phrase"
+
+  - pattern: "developer\\s+mode\\s*(?:enabled|activated|:)"
+    severity: CRITICAL
+    description: "Fake developer mode jailbreak"
+
+  - pattern: "god\\s+mode\\s*(?:enabled|activated|:)"
+    severity: CRITICAL
+    description: "Privilege escalation persona jailbreak"
+
+  - pattern: "jailbreak\\s*(?:mode|:|enabled|activated)"
+    severity: CRITICAL
+    description: "Explicit jailbreak trigger"
+
+  - pattern: "you\\s+are\\s+now\\s+(?:in\\s+character\\s+as|(?:an?\\s+)?(?:unfiltered|unrestricted|uncensored)|freed\\s+from)"
+    severity: HIGH
+    description: "Unrestricted persona assumption"
+
+  - pattern: "pretend\\s+(?:that\\s+)?you\\s+have\\s+no\\s+(?:ethical|safety|moral|content)\\s*(?:guidelines|rules|restrictions|limits|filters)"
+    severity: HIGH
+    description: "Safety-free roleplay jailbreak"
+
+  - pattern: "act\\s+as\\s+(?:an?\\s+)?(?:unfiltered|uncensored|evil|malicious|unrestricted)\\s+(?:ai|model|assistant)"
+    severity: HIGH
+    description: "Malicious persona adoption"
+
+  - pattern: "bypass\\s+(?:all\\s+)?(?:safety|security|ethical|policy|content)\\s*(?:constraints|filters|checks|guardrails|restrictions)"
+    severity: CRITICAL
+    description: "Explicit guardrail bypass"
+
+  - pattern: "disable\\s+(?:all\\s+)?(?:safety|security|policy|guardrail|moderation)\\s*(?:filters|checks|controls|rules)?"
+    severity: CRITICAL
+    description: "Guardrail disabling command"
+
+  - pattern: "no\\s+longer\\s+bound\\s+by\\s+(?:any\\s+)?(?:rules|policies|guidelines|restrictions)"
+    severity: HIGH
+    description: "Constraint release framing"
+
+  - pattern: "hypothetical\\s+scenario\\s+where\\s+(?:all\\s+)?(?:rules|ethics|safety)\\s+(?:do\\s+not|don't)\\s+apply"
+    severity: HIGH
+    description: "Hypothetical safety-bypass framing"
+
+delimiter_injection:
+  - pattern: "(?:\\r?\\n|\\\\n)\\s*Assistant\\s*:"
+    severity: HIGH
+    description: "Spoofed Assistant turn delimiter"
+
+  - pattern: "(?:\\r?\\n|\\\\n)\\s*System\\s*:"
+    severity: CRITICAL
+    description: "Spoofed System turn delimiter"
+
+  - pattern: "---\\s*END\\s+(?:SYSTEM|USER|PROMPT|INSTRUCTIONS)\\s*---"
+    severity: CRITICAL
+    description: "Synthetic prompt boundary terminator"
+
+  - pattern: "===\\s*(?:END|BEGIN)\\s+(?:SYSTEM|ADMIN|OVERRIDE)\\s*==="
+    severity: HIGH
+    description: "Delimiter block spoofing"
+
+  - pattern: "<\\|im_start\\|>|<\\|im_end\\|>"
+    severity: CRITICAL
+    description: "ChatML special token injection"
+
+  - pattern: "\\[\\s*(?:INST|/INST|SYS|/SYS|ADMIN\\s+MODE|SYSTEM\\s+OVERRIDE)\\s*\\]"
+    severity: CRITICAL
+    description: "Llama/instruction tag or admin mode spoofing"
+
+  - pattern: "###\\s*(?:SYSTEM|INSTRUCTION|OVERRIDE)\\s*:"
+    severity: HIGH
+    description: "Markdown section instruction hijack"
+
+  - pattern: "</?(?:system|instructions|developer_override)>"
+    severity: HIGH
+    description: "XML system tag injection"
+
+  - pattern: "New\\s+system\\s+message\\s*:"
+    severity: CRITICAL
+    description: "Injected replacement system message"
+
+task_deflection:
+  - pattern: "instead\\s+of\\s+(?:generating|analyzing|writing|producing|following|solving)\\s+(?:a\\s+|the\\s+)?(?:spec|specification|problem|code|review|outcome|instructions)"
+    severity: MEDIUM
+    description: "Explicit task replacement directive"
+
+  - pattern: "don'?t\\s+(?:generate|analyze|review|validate|follow)\\s+(?:the\\s+)?(?:spec|specification|problem|code|instructions|guidelines)"
+    severity: MEDIUM
+    description: "Negative task suppression"
+
+  - pattern: "switch\\s+to\\s+(?:creative|unrestricted|admin|debug|free)\\s+mode"
+    severity: HIGH
+    description: "Mode-switching task deflection"
+
+  - pattern: "stop\\s+being\\s+(?:a\\s+)?(?:product|discovery|specification|build|review)\\s+agent"
+    severity: HIGH
+    description: "Agent identity abandonment"
+
+  - pattern: "abandon\\s+(?:your\\s+)?(?:current\\s+)?(?:task|objective|role|assignment)"
+    severity: MEDIUM
+    description: "Objective abandonment directive"
+
+  - pattern: "just\\s+(?:say|output|print|reply\\s+with)\\s+['\"](?:hacked|pwned|success|approved|bypassed)['\"]"
+    severity: HIGH
+    description: "Forced verdict / approval spoofing"
+
+  - pattern: "approve\\s+everything\\s+without\\s+(?:checking|reviewing|validating)"
+    severity: HIGH
+    description: "Review gate bypass deflection"

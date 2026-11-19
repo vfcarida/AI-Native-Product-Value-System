@@ -21,7 +21,7 @@ install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/unit/ tests/integration/ tests/eval/ tests/security/ -v
+	pytest tests/unit/ tests/integration/ tests/eval/ tests/security/ tests/policy/ -v
 
 test-unit:
 	pytest tests/unit/ -v
@@ -33,11 +33,12 @@ test-all:
 	RUN_REAL_INTEGRATION_TESTS=1 pytest tests/ -v
 
 lint:
-	ruff check src/ tests/
+	ruff check src/ tests/ scripts/
 	mypy src/
 
 validate-policies:
-	python -c "from product_value_system.policy.engine import PolicyEngine; PolicyEngine('policies'); print('Cedar policies loaded and validated')"
+	python scripts/validate-policy-sync.py --verbose
+	pytest tests/policy/test_policy_fallback_sync.py -v
 
 docker-build:
 	docker build -t pvs:local .

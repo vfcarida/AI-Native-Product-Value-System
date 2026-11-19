@@ -1,7 +1,7 @@
-// Allow discovery agent to query knowledge base in sandbox
+// Allow discovery agent to query or call knowledge base in sandbox
 permit (
     principal in ProductValueSystem::AgentRole::"discovery",
-    action == ProductValueSystem::Action::"query",
+    action in [ProductValueSystem::Action::"query", ProductValueSystem::Action::"call"],
     resource in ProductValueSystem::Tool::"knowledge_base"
 ) when {
     context.environment == "sandbox"
@@ -15,6 +15,15 @@ permit (
 ) when {
     context.environment == "sandbox" &&
     context.stage == "specification"
+};
+
+// Allow build agent to deploy to production only with explicit human approval
+permit (
+    principal in ProductValueSystem::AgentRole::"build",
+    action == ProductValueSystem::Action::"deploy",
+    resource in ProductValueSystem::Environment::"production"
+) when {
+    context.has_human_approval == true
 };
 
 // Deny any agent from deploying to production without approval
@@ -36,7 +45,7 @@ permit (
     context.iteration_count < 10
 };
 
-// Require human approval for external API calls
+// Require human approval and high trust for external API calls
 permit (
     principal,
     action == ProductValueSystem::Action::"call",
@@ -55,7 +64,7 @@ forbid (
     context.cost_so_far >= principal.costBudget
 };
 
-// Allow review agents read-only access to artifacts
+// Allow review agents read-only access to artifacts during review stage
 permit (
     principal in ProductValueSystem::AgentRole::"architecture_review",
     action == ProductValueSystem::Action::"read",
@@ -72,12 +81,19 @@ permit (
     context.stage == "review"
 };
 
-// Deny write access to review agents (read-only)
+// Deny write/execute/deploy access to review agents (read-only)
 forbid (
-    principal in [
-        ProductValueSystem::AgentRole::"architecture_review",
-        ProductValueSystem::AgentRole::"security_review"
+    principal in ProductValueSystem::AgentRole::"architecture_review",
+    action in [
+        ProductValueSystem::Action::"write",
+        ProductValueSystem::Action::"execute",
+        ProductValueSystem::Action::"deploy"
     ],
+    resource
+);
+
+forbid (
+    principal in ProductValueSystem::AgentRole::"security_review",
     action in [
         ProductValueSystem::Action::"write",
         ProductValueSystem::Action::"execute",
