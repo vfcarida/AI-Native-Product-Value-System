@@ -1,11 +1,12 @@
-.PHONY: help install test test-unit test-integration-real test-all lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield demo-brownfield clean
+.PHONY: help install test test-unit test-integration test-integration-real test-all lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield demo-brownfield clean
 
 help:
 	@echo "AI-native Product Value System - Development Commands"
 	@echo ""
 	@echo "  make install               Install dependencies"
-	@echo "  make test                  Run standard test suite (unit + integration + eval + security)"
+	@echo "  make test                  Run standard test suite (unit + integration + eval + security + policy)"
 	@echo "  make test-unit             Run unit tests only"
+	@echo "  make test-integration      Run mocked integration tests"
 	@echo "  make test-integration-real Run real integration tests (requires RUN_REAL_INTEGRATION_TESTS=1)"
 	@echo "  make test-all              Run all test tiers including real integration tests"
 	@echo "  make lint                  Lint code"
@@ -25,6 +26,9 @@ test:
 
 test-unit:
 	pytest tests/unit/ -v
+
+test-integration:
+	pytest tests/integration/ -v
 
 test-integration-real:
 	RUN_REAL_INTEGRATION_TESTS=1 pytest tests/integration_real/ -v -s

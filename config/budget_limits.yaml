@@ -1,0 +1,16 @@
+# Cost Budget Limits Configuration (EVO-007)
+#
+# Enforced before LLM invocations via Budget.check_before_spend()
+# and integrated into Harness.invoke_model() and the `pvs run` CLI.
+
+default_limits:
+  per_run: 10.0        # $10.00 max per value stream run
+  daily: 50.0          # $50.00 cumulative daily cap (UTC)
+  monthly: 1000.0      # $1000.00 cumulative monthly cap (UTC)
+
+alerts:
+  threshold: 0.80      # Emit warning + OpenTelemetry budget.alert event at 80%
+
+emergency_stop:
+  enabled: true
+  env_var: EMERGENCY_STOP

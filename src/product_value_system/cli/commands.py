@@ -26,6 +26,11 @@ from product_value_system.cli.output import (
 from product_value_system.contracts.validation import SchemaValidator
 from product_value_system.evaluation.deterministic_judges import SchemaValidationJudge
 from product_value_system.evaluation.pipeline import EvaluationPipeline
+from product_value_system.harness.budget import (
+    Budget,
+    BudgetExhausted,
+    EmergencyStopTriggered,
+)
 from product_value_system.harness.harness import Harness
 from product_value_system.orchestrator.checkpoints import CheckpointManager
 from product_value_system.orchestrator.controller import ValueStreamOrchestrator
@@ -104,7 +109,7 @@ def init_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_demo_harness_factory() -> Any:
+def _build_demo_harness_factory(budget: Budget | None = None) -> Any:
     """Build deterministic harness factory for local/synthetic value stream runs."""
     outcome_resp = json.dumps(
         {
@@ -188,16 +193,37 @@ def _build_demo_harness_factory() -> Any:
 
     def factory(stage_name: str) -> Harness:
         if stage_name == "outcome_hypothesis":
-            return Harness(model_adapter=MockModelAdapter(responses=[outcome_resp]))
+            return Harness(
+                model_adapter=MockModelAdapter(responses=[outcome_resp]),
+                budget=budget,
+            )
         if stage_name == "specification":
-            return Harness(model_adapter=MockModelAdapter(responses=[spec_resp]))
-        return Harness(model_adapter=MockModelAdapter(responses=[review_resp]))
+            return Harness(
+                model_adapter=MockModelAdapter(responses=[spec_resp]),
+                budget=budget,
+            )
+        return Harness(
+            model_adapter=MockModelAdapter(responses=[review_resp]),
+            budget=budget,
+        )
 
     return factory
 
 
 def run_command(args: argparse.Namespace) -> int:
     """Execute value stream run."""
+    # Pre-flight emergency stop and CLI budget guard check
+    budget = Budget(
+        max_usd=getattr(args, "max_cost", None),
+        daily_limit_usd=getattr(args, "daily_budget", None),
+        monthly_limit_usd=getattr(args, "monthly_budget", None),
+    )
+    try:
+        budget.check_before_spend(0.0)
+    except (EmergencyStopTriggered, BudgetExhausted) as exc:
+        print_error(f"Run blocked by budget guard: {exc}")
+        return 1
+
     problem_path = Path(args.problem)
 
     if not problem_path.exists():
@@ -246,7 +272,7 @@ def run_command(args: argparse.Namespace) -> int:
         policy_engine=policy_engine,
         checkpoint_manager=checkpoint_manager,
         artifact_root=Path(config["artifact_root"]),
-        harness_factory=_build_demo_harness_factory(),
+        harness_factory=_build_demo_harness_factory(budget=budget),
     )
 
     print(f"Starting value stream run for: {problem['statement'][:60]}...")

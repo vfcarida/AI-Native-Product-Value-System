@@ -201,6 +201,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
+- **[Cost Management](docs/COST_MANAGEMENT.md)** — Per-run/daily/monthly budget guards and emergency stop
 - **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Secret scanning and redaction controls
 
 ---
@@ -241,7 +242,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ Honest README & capability alignment (EVO-004)
 - ✅ Cedar policy / Python fallback sync validation (EVO-005)
 - ✅ Adversarial prompt injection test suite (EVO-006)
-- 📋 Enhanced cost budget guards (EVO-007)
+- ✅ Enhanced cost budget guards & emergency stop (EVO-007)
+- ✅ Comprehensive 4-tier testing guide (EVO-008)
 
 ### v0.3 — Simulation & Multi-Source Evidence
 - 📋 TinyTroupe customer simulation (EVO-009)

@@ -19,11 +19,17 @@ from product_value_system.adapters.model_adapter import (
     ModelAdapter,
     ModelResponse,
     Role,
+    Usage,
 )
 from product_value_system.adapters.model_adapter import (
     Tool as AdapterTool,
 )
-from product_value_system.harness.budget import Budget, BudgetExceededError
+from product_value_system.harness.budget import (
+    Budget,
+    BudgetExceededError,
+    BudgetExhausted,
+    EmergencyStopTriggered,
+)
 from product_value_system.harness.checkpoint import Checkpoint, CheckpointManager
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.guardrails import Guardrails, GuardrailViolation
@@ -153,6 +159,25 @@ class Harness:
                             matched_patterns=validation.matched_patterns,
                         )
 
+        # Pre-flight emergency stop and cost budget guard (BEFORE calling LLM)
+        estimated_cost, estimated_tokens = self._estimate_cost(
+            normalized,
+            max_tokens=max_tokens if max_tokens is not None else 2000,
+        )
+        try:
+            self.budget.check_before_spend(
+                estimated_cost_usd=estimated_cost,
+                estimated_tokens=estimated_tokens,
+            )
+        except EmergencyStopTriggered as exc:
+            logger.critical("Emergency stop triggered before model call: %s", exc)
+            self.violations.append(str(exc))
+            raise
+        except BudgetExhausted as exc:
+            logger.error("Budget exhausted before model call: %s", exc)
+            self.violations.append(str(exc))
+            raise
+
         response = await self.model_adapter.invoke(
             messages=normalized,
             tools=tools,
@@ -160,15 +185,47 @@ class Harness:
             max_tokens=max_tokens,
             **kwargs,
         )
-        if response.usage is not None and hasattr(self.model_adapter, "calculate_cost"):
-            cost_val = self.model_adapter.calculate_cost(response.usage, response.model)
-            self.budget.record_cost(Decimal(str(cost_val)))
+        if response.usage is not None:
+            actual_tokens = response.usage.total_tokens
+            if hasattr(self.model_adapter, "calculate_cost"):
+                actual_cost = self.model_adapter.calculate_cost(
+                    response.usage,
+                    response.model,
+                )
+            else:
+                actual_cost = 0.0
+            self.budget.spend(Decimal(str(actual_cost)), tokens=actual_tokens)
             within_budget, error = self.budget.check_all()
             if not within_budget:
                 raise BudgetExceededError(error)
 
         self.memory.add_message("assistant", response.content)
         return response
+
+    def _estimate_cost(
+        self,
+        messages: list[AdapterMessage],
+        max_tokens: int = 2000,
+    ) -> tuple[float, int]:
+        """Estimate pre-flight USD cost and token count before calling model."""
+        est_input_tokens = max(
+            1, int(sum(len(m.content.split()) * 1.3 for m in messages))
+        )
+        est_output_tokens = max(0, max_tokens)
+        est_total_tokens = est_input_tokens + est_output_tokens
+
+        if hasattr(self.model_adapter, "calculate_cost"):
+            est_usage = Usage(
+                input_tokens=est_input_tokens,
+                output_tokens=est_output_tokens,
+                total_tokens=est_total_tokens,
+            )
+            est_cost = float(self.model_adapter.calculate_cost(est_usage))
+        else:
+            # Conservative GPT-4 worst-case estimate ($30/1M input, $60/1M output)
+            est_cost = (est_input_tokens / 1000.0) * 0.03 + (est_output_tokens / 1000.0) * 0.06
+
+        return est_cost, est_total_tokens
 
     def _log_security_event(
         self,

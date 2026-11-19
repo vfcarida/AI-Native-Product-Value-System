@@ -72,6 +72,24 @@ def create_parser() -> argparse.ArgumentParser:
         type=str,
         help="Override config (key=value)",
     )
+    run_parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        help="Max cost per run in USD",
+    )
+    run_parser.add_argument(
+        "--daily-budget",
+        type=float,
+        default=None,
+        help="Max cumulative cost per day in USD",
+    )
+    run_parser.add_argument(
+        "--monthly-budget",
+        type=float,
+        default=None,
+        help="Max cumulative cost per month in USD",
+    )
 
     # pvs status
     status_parser = subparsers.add_parser(
