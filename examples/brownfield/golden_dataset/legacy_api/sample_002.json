@@ -1,0 +1,20 @@
+{
+  "id": "sample-brownfield-002",
+  "description": "Drift detection between CustomerService.java and README.md",
+  "input": {
+    "problem_id": "problem-acme-customer-api-docs",
+    "mode": "drift_detection",
+    "code_file": "examples/brownfield/legacy_api/src/CustomerService.java",
+    "doc_file": "examples/brownfield/legacy_api/README.md"
+  },
+  "expected_output": {
+    "undocumented_methods": ["updateCustomerEmail", "deleteCustomer"],
+    "inconsistent_validations": ["updateCustomerEmail"],
+    "version_mismatch": true
+  },
+  "metadata": {
+    "scenario": "brownfield_drift_detection",
+    "difficulty": "medium",
+    "expected_duration_seconds": 120
+  }
+}

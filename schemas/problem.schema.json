@@ -97,8 +97,16 @@
         "business": {
           "type": "array",
           "items": {"type": "string"}
+        },
+        "operational": {
+          "type": "array",
+          "items": {"type": "string"}
         }
       }
+    },
+    "deliverables": {
+      "type": "array",
+      "items": {"type": "string"}
     },
     "success_criteria": {
       "type": "object",
@@ -120,6 +128,7 @@
         },
         "priority": {"type": "string"},
         "business_value": {"type": "string"},
+        "type": {"type": "string"},
         "tags": {
           "type": "array",
           "items": {"type": "string"}

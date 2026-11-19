@@ -1,0 +1,42 @@
+{
+  "service": "com.acmebank.customer.CustomerService",
+  "documented_version": "1.0",
+  "inferred_code_version": "2.3",
+  "drift_items": [
+    {
+      "element": "deleteCustomer",
+      "in_code": "public void deleteCustomer(String customerId)",
+      "in_docs": "missing",
+      "severity": "high",
+      "status": "DRIFT"
+    },
+    {
+      "element": "createCustomer.email_validation",
+      "in_code": "email == null || !email.contains('@')",
+      "in_docs": "missing",
+      "severity": "medium",
+      "status": "DRIFT"
+    },
+    {
+      "element": "createCustomer.duplicate_id",
+      "in_code": "customers.put(customerId, customer) silently overwrites",
+      "in_docs": "missing",
+      "severity": "high",
+      "status": "DRIFT"
+    },
+    {
+      "element": "getCustomer.null_handling",
+      "in_code": "returns Optional.empty() for null or blank ID",
+      "in_docs": "missing",
+      "severity": "low",
+      "status": "DRIFT"
+    },
+    {
+      "element": "updateCustomerEmail.validation_inconsistency",
+      "in_code": "does not validate email format",
+      "in_docs": "endpoint not documented",
+      "severity": "high",
+      "status": "DRIFT"
+    }
+  ]
+}

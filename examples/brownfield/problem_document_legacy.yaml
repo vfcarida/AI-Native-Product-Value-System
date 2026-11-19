@@ -1,0 +1,106 @@
+apiVersion: pvs.ai/v1alpha1
+kind: Problem
+
+id: problem-acme-customer-api-docs
+version: 1
+created: "2026-11-18T11:00:00Z"
+
+statement: |
+  AcmeBank's Customer API has been in production for 3 years, but documentation
+  is severely outdated. New developers spend 2-3 days understanding the API,
+  and production incidents are increasing due to undocumented behavior.
+
+context:
+  user_segment: "Internal developers integrating with Customer API"
+
+  business_context: |
+    The Customer API is used by 8 internal services and processes 50K requests/day.
+    Recent developer survey showed documentation satisfaction at 2.1/5.
+    Time-to-first-integration for new developers: 3 days (target: 4 hours).
+
+  current_state: |
+    - README last updated April 2023 (15 months ago)
+    - Code comments outdated or missing
+    - No API specification (OpenAPI/Swagger)
+    - Test coverage: 23% (mostly happy path)
+    - Undocumented validation rules
+    - Undocumented error behavior
+    - Drift between code and documentation
+
+  evidence:
+    - type: code_analysis
+      findings:
+        - "47 TODO comments"
+        - "12 FIXME comments"
+        - "23% test coverage"
+        - "Email validation inconsistent across methods"
+
+    - type: developer_survey
+      count: 12
+      key_insights:
+        - "Documentation doesn't match actual behavior"
+        - "Had to read the code to understand validation"
+        - "Wasted 2 days debugging due to undocumented edge case"
+
+    - type: incident_analysis
+      count: 8
+      period: "Last 6 months"
+      root_causes:
+        undocumented_validation: 50%
+        incorrect_assumptions: 37.5%
+        missing_error_handling: 12.5%
+
+constraints:
+  no_pii: true
+  synthetic_only: true
+  max_cost_usd: 50.0
+
+  technical:
+    - "Must analyze existing code (no modifications)"
+    - "Must preserve existing behavior"
+    - "Must generate characterization tests"
+    - "Must detect drift between code and docs"
+
+  operational:
+    - "Cannot take API offline"
+    - "Cannot break existing integrations"
+    - "Must complete analysis in < 1 hour"
+
+success_criteria:
+  outcome_metrics:
+    - name: documentation_accuracy
+      baseline: "2.1/5 (developer survey)"
+      target: "4.5/5"
+      measurement: "Developer satisfaction with API docs"
+
+    - name: time_to_first_integration
+      baseline: "3 days"
+      target: "4 hours"
+      measurement: "Time from reading docs to successful API call"
+
+    - name: incident_reduction
+      baseline: "8 per 6 months"
+      target: "2 per 6 months"
+      measurement: "Production incidents caused by documentation gaps"
+
+    - name: test_coverage
+      baseline: "23%"
+      target: "70%"
+      measurement: "Line coverage (characterization tests)"
+
+deliverables:
+  - "Up-to-date API specification (OpenAPI 3.0)"
+  - "Comprehensive README with examples"
+  - "Characterization test suite (70% coverage)"
+  - "Drift detection report (code vs. docs)"
+  - "Validation rules documentation"
+  - "Error handling guide"
+
+metadata:
+  author: "Engineering Platform Team, AcmeBank"
+  stakeholders:
+    - "VP Engineering"
+    - "API Governance Board"
+    - "Developer Experience Team"
+  priority: "High"
+  type: "brownfield_documentation"

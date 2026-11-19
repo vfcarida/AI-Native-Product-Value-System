@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield clean
+.PHONY: help install test test-unit lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield demo-brownfield clean
 
 help:
 	@echo "AI-native Product Value System - Development Commands"
@@ -10,8 +10,9 @@ help:
 	@echo "  make validate-policies  Validate Cedar policies"
 	@echo "  make docker-build       Build Docker image"
 	@echo "  make docker-run         Run Docker container"
-	@echo "  make demo               Run greenfield value stream demo"
+	@echo "  make demo               Run greenfield/brownfield value stream demo"
 	@echo "  make demo-greenfield    Run AcmeBank payment notification demo"
+	@echo "  make demo-brownfield    Run AcmeBank legacy Customer API demo"
 	@echo "  make clean              Clean build artifacts"
 
 install:
@@ -52,11 +53,26 @@ demo-greenfield:
 	@echo "View results:"
 	@echo "  pvs list"
 
+demo-brownfield:
+	@echo "=== Brownfield Example: Legacy Customer API ==="
+	@echo ""
+	@echo "Problem: Outdated documentation, 23% test coverage, frequent incidents"
+	@echo ""
+	@echo "Analyzing legacy code..."
+	pvs run examples/brownfield/problem_document_legacy.yaml
+	@echo ""
+	@echo "Brownfield analysis complete!"
+	@echo ""
+	@echo "View results:"
+	@echo "  pvs list"
+
 demo:
 	@if [ -z "$(EXAMPLE)" ] || [ "$(EXAMPLE)" = "greenfield/payment_flow" ]; then \
 		$(MAKE) demo-greenfield; \
+	elif [ "$(EXAMPLE)" = "brownfield/legacy_api" ]; then \
+		$(MAKE) demo-brownfield; \
 	else \
-		echo "Usage: make demo EXAMPLE=greenfield/payment_flow"; \
+		echo "Usage: make demo EXAMPLE=<greenfield/payment_flow|brownfield/legacy_api>"; \
 		exit 1; \
 	fi
 

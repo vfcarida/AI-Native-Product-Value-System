@@ -1,0 +1,23 @@
+{
+  "id": "sample-brownfield-001",
+  "description": "Documentation bootstrap from legacy code",
+  "input": {
+    "problem_id": "problem-acme-customer-api-docs",
+    "mode": "brownfield",
+    "code_location": "examples/brownfield/legacy_api/src/",
+    "existing_docs": "examples/brownfield/legacy_api/README.md"
+  },
+  "expected_output": {
+    "specification_generated": true,
+    "drift_detected": true,
+    "drift_count": 5,
+    "characterization_tests_generated": true,
+    "test_count": 6,
+    "recommendations_present": true
+  },
+  "metadata": {
+    "scenario": "brownfield_documentation_bootstrap",
+    "difficulty": "medium",
+    "expected_duration_seconds": 300
+  }
+}
