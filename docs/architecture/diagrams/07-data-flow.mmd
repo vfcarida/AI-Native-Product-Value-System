@@ -1,0 +1,27 @@
+graph LR
+    A["problem.yaml"] -->|Discovery Agent| B["outcome.yaml"]
+    B -->|Specification Agent| C["specification.yaml"]
+    C -->|Build Agent| D["implementation/ - code + tests"]
+    D -->|Review Agents| E["review/ - architecture + security"]
+    E -->|Evaluation Pipeline| F["evaluation/ - scores + evidence"]
+    F -->|Release Agent| G["release/ - decision + artifacts"]
+
+    subgraph "Git Repository"
+        A
+        B
+        C
+        D
+        E
+        F
+        G
+    end
+
+    H["SQLite Database"] -.->|Metadata| A
+    H -.->|Costs| B
+    H -.->|Policy Decisions| C
+
+    classDef artifact fill:#3498db,stroke:#2980b9,color:#ffffff
+    classDef storage fill:#95a5a6,stroke:#7f8c8d,color:#ffffff
+
+    class A,B,C,D,E,F,G artifact
+    class H storage

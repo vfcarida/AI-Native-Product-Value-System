@@ -1,0 +1,32 @@
+graph TB
+    subgraph "Harness System"
+        Harness["Harness Controller"]
+
+        subgraph "Components"
+            SystemPrompt["System Prompt - Instructions and Examples"]
+            Guardrails["Guardrails - Limits and Safety"]
+            Memory["Memory - Short-term and Long-term"]
+            ToolGuidance["Tool Registry - Policy-gated execution"]
+            Budget["Budget - Cost, Time, Iterations"]
+        end
+
+        Harness --> SystemPrompt
+        Harness --> Guardrails
+        Harness --> Memory
+        Harness --> ToolGuidance
+        Harness --> Budget
+    end
+
+    Agent["Agent"]
+    PolicyEngine["Policy Engine"]
+    ModelAdapter["Model Adapter"]
+
+    Agent --> Harness
+    Harness --> PolicyEngine
+    Harness --> ModelAdapter
+
+    classDef component fill:#3498db,stroke:#2980b9,color:#ffffff
+    classDef external fill:#95a5a6,stroke:#7f8c8d,color:#ffffff
+
+    class SystemPrompt,Guardrails,Memory,ToolGuidance,Budget,Harness component
+    class Agent,PolicyEngine,ModelAdapter external

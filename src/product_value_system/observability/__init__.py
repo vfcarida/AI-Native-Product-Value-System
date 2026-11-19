@@ -19,6 +19,10 @@ from product_value_system.observability.sanitization import (
     sanitize_attributes,
     sanitize_string,
 )
+from product_value_system.observability.sanitized_tracing import (
+    SanitizingSpanProcessor,
+    setup_sanitized_tracing,
+)
 from product_value_system.observability.tracing import (
     CURRENT_RUN_ID,
     clear_run_context,
@@ -34,6 +38,7 @@ __all__ = [
     "CostBreakdown",
     "CostTracker",
     "GenAIAttributes",
+    "SanitizingSpanProcessor",
     "clear_run_context",
     "configure_tracing",
     "create_console_exporter",
@@ -42,6 +47,7 @@ __all__ = [
     "sanitize_attributes",
     "sanitize_string",
     "set_run_context",
+    "setup_sanitized_tracing",
     "trace_span",
     "traced",
 ]

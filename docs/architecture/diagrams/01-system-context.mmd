@@ -1,0 +1,21 @@
+graph TB
+    subgraph "AI-Native Product Value System"
+        PVS["Product Value System - Orchestrates AI agents through value stream"]
+    end
+
+    User["User - Product Manager, Engineer"]
+    ModelAPI["Model API - OpenAI, Anthropic, Google"]
+    GitRepo["Git Repository - Artifact storage"]
+    ObsBackend["Observability Backend - Jaeger, Prometheus"]
+
+    User -->|problem.yaml| PVS
+    PVS -->|LLM calls| ModelAPI
+    PVS -->|commits artifacts| GitRepo
+    PVS -->|traces, metrics| ObsBackend
+    PVS -->|outcome.yaml| User
+
+    classDef system fill:#1168bd,stroke:#0b4884,color:#ffffff
+    classDef external fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    class PVS system
+    class User,ModelAPI,GitRepo,ObsBackend external

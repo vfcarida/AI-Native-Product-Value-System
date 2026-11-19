@@ -1,0 +1,44 @@
+graph TB
+    subgraph "TRUSTED ZONE"
+        UserInput["User Input - Schema-validated"]
+        Policies["Cedar Policies - Schema-validated"]
+        Schemas["JSON Schemas - Validated"]
+        SignedImages["Container Images - Signed"]
+    end
+
+    subgraph "VALIDATION LAYER"
+        InputVal["Input Validation"]
+        OutputVal["Output Validation"]
+        SchemaVal["Schema Validation"]
+        PolicyVal["Policy Validation"]
+    end
+
+    subgraph "UNTRUSTED ZONE"
+        LLMOutput["LLM Outputs - Treat as adversarial"]
+        AgentCode["Agent-Generated Code - Execute in sandbox"]
+        ExternalAPI["External API Responses - Validate schemas"]
+    end
+
+    UserInput --> InputVal
+    Policies --> PolicyVal
+
+    InputVal --> Orchestrator["Orchestrator"]
+    PolicyVal --> Orchestrator
+
+    Orchestrator --> OutputVal
+    OutputVal --> LLMOutput
+
+    LLMOutput --> SchemaVal
+    SchemaVal --> AgentCode
+
+    AgentCode --> Sandbox["Sandbox - Isolated Execution"]
+
+    classDef trusted fill:#2ecc71,stroke:#27ae60,color:#ffffff
+    classDef validation fill:#f39c12,stroke:#e67e22,color:#ffffff
+    classDef untrusted fill:#e74c3c,stroke:#c0392b,color:#ffffff
+    classDef neutral fill:#3498db,stroke:#2980b9,color:#ffffff
+
+    class UserInput,Policies,Schemas,SignedImages trusted
+    class InputVal,OutputVal,SchemaVal,PolicyVal validation
+    class LLMOutput,AgentCode,ExternalAPI untrusted
+    class Orchestrator,Sandbox neutral

@@ -1,0 +1,34 @@
+graph TB
+    User["User - CLI or API"]
+
+    subgraph "Product Value System"
+        CLI["CLI - Python argparse"]
+        Orchestrator["Orchestrator - State machine"]
+        AgentRegistry["Agent Registry - Agent management"]
+        PolicyEngine["Policy Engine - Cedar authorization"]
+        Sandbox["Sandbox Provider - Docker containers"]
+        Persistence["Persistence Layer - SQLite database"]
+        Observability["Observability - OpenTelemetry"]
+
+        CLI --> Orchestrator
+        Orchestrator --> AgentRegistry
+        Orchestrator --> Persistence
+        Orchestrator --> Observability
+        AgentRegistry --> PolicyEngine
+        AgentRegistry --> Sandbox
+    end
+
+    ModelAPI["Model APIs - OpenAI, Anthropic, Google"]
+    GitRepo["Git Repository"]
+    ObsBackend["Observability Backend"]
+
+    User --> CLI
+    AgentRegistry --> ModelAPI
+    Orchestrator --> GitRepo
+    Observability --> ObsBackend
+
+    classDef container fill:#438dd5,stroke:#2e6295,color:#ffffff
+    classDef external fill:#999999,stroke:#6b6b6b,color:#ffffff
+
+    class CLI,Orchestrator,AgentRegistry,PolicyEngine,Sandbox,Persistence,Observability container
+    class User,ModelAPI,GitRepo,ObsBackend external

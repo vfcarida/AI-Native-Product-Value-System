@@ -1003,6 +1003,19 @@ MVP is single-machine. Future scaling path:
 | Testing | pytest | Industry standard | unittest, nose |
 | Model Adapter | Custom protocol | Flexibility, vendor neutrality | LiteLLM (future gateway) |
 
+## 11. Visual Architecture Diagrams
+
+Complete C4 (Level 1 System Context, Level 2 Container, Level 3 Harness Component), Sequence (Value Stream Run, Policy Evaluation), Trust Boundary, Data Flow, and Deployment diagrams are maintained in [docs/architecture/DIAGRAMS.md](docs/architecture/DIAGRAMS.md) and `docs/architecture/diagrams/*.mmd`:
+
+1. [01-system-context.mmd](docs/architecture/diagrams/01-system-context.mmd) — C4 Level 1 System Context
+2. [02-container-diagram.mmd](docs/architecture/diagrams/02-container-diagram.mmd) — C4 Level 2 Container Diagram
+3. [03-component-diagram.mmd](docs/architecture/diagrams/03-component-diagram.mmd) — C4 Level 3 Harness Component Diagram
+4. [04-value-stream-sequence.mmd](docs/architecture/diagrams/04-value-stream-sequence.mmd) — Value Stream Run Sequence
+5. [05-policy-evaluation-sequence.mmd](docs/architecture/diagrams/05-policy-evaluation-sequence.mmd) — Policy Evaluation Sequence
+6. [06-trust-boundaries.mmd](docs/architecture/diagrams/06-trust-boundaries.mmd) — Security Trust Boundaries
+7. [07-data-flow.mmd](docs/architecture/diagrams/07-data-flow.mmd) — Artifact Data Flow Lifecycle
+8. [08-deployment.mmd](docs/architecture/diagrams/08-deployment.mmd) — MVP Single-Machine Deployment
+
 ---
 
 **Document Version**: 1.0.0  

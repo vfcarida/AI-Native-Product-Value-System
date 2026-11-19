@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Orchestrator
+    participant DiscoveryAgent
+    participant SpecAgent
+    participant BuildAgent
+    participant Sandbox
+    participant PolicyEngine
+    participant ModelAPI
+    participant GitRepo
+
+    User->>CLI: run problem.yaml
+    CLI->>Orchestrator: execute_run(problem)
+
+    Note over Orchestrator: Stage: Discovery
+    Orchestrator->>DiscoveryAgent: execute(problem, harness)
+    DiscoveryAgent->>PolicyEngine: check_permission("knowledge.query")
+    PolicyEngine-->>DiscoveryAgent: ALLOW
+    DiscoveryAgent->>ModelAPI: invoke(messages)
+    ModelAPI-->>DiscoveryAgent: response
+    DiscoveryAgent->>GitRepo: commit(outcome.yaml)
+    DiscoveryAgent-->>Orchestrator: outcome
+
+    Note over Orchestrator: Stage: Specification
+    Orchestrator->>SpecAgent: execute(outcome, harness)
+    SpecAgent->>ModelAPI: invoke(messages)
+    ModelAPI-->>SpecAgent: response
+    SpecAgent->>GitRepo: commit(specification.yaml)
+    SpecAgent-->>Orchestrator: specification
+
+    Note over Orchestrator: Stage: Build
+    Orchestrator->>BuildAgent: execute(spec, harness)
+    BuildAgent->>Sandbox: create_sandbox()
+    Sandbox-->>BuildAgent: sandbox_id
+    BuildAgent->>Sandbox: execute_code(code)
+    Sandbox-->>BuildAgent: result
+    BuildAgent->>GitRepo: commit(implementation/)
+    BuildAgent-->>Orchestrator: build_result
+
+    Orchestrator-->>CLI: run_result
+    CLI-->>User: success + artifacts

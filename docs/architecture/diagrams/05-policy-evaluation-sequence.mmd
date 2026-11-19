@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant Agent
+    participant Harness
+    participant PolicyEngine
+    participant CedarEngine
+    participant AuditLog
+
+    Agent->>Harness: call_tool("knowledge.query", args)
+    Harness->>PolicyEngine: evaluate(agent, action, resource, context)
+
+    Note over PolicyEngine: Load policies
+    PolicyEngine->>CedarEngine: authorize(principal, action, resource)
+
+    alt Policy permits
+        CedarEngine-->>PolicyEngine: ALLOW + policy_id
+        PolicyEngine->>AuditLog: log(agent, action, ALLOW, policy_id)
+        PolicyEngine-->>Harness: ALLOW
+        Harness->>Agent: execute_tool(args)
+        Agent-->>Harness: result
+    else Policy denies
+        CedarEngine-->>PolicyEngine: DENY + reason
+        PolicyEngine->>AuditLog: log(agent, action, DENY, reason)
+        PolicyEngine-->>Harness: DENY
+        Harness-->>Agent: PermissionDenied(reason)
+    end
