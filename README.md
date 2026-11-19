@@ -1,52 +1,92 @@
 # AI-Native Product Value System
 
+[![Python](https://img.shields.io/badge/python-3.12+-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange)](#current-limitations)
+[![Tests](https://img.shields.io/badge/tests-4--tier%20suite-brightgreen)](tests/README.md)
+
 **Version**: 0.1.0  
-**Status**: 🚧 Reference Implementation (Educational Use Only)
+**Status**: 🚧 Reference Implementation (Alpha — Educational & Research Use)
 
 ---
 
 ## Purpose
 
-This is a **reference implementation** demonstrating AI-native product development from problem → outcome → discovery → specification → build → review → release → learn.
+This is a **reference implementation** demonstrating AI-native product development from problem statement to validated implementation: `Problem → Discovery → Specification → Review → Build → Evaluation`.
 
-It shows how to build **quality, security, and governance** into AI-accelerated product development.
+It shows how to build **quality, security, and governance** into AI-accelerated product development using modular agents, declarative Cedar policies, isolated Docker sandboxes, and OpenTelemetry observability.
 
-**⚠️ This is NOT production software.** It is for research, education, and experimentation.
-
----
-
-## Key Features
-
-- ✅ **Value Stream Orchestration**: Complete problem-to-outcome workflow
-- ✅ **Modular Agent System**: Discovery, Spec, Build, Review agents
-- ✅ **Policy-Based Governance**: Cedar authorization for agent actions
-- ✅ **Sandbox Isolation**: Docker-based secure execution
-- ✅ **Quality Gates**: Deterministic + AI-based evaluations
-- ✅ **Observability**: OpenTelemetry tracing with cost tracking
-- ✅ **Security**: Secret detection, input validation, threat model
+**⚠️ This is NOT production software.** It is an educational and research reference implementation with documented limitations below.
 
 ---
 
-## Prerequisites
+## Features
 
-- **Python 3.12+**
-- **Docker** (Desktop or Engine)
-- **Git**
-- **Model API Key** (OpenAI or Anthropic; optional when using the built-in Mock adapter)
+### Core Workflow
+- ✅ **Outcome-Driven Development**: Transform problem statements into schema-validated, measurable outcome hypotheses
+- ✅ **5-Stage AI Agent Pipeline**: Discovery → Specification → Architecture Review → Security Review → Build
+- ✅ **Evaluation Framework**: Multi-judge quality gates combining deterministic judges (JSON Schema, syntax, test execution, coverage) and AI-based judges (completeness, clarity)
+- ✅ **Value Stream Orchestrator & Persistence**: State-machine orchestration with checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
+
+### Infrastructure & Security
+- ✅ **Docker Sandbox Isolation**: Isolated container execution (`pvs/agent-sandbox:latest`) running as non-root (`UID 1000`), with dropped Linux capabilities, memory/CPU/PID limits, and network isolation
+- ✅ **Policy-Based Authorization**: Cedar policy schema (`policies/schema.cedarschema`) and rules (`policies/agent_authorization.cedar`) with a deterministic Python fallback evaluator
+- ✅ **Security Controls**: Input/schema validation, path traversal prevention, command sanitization, regex secret detection (`pre-commit` hook + CI), and OWASP LLM Top 10 threat model
+- ✅ **OpenTelemetry Observability**: GenAI semantic-convention distributed tracing, token/USD cost tracking, and span secret redaction
+
+### Model Support & Streaming
+- ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, and USD cost calculation
+- ✅ **Anthropic Adapter**: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku with real typed SSE streaming, retries, tool-format translation, output secret redaction, and USD cost calculation
+- ✅ **Mock Adapter**: Deterministic local testing and demos with zero API cost
+
+### Extensibility
+- ✅ **Hexagonal Architecture**: Swappable protocol-based adapters (`ModelAdapter`, `SandboxProvider`, `Judge`, `BaseAgent`)
+
+---
+
+## Current Limitations
+
+This project is in active alpha development (`v0.1.0`). Known limitations:
+
+### Model Providers
+- **Google Gemini, Azure OpenAI, and local models (Ollama/vLLM)**: Planned for `v1.0` — not yet implemented. Only OpenAI, Anthropic, and Mock adapters exist in `src/product_value_system/adapters/`.
+
+### Discovery & Evidence
+- **No customer simulation**: Synthetic persona simulation (TinyTroupe) is planned for `v0.3` (EVO-009) — no customer simulation code exists in this repository.
+- **Single-source evidence**: `DiscoveryAgent` analyzes a single structured `problem.yaml` input and does not yet synthesize multi-source customer interviews or telemetry (planned in EVO-022 / EVO-023).
+
+### Lifecycle Stages
+- **No Learn stage**: Post-release outcome measurement and closed-loop feedback agents are not yet implemented (planned for `v0.4`, EVO-010).
+- **No experiment design or progressive delivery**: A/B experiment design, feature flags, and production SLO monitoring/alerting are planned for `v0.4` (EVO-014, EVO-015, EVO-016).
+
+### Evaluation & Testing
+- **Golden dataset curation & trajectory evaluation**: The evaluation framework and sample golden artifacts exist, but comprehensive curated golden datasets and multi-turn trajectory judges are planned for `v0.5` (EVO-011, EVO-012).
+- **Real integration suite requires explicit opt-in**: Standard CI runs fast mocked integration tests (`tests/integration/`); live LLM/Docker/Cedar tests (`tests/integration_real/`) run on-demand or nightly with `RUN_REAL_INTEGRATION_TESTS=1`.
+
+### Security & Deployment Scale
+- **Single-machine deployment**: Uses local SQLite (`pvs.db`) and Docker containers (not microVMs such as Firecracker/gVisor, nor Kubernetes).
+- **Regex secret detection & policy sync**: Secret scanning uses regex patterns (ML-based detection planned in EVO-024); automated Cedar CLI vs. Python fallback drift validation is planned in EVO-005.
+
+See [Roadmap](#roadmap) for versioned plans and [THREAT_MODEL.md](docs/THREAT_MODEL.md) for security analysis.
 
 ---
 
 ## Model Providers
 
-**Implemented**:
-- ✅ **OpenAI** (`OpenAIModelAdapter` — GPT-4, GPT-4 Turbo, GPT-3.5 Turbo)
-- ✅ **Anthropic** (`AnthropicAdapter` — Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
-- ✅ **Mock** (`MockModelAdapter` — deterministic local testing)
+### Implemented
+- ✅ **OpenAI** (`OpenAIModelAdapter` / `OpenAIAdapter` — GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo)
+  - File: [src/product_value_system/adapters/openai_adapter.py](src/product_value_system/adapters/openai_adapter.py) (381 lines)
+  - Features: Real SSE streaming, 429 rate-limit retries, tool/function calling, USD cost tracking
+- ✅ **Anthropic** (`AnthropicAdapter` / `AnthropicModelAdapter` — Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
+  - File: [src/product_value_system/adapters/anthropic_adapter.py](src/product_value_system/adapters/anthropic_adapter.py) (603 lines)
+  - Features: Real typed SSE streaming, system prompt extraction, OpenAI-to-Anthropic tool conversion, 429 retries, output secret redaction, USD cost tracking
+- ✅ **Mock** (`MockModelAdapter` — deterministic local tests and demos)
+  - File: [src/product_value_system/adapters/mock_adapter.py](src/product_value_system/adapters/mock_adapter.py)
 
-**Planned**:
-- 🔜 Google (Gemini)
-- 🔜 Azure OpenAI
-- 🔜 Local models (Ollama)
+### Planned
+- 📋 **Google Gemini** (`v1.0`)
+- 📋 **Azure OpenAI** (`v1.0`)
+- 📋 **Local Models via Ollama / vLLM** (`v1.0`)
 
 ### Configuration
 
@@ -65,42 +105,72 @@ adapters:
     model: claude-3-5-sonnet-20241022
 ```
 
-### Switching to Anthropic
+### Adding New Providers
 
-1. Set your API key:
-   ```bash
-   export ANTHROPIC_API_KEY="sk-ant-..."
-   ```
-2. Select the Anthropic adapter (`AnthropicAdapter`) and model (`claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, or `claude-3-haiku-20240307`) in `config/model_adapters.yaml` or agent configuration.
+Implement the `@runtime_checkable` `ModelAdapter` protocol in [src/product_value_system/adapters/model_adapter.py](src/product_value_system/adapters/model_adapter.py) (`invoke()` and `stream()`). See [How-To: Integrate a New Model Provider](docs/howto/integrate-model-provider.md).
 
-**Cost Comparison (per 1M tokens)**:
-- OpenAI GPT-4 Turbo: \$10 input / \$30 output
-- Anthropic Claude 3.5 Sonnet: \$3 input / \$15 output
-- Anthropic Claude 3 Haiku: \$0.25 input / \$1.25 output
+---
+
+## Installation
+
+### Prerequisites
+
+- **Python 3.12+**
+- **Git**
+- **Docker** (Desktop or Engine — required for live container sandboxes; optional for mocked unit/demo runs)
+- **Model API Key** (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — optional when running with the built-in Mock adapter)
+
+### Steps
+
+```bash
+# 1. Clone repository
+git clone https://github.com/vfcarida/AI-Native-Product-Value-System.git
+cd AI-Native-Product-Value-System
+
+# 2. Install package and development dependencies
+pip install -e ".[dev]"
+
+# 3. Install Git pre-commit secret scanning hook
+./scripts/install-git-hooks.sh
+
+# 4. Build the isolated agent sandbox image (optional if Docker is offline)
+make docker-build-sandbox
+
+# 5. Optional: Set an API key (omit to run locally with the deterministic Mock adapter)
+export OPENAI_API_KEY="sk-..."
+# or
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+### Optional: Cedar CLI
+
+For native Cedar CLI policy evaluation (Python fallback is active automatically when omitted):
+
+```bash
+# macOS
+brew install cedar-policy/cedar/cedar-cli
+
+# Linux (requires Rust/Cargo)
+cargo install cedar-policy-cli
+```
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/<org>/ai-native-product-value-system.git
-cd ai-native-product-value-system
+# Run greenfield example (AcmeBank instant payment notifications)
+pvs run examples/greenfield/problem_payment_flow.yaml
 
-# 2. Install dependencies
-make install
+# Run brownfield example (AcmeBank legacy Customer API documentation)
+pvs run examples/brownfield/problem_document_legacy.yaml
 
-# 3. Install Git hooks (secret scanning)
-./scripts/install-git-hooks.sh
-
-# 4. Set API key
-export OPENAI_API_KEY="sk-..."
-
-# 5. Run example
-make demo
+# Inspect persisted runs
+pvs list
+pvs show <run-id>
 ```
 
-**Expected Output**: Value stream runs from problem → outcome → spec → build → review → release, producing artifacts in `artifacts/runs/<run-id>/`.
+**Expected Output**: Orchestrator executes problem analysis, discovery, specification, review, and build stages, storing run metadata in `pvs.db` and artifacts under `artifacts/runs/<problem-id>/`.
 
 ---
 
@@ -110,161 +180,105 @@ make demo
 ┌─────────────────────────────────────────────────────────────┐
 │                  AI-Native Product Value System              │
 │                                                              │
-│  Problem → Discovery → Specification → Build → Review       │
-│           → Release → Run → Learn → [feedback]              │
-│                                                              │
+│  Problem → Discovery → Specification → Review → Build       │
+│                    └─ Evaluation Quality Gates ─┘            │
 └─────────────────────────────────────────────────────────────┘
         ↕                    ↕                    ↕
-   [User Input]      [Model APIs]         [Git Repository]
-   [problem.yaml]    [OpenAI/Anthropic]   [Artifacts]
+   [User Input]      [Model APIs]         [Docker Sandbox]
+   [problem.yaml]    [OpenAI/Anthropic]   [Cedar Policies]
 ```
 
-**Key Components**:
-
-- **Orchestrator**: State machine coordinating agents
-- **Agents**: Specialized AI agents (Discovery, Spec, Build, Review)
-- **Harness**: Context, tools, memory, guardrails for agents
-- **Policy Engine**: Cedar authorization (least-privilege)
-- **Sandbox**: Docker containers (non-root, isolated)
-- **Evaluation**: Quality gates (schema, tests, AI judges)
-
-See [Architecture Documentation](docs/ARCHITECTURE.md) for details.
-
----
-
-## Examples
-
-### Greenfield: Payment Processing System
-
-```bash
-pvs run examples/greenfield/problem_payment_flow.yaml
-```
-
-**Output**: Complete implementation (code, tests, docs) for payment flow.
-
-### Brownfield: Legacy API Documentation
-
-```bash
-pvs run examples/brownfield/problem_document_legacy.yaml
-```
-
-**Output**: Generated documentation for existing legacy API code.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS.md](docs/architecture/DIAGRAMS.md) for C4, sequence, trust-boundary, and data-flow diagrams.
 
 ---
 
 ## Documentation
 
-- **[Architecture](docs/ARCHITECTURE.md)** — System design and diagrams
-- **[API Reference](docs/reference/README.md)** — Complete API documentation
-- **[How-To Guides](docs/howto/README.md)** — Task-oriented guides
+- **[Architecture & Diagrams](docs/ARCHITECTURE.md)** — System design and 8 Mermaid diagrams
+- **[API & Schema Reference](docs/reference/README.md)** — Public APIs, schemas, configuration, and CLI commands
+- **[How-To Guides](docs/howto/README.md)** — Custom agents, Cedar policies, judges, model adapters, troubleshooting
+- **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
-- **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Best practices
+- **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Secret scanning and redaction controls
 
 ---
 
-## Development
+## Development & Testing
 
 ```bash
-# Run unit tests
+# Run unit tests (fast, deterministic, $0)
 make test-unit
 
-# Run all tests
+# Run standard CI suite (unit, mocked integration, eval, security, $0)
 make test
 
-# Lint code
+# Run real integration tests (live OpenAI/Anthropic APIs, Docker, Cedar)
+RUN_REAL_INTEGRATION_TESTS=1 make test-integration-real
+
+# Lint & static type check
 make lint
 
-# Build Docker image
+# Validate Cedar policies
+make validate-policies
+
+# Build Docker images
 make docker-build
-
-# Run in Docker
-make docker-run
+make docker-build-sandbox
 ```
 
----
-
-## Security
-
-**Important**: This is a reference implementation, NOT production software.
-
-- ✅ Cedar policy engine for authorization
-- ✅ Docker sandbox (non-root user, capabilities dropped)
-- ✅ Secret detection (pre-commit hooks + CI)
-- ✅ Input validation and output sanitization
-- ⚠️ No formal security audit
-- ⚠️ Docker isolation (not microVMs)
-- ⚠️ Regex-based secret detection (not ML)
-
-See [THREAT_MODEL.md](docs/THREAT_MODEL.md) for comprehensive security analysis.
-
-**Report vulnerabilities**: See [SECURITY.md](docs/SECURITY.md)
-
----
-
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-**Areas for Contribution**:
-
-- Additional agents (e.g., deployment agent, monitoring agent)
-- New model providers (e.g., local models via Ollama)
-- Enhanced evaluations (trajectory judges, multi-turn)
-- Cloud deployment (Kubernetes, AWS ECS)
-- Advanced observability (dashboards, alerts)
-
----
-
-## License
-
-Apache License 2.0
-
-See [LICENSE](LICENSE) for details.
-
----
-
-## Citation
-
-If you use this in research or education, please cite:
-
-```bibtex
-@software{ai_native_pvs_2026,
-  title = {AI-Native Product Value System},
-  author = {AI-Native Product Value System Contributors},
-  year = {2026},
-  version = {0.1.0},
-  url = {https://github.com/<org>/ai-native-product-value-system}
-}
-```
-
----
-
-## Acknowledgments
-
-- **Claude (Anthropic)** — Implementation assistance
-- **OWASP LLM Top 10** — Security threat modeling
-- **Cedar (AWS)** — Policy language
-- **C4 Model** — Architecture diagrams
+See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`, `$0.50/run`), and CI workflows.
 
 ---
 
 ## Roadmap
 
-- **v0.2.0**: Multi-agent collaboration, MCP support
-- **v0.3.0**: Cloud deployment, model gateway
-- **v1.0.0**: Production hardening, security audit
+### v0.2 — Core Hardening
+- ✅ Anthropic Claude adapter (EVO-001)
+- ✅ Real SSE streaming for OpenAI & Anthropic adapters (EVO-002)
+- ✅ Real integration test suite with cost guardrails (EVO-003)
+- ✅ Honest README & capability alignment (EVO-004)
+- 📋 Cedar policy / Python fallback sync validation (EVO-005)
+- 📋 Adversarial prompt injection test suite (EVO-006)
+- 📋 Enhanced cost budget guards (EVO-007)
 
-See [RELEASE_NOTES.md](RELEASE_NOTES.md) for detailed roadmap.
+### v0.3 — Simulation & Multi-Source Evidence
+- 📋 TinyTroupe customer simulation (EVO-009)
+- 📋 Customer interview & multi-source evidence synthesis (EVO-022, EVO-023)
+- 📋 Automated baseline validation (EVO-019)
+
+### v0.4 — Lifecycle Completion
+- 📋 Learn stage & outcome measurement agent (EVO-010)
+- 📋 Experiment design & statistical rigor tooling (EVO-016)
+- 📋 Production SLOs, monitoring & progressive delivery (EVO-014, EVO-015)
+
+### v0.5 — Evaluation & Continuous Quality
+- 📋 Curated golden dataset evaluation suite (EVO-011)
+- 📋 Multi-turn trajectory evaluations (EVO-012)
+- 📋 Multi-agent review & drift detection (EVO-013, EVO-017)
+
+### v1.0 — Production Grade
+- 📋 Token caching & cost optimization (EVO-025, EVO-026)
+- 📋 ML-based secret detection (EVO-024)
+- 📋 Google Gemini, Azure OpenAI, and local (Ollama/vLLM) model adapters
+- 📋 Brownfield Git history analysis & Strangler Fig modernization (EVO-030, EVO-031)
+
+**Status Legend**: ✅ Done · 🚧 In Progress · 📋 Planned
 
 ---
 
-## Support
+## Security
 
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/<org>/<repo>/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/<org>/<repo>/discussions)
+- **Report vulnerabilities**: See [SECURITY.md](SECURITY.md) and [docs/SECURITY.md](docs/SECURITY.md)
+- **Threat model**: See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 
 ---
 
-**Status**: v0.1.0 Reference Implementation (Educational Use Only)  
-**Last Updated**: 2026-11-18
+## Contributing & License
+
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- **Changelog & Releases**: See [CHANGELOG.md](CHANGELOG.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- **License**: [Apache License 2.0](LICENSE)
+
+---
+
+**Last Updated**: 2026-11-19

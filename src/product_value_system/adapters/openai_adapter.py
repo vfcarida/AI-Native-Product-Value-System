@@ -38,8 +38,17 @@ class OpenAIModelAdapter:
     - Retries for transient failures
     - Real Server-Sent Events (SSE) streaming
     - Tool/function calling
-    - Token usage tracking
+    - Token usage tracking and USD cost calculation
     """
+
+    # Pricing in USD per 1M tokens
+    PRICING: dict[str, dict[str, float]] = {
+        "gpt-4": {"input": 30.00, "output": 60.00},
+        "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+        "gpt-4o": {"input": 2.50, "output": 10.00},
+        "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+        "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    }
 
     def __init__(
         self,
@@ -345,6 +354,24 @@ class OpenAIModelAdapter:
             finish_reason=choice.get("finish_reason"),
             model=data.get("model"),
         )
+
+    def calculate_cost(self, usage: Usage, model: str | None = None) -> float:
+        """
+        Calculate cost in USD from token usage.
+
+        Args:
+            usage: Token usage stats
+            model: Model identifier (defaults to self.model)
+
+        Returns:
+            Cost in USD
+        """
+        resolved_model = model or self.model
+        pricing = self.PRICING.get(resolved_model, self.PRICING["gpt-4"])
+
+        input_cost = (usage.prompt_tokens / 1_000_000) * pricing["input"]
+        output_cost = (usage.completion_tokens / 1_000_000) * pricing["output"]
+        return input_cost + output_cost
 
     async def close(self) -> None:
         """Close underlying HTTP client."""

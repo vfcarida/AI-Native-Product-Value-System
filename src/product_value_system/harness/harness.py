@@ -4,6 +4,7 @@ Main harness implementation.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,13 @@ class Harness:
             max_tokens=max_tokens,
             **kwargs,
         )
+        if response.usage is not None and hasattr(self.model_adapter, "calculate_cost"):
+            cost_val = self.model_adapter.calculate_cost(response.usage, response.model)
+            self.budget.record_cost(Decimal(str(cost_val)))
+            within_budget, error = self.budget.check_all()
+            if not within_budget:
+                raise BudgetExceededError(error)
+
         self.memory.add_message("assistant", response.content)
         return response
 

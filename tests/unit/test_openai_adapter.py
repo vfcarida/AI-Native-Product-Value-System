@@ -3,6 +3,7 @@ Unit tests for OpenAIModelAdapter / OpenAIAdapter SSE streaming (EVO-002).
 """
 
 import json
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -11,15 +12,20 @@ import pytest
 from product_value_system.adapters.model_adapter import (
     Message,
     ModelError,
+    ModelUsage,
     NetworkError,
     RateLimitError,
     Role,
 )
 from product_value_system.adapters.openai_adapter import OpenAIAdapter
+from product_value_system.harness.budget import Budget, BudgetExceededError
+from product_value_system.harness.context import ExecutionContext
+from product_value_system.harness.harness import Harness
 from tests.fixtures.mock_sse_server import (
     MockSSEResponse,
     create_openai_sse_chunks,
 )
+from tests.integration_real.conftest import RealIntegrationCostTracker
 
 
 @pytest.mark.unit
@@ -207,4 +213,61 @@ async def test_stream_handles_network_error() -> None:
 
     with pytest.raises(NetworkError, match="Stream connection failed"):
         _ = [c async for c in adapter.stream([{"role": "user", "content": "Hi"}])]
+    await adapter.close()
+
+
+@pytest.mark.unit
+def test_openai_calculate_cost_and_real_cost_tracker() -> None:
+    """Test OpenAIAdapter.calculate_cost and RealIntegrationCostTracker budget caps."""
+    adapter = OpenAIAdapter(api_key="sk-test", model="gpt-3.5-turbo")
+    usage = ModelUsage(prompt_tokens=1000, completion_tokens=1000, total_tokens=2000)
+    # (1000/1M)*$0.50 + (1000/1M)*$1.50 = $0.002
+    cost = adapter.calculate_cost(usage)
+    assert abs(cost - 0.002) < 0.000001
+
+    tracker = RealIntegrationCostTracker(max_per_test=0.05, max_total=0.10)
+    tracker.track(0.04)
+    assert abs(tracker.spent - 0.04) < 1e-9
+    with pytest.raises(RuntimeError, match="exceeded cost budget"):
+        tracker.track(0.07)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_harness_records_adapter_cost_and_enforces_budget() -> None:
+    """Test Harness.invoke_model records real adapter USD cost and enforces budget."""
+
+    def mock_transport(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "Expensive answer"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 100_000,
+                    "completion_tokens": 50_000,
+                    "total_tokens": 150_000,
+                },
+            },
+        )
+
+    adapter = OpenAIAdapter(
+        api_key="sk-test",
+        model="gpt-4",
+        transport=httpx.MockTransport(mock_transport),
+    )
+    harness = Harness(
+        context=ExecutionContext(run_id="cost-enforcement-test"),
+        model_adapter=adapter,
+        budget=Budget(max_cost_usd=Decimal("1.00")),
+    )
+    # 100k input * $30/1M = $3.00, 50k output * $60/1M = $3.00 -> $6.00 > $1.00
+    with pytest.raises(BudgetExceededError, match="Cost budget exceeded"):
+        await harness.invoke_model([{"role": "user", "content": "Hello"}])
+    assert harness.budget.current_cost_usd == Decimal("6.0")
     await adapter.close()

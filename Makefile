@@ -1,28 +1,36 @@
-.PHONY: help install test test-unit lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield demo-brownfield clean
+.PHONY: help install test test-unit test-integration-real test-all lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield demo-brownfield clean
 
 help:
 	@echo "AI-native Product Value System - Development Commands"
 	@echo ""
-	@echo "  make install            Install dependencies"
-	@echo "  make test               Run all tests"
-	@echo "  make test-unit          Run unit tests only"
-	@echo "  make lint               Lint code"
-	@echo "  make validate-policies  Validate Cedar policies"
-	@echo "  make docker-build       Build Docker image"
-	@echo "  make docker-run         Run Docker container"
-	@echo "  make demo               Run greenfield/brownfield value stream demo"
-	@echo "  make demo-greenfield    Run AcmeBank payment notification demo"
-	@echo "  make demo-brownfield    Run AcmeBank legacy Customer API demo"
-	@echo "  make clean              Clean build artifacts"
+	@echo "  make install               Install dependencies"
+	@echo "  make test                  Run standard test suite (unit + integration + eval + security)"
+	@echo "  make test-unit             Run unit tests only"
+	@echo "  make test-integration-real Run real integration tests (requires RUN_REAL_INTEGRATION_TESTS=1)"
+	@echo "  make test-all              Run all test tiers including real integration tests"
+	@echo "  make lint                  Lint code"
+	@echo "  make validate-policies     Validate Cedar policies"
+	@echo "  make docker-build          Build Docker image"
+	@echo "  make docker-run            Run Docker container"
+	@echo "  make demo                  Run greenfield/brownfield value stream demo"
+	@echo "  make demo-greenfield       Run AcmeBank payment notification demo"
+	@echo "  make demo-brownfield       Run AcmeBank legacy Customer API demo"
+	@echo "  make clean                 Clean build artifacts"
 
 install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/ -v
+	pytest tests/unit/ tests/integration/ tests/eval/ tests/security/ -v
 
 test-unit:
 	pytest tests/unit/ -v
+
+test-integration-real:
+	RUN_REAL_INTEGRATION_TESTS=1 pytest tests/integration_real/ -v -s
+
+test-all:
+	RUN_REAL_INTEGRATION_TESTS=1 pytest tests/ -v
 
 lint:
 	ruff check src/ tests/

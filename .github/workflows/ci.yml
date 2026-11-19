@@ -45,8 +45,8 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
       
-      - name: Run unit tests
-        run: pytest tests/unit/ -v --cov=product_value_system --cov-report=term-missing
+      - name: Run unit, mocked integration, eval, and security tests
+        run: pytest tests/unit/ tests/integration/ tests/eval/ tests/security/ -v --cov=product_value_system --cov-report=term-missing
 
   build:
     runs-on: ubuntu-latest
