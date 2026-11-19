@@ -213,10 +213,9 @@ import pytest
 
 from product_value_system.adapters.mock_adapter import MockModelAdapter
 from product_value_system.agents.api_doc_agent import APIDocAgent
-from product_value_system.harness.budget import BudgetConstraints
+from product_value_system.harness.budget import Budget
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
-from product_value_system.observability.cost_tracker import CostTracker
 from product_value_system.policy.engine import PolicyEngine
 
 
@@ -228,20 +227,20 @@ async def test_api_doc_agent_generates_documentation() -> None:
     )
     agent = APIDocAgent()
 
+    context = ExecutionContext(
+        run_id="test-run",
+        system_prompt="You are a technical writer.",
+    )
     harness = Harness(
-        agent_id="api-doc-agent",
+        context=context,
         model_adapter=mock_adapter,
         policy_engine=PolicyEngine(),
-        cost_tracker=CostTracker(),
-        budget_constraints=BudgetConstraints(
+        budget=Budget(
             max_iterations=3,
             max_cost_usd=Decimal("1.0"),
             max_duration_seconds=60,
         ),
-        allowed_tools=["spec.read", "template.load"],
-        denied_tools=["repo.commit"],
     )
-    context = ExecutionContext(system_prompt="You are a technical writer.")
 
     input_artifact = {"specification": "API for payment processing..."}
     result = await agent.execute(input_artifact, harness, context)
@@ -288,10 +287,9 @@ import pytest
 
 from product_value_system.adapters.openai_adapter import OpenAIModelAdapter
 from product_value_system.agents.api_doc_agent import APIDocAgent
-from product_value_system.harness.budget import BudgetConstraints
+from product_value_system.harness.budget import Budget
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
-from product_value_system.observability.cost_tracker import CostTracker
 from product_value_system.policy.engine import PolicyEngine
 
 
@@ -303,20 +301,20 @@ async def test_api_doc_agent_with_real_model() -> None:
     model_adapter = OpenAIModelAdapter(api_key=os.environ["OPENAI_API_KEY"])
     agent = APIDocAgent()
 
+    context = ExecutionContext(
+        run_id="integration-run",
+        system_prompt="You are a technical writer.",
+    )
     harness = Harness(
-        agent_id="api-doc-agent",
+        context=context,
         model_adapter=model_adapter,
         policy_engine=PolicyEngine(),
-        cost_tracker=CostTracker(),
-        budget_constraints=BudgetConstraints(
+        budget=Budget(
             max_iterations=3,
             max_cost_usd=Decimal("1.0"),
             max_duration_seconds=180,
         ),
-        allowed_tools=["spec.read", "template.load"],
-        denied_tools=["repo.commit"],
     )
-    context = ExecutionContext(system_prompt="You are a technical writer.")
 
     result = await agent.execute(
         {"specification": "API for payment processing with credit cards..."},
