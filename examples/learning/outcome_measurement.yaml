@@ -1,0 +1,47 @@
+# Example Post-Launch Outcome Measurement Scenario (EVO-010)
+# Validate the outcome section with: pvs validate examples/learning/outcome_measurement.yaml --type outcome
+# Or run measurement directly with:
+#   pvs measure-outcome --outcome-id outcome-acme-payment --measurement-window 30 --use-mock-analytics
+
+id: outcome-acme-payment
+version: 1
+created: "2026-10-01T10:00:00Z"
+updated: "2026-11-18T10:00:00Z"
+problem_id: problem-acme-payment
+hypothesis: >
+  Reducing SMB payment processing fees from 3.2% to 2.5% and automating daily
+  reconciliation will increase monthly merchant retention from 85.0% to 97.75%
+  without degrading transaction success rate.
+success_criteria:
+  primary_metric:
+    name: Merchant retention rate
+    unit: percentage
+    measurement_method: Monthly active merchant cohort retention (SQL analytics)
+  baseline: 85.0
+  target: 97.75
+  guardrails:
+    - metric: Transaction success rate
+      threshold: 99.5
+      direction: above
+evidence_requirements:
+  - type: quantitative
+    description: 30-day post-deployment merchant cohort retention comparison against pre-launch baseline
+    mandatory: true
+measurement:
+  deployment_date: "2026-10-15T00:00:00Z"
+  measurement_window_days: 30
+  baseline_window_days: 30
+  analytics_adapter: mock
+  development_cost_usd: 14.50
+  ongoing_cost_per_month_usd: 25.00
+  status: PARTIAL_SUCCESS
+  baseline_value: 85.0
+  current_value: 96.5
+  target_value: 97.75
+  p_value: 0.0001
+  cost_attribution:
+    development_cost_usd: 14.5
+    ongoing_cost_per_month_usd: 25.0
+    improvement: 11.5
+    relative_improvement_pct: 13.53
+    cost_per_unit_improvement: 1.2609

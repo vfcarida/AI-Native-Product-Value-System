@@ -1,0 +1,73 @@
+# Synthetic Customer Persona Templates for TinyTroupe Simulation (EVO-009)
+
+templates:
+  tech_early_adopter:
+    demographics:
+      age_range: [25, 40]
+      education: ["Bachelor's", "Master's", "PhD"]
+      income_range: [70000, 150000]
+      occupations: ["Software Engineer", "Product Designer", "Data Scientist", "Product Manager"]
+    personality:
+      openness: high
+      conscientiousness: medium
+      extraversion: medium
+      agreeableness: medium
+      neuroticism: low
+    behaviors:
+      technology_adoption: early
+      social_media_usage: high
+      mobile_app_engagement: high
+      brand_loyalty: medium
+    context_awareness:
+      device_types: ["iPhone", "Android flagship", "Laptop", "Tablet"]
+      app_categories: ["Productivity", "Finance", "Social", "News"]
+      pain_points: ["Slow performance", "Complex UI", "Privacy concerns"]
+
+  mainstream_user:
+    demographics:
+      age_range: [30, 60]
+      education: ["High School", "Bachelor's"]
+      income_range: [40000, 90000]
+      occupations: ["Accountant", "Teacher", "Small Business Owner", "Operations Specialist"]
+    personality:
+      openness: medium
+      conscientiousness: high
+      extraversion: medium
+      agreeableness: high
+      neuroticism: medium
+    behaviors:
+      technology_adoption: mainstream
+      social_media_usage: medium
+      mobile_app_engagement: medium
+      brand_loyalty: high
+    context_awareness:
+      device_types: ["iPhone", "Android mid-range", "Laptop"]
+      app_categories: ["Banking", "Shopping", "Communication"]
+      pain_points: ["Complexity", "Learning curve", "Cost"]
+
+  accessibility_focused:
+    demographics:
+      age_range: [45, 75]
+      education: ["High School", "Bachelor's"]
+      income_range: [30000, 70000]
+      occupations: ["Retired Educator", "Healthcare Coordinator", "Community Volunteer"]
+    personality:
+      openness: low
+      conscientiousness: high
+      extraversion: low
+      agreeableness: high
+      neuroticism: medium
+    behaviors:
+      technology_adoption: late_majority
+      social_media_usage: low
+      mobile_app_engagement: low
+      brand_loyalty: very_high
+    accessibility_needs:
+      - "Large font support"
+      - "Voice control"
+      - "Simple navigation"
+      - "High contrast"
+    context_awareness:
+      device_types: ["iPhone SE", "Android entry-level"]
+      app_categories: ["Banking", "Health", "Family communication"]
+      pain_points: ["Small text", "Complex gestures", "Hidden features"]

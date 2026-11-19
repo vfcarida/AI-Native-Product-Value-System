@@ -1,0 +1,26 @@
+# Statistical & Quality Validation Criteria for Customer Simulations (EVO-009)
+
+validation:
+  minimum_population_size: 50
+  minimum_interactions_per_persona: 3
+
+  statistical_tests:
+    - name: t_test
+      description: "Compare means between simulation and real survey data (Welch's t-test)"
+      threshold:
+        p_value: 0.05
+
+    - name: ks_test
+      description: "Compare distributions between simulation and empirical data (KS test)"
+      threshold:
+        p_value: 0.05
+
+  quality_checks:
+    - persona_adherence: 0.80
+    - interaction_realism: 0.70
+    - response_diversity: 0.60
+
+  confidence_scoring:
+    high: 0.80
+    medium: 0.60
+    low: 0.40

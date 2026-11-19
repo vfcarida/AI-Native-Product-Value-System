@@ -1,0 +1,45 @@
+# Analytics Adapter Configuration (EVO-010: Learn Stage)
+# Configure how OutcomeTracker queries post-launch production metrics.
+
+default_adapter: mock
+
+adapters:
+  sql:
+    type: sql
+    # SQLite (native, zero external dependencies):
+    #   sqlite:///analytics.db
+    # PostgreSQL (requires sqlalchemy[asyncio] + asyncpg):
+    #   postgresql+asyncpg://user:pass@localhost:5432/analytics
+    connection_string: ${ANALYTICS_DATABASE_URL:-sqlite:///analytics.db}
+    table: metrics
+    expected_columns:
+      metric_name: metric_name
+      metric_value: metric_value
+      timestamp: timestamp
+      dimensions_prefix: dimension_
+
+  prometheus:
+    type: prometheus
+    base_url: ${PROMETHEUS_URL:-http://localhost:9090}
+    timeout_seconds: 15.0
+
+  mock:
+    type: mock
+    sample_size: 1000
+    ci_half_width_ratio: 0.05
+    seed: 42
+    metrics:
+      "Merchant retention rate": 96.5
+      "Transaction success rate": 99.8
+      "checkout_conversion_rate": 38.5
+
+measurement:
+  default_measurement_window_days: 30
+  default_baseline_window_days: 30
+  significance_alpha: 0.05
+  feedback_store_path: artifacts/learning/feedback_history.yaml
+  alerts:
+    on_regression: critical
+    on_guardrail_breach: critical
+    on_target_missed: warning
+    include_info_alerts: false

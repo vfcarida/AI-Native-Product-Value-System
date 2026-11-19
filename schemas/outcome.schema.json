@@ -112,6 +112,14 @@
     "risks": {
       "type": "array",
       "items": {"type": "object"}
+    },
+    "simulation_evidence": {
+      "type": "object",
+      "description": "Optional synthetic customer simulation evidence (TinyTroupe, not real user research)"
+    },
+    "measurement": {
+      "type": "object",
+      "description": "Optional post-deployment production outcome measurement, cost attribution, and learnings (Learn stage)"
     }
   },
   "additionalProperties": false

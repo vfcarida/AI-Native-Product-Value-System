@@ -1,0 +1,25 @@
+scenario_name: ad_evaluation
+description: Evaluate messaging clarity and appeal of instant payment notification feature ads.
+
+population:
+  template_distribution:
+    tech_early_adopter: 0.4
+    mainstream_user: 0.4
+    accessibility_focused: 0.2
+  size: 20
+  diversity_factor: 0.35
+
+scenario:
+  interactions:
+    - prompt: >
+        You see this in-app banner: "Never wonder if your payment went through—get
+        instant, customizable mobile alerts in under 2 seconds." What is your first impression?
+      target_personas: all
+    - prompt: >
+        Does this message address a real frustration you have with banking apps, or does
+        anything feel unclear or concerning?
+      target_personas: all
+    - prompt: >
+        Would you enable instant payment notifications based on this message? What would
+        make you more likely to trust and enable it?
+      target_personas: all

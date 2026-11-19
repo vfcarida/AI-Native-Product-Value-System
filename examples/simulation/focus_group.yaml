@@ -1,0 +1,25 @@
+scenario_name: focus_group
+description: Simulated product discovery focus group evaluating mobile payment notifications.
+
+population:
+  template_distribution:
+    tech_early_adopter: 0.3
+    mainstream_user: 0.5
+    accessibility_focused: 0.2
+  size: 15
+  diversity_factor: 0.4
+
+scenario:
+  interactions:
+    - prompt: >
+        Think about the last time you sent an urgent bank transfer or paid a bill on your
+        phone. How did you verify the payment succeeded, and what frustrated you?
+      target_personas: all
+    - prompt: >
+        Imagine receiving an instant push notification with the exact amount, merchant,
+        and status, plus quiet-hours controls. How useful would this be for you?
+      target_personas: all
+    - prompt: >
+        What accessibility, privacy, or notification-fatigue concerns would stop you from
+        turning this feature on?
+      target_personas: all

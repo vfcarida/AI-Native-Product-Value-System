@@ -16,6 +16,8 @@ Complete API documentation for all public interfaces.
 - [Evaluation API](api/evaluation.md) — Judges and evaluation pipeline (`Judge`, `EvaluationPipeline`, `SchemaValidationJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, `GoldenDatasetLoader`)
 - [Orchestrator API](api/orchestrator.md) — Value stream orchestration (`ValueStreamOrchestrator`, `ValueStreamStateMachine`, `ValueStreamRun`, `CheckpointManager`)
 - [Observability API](api/observability.md) — Tracing, GenAI conventions, cost tracking, and sanitization (`configure_tracing`, `traced`, `CostTracker`, `instrument_model_call`, `SanitizingSpanProcessor`)
+- [Simulation API](api/simulation.md) — Synthetic customer simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`)
+- [Learning & Outcome Measurement API](api/learning.md) — Learn stage analytics adapters, statistical outcome tracking, cost attribution, and Discovery feedback loops (`OutcomeTracker`, `MeasurementAgent`, `CostAttributor`, `FeedbackLoop`, `SQLAnalyticsAdapter`, `PrometheusAnalyticsAdapter`)
 
 ---
 

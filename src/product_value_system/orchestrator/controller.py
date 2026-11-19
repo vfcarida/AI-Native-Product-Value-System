@@ -2,7 +2,7 @@
 Value stream orchestrator controller.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -13,6 +13,10 @@ from product_value_system.agents.agent import AgentResult
 from product_value_system.evaluation.pipeline import EvaluationPipeline
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
+from product_value_system.learning.analytics_adapter import AnalyticsAdapter
+from product_value_system.learning.feedback_loop import FeedbackLoop
+from product_value_system.learning.measurement_agent import MeasurementAgent
+from product_value_system.learning.outcome_tracker import OutcomeTracker
 from product_value_system.observability.tracing import set_run_context, trace_span
 from product_value_system.orchestrator.checkpoints import CheckpointManager
 from product_value_system.orchestrator.state_machine import (
@@ -42,6 +46,10 @@ class ValueStreamOrchestrator:
         checkpoint_manager: CheckpointManager,
         artifact_root: Path | str,
         harness_factory: Any | None = None,
+        *,
+        analytics_adapter: AnalyticsAdapter | None = None,
+        outcome_tracker: OutcomeTracker | None = None,
+        feedback_loop: FeedbackLoop | None = None,
     ) -> None:
         """
         Initialize orchestrator.
@@ -53,6 +61,9 @@ class ValueStreamOrchestrator:
             checkpoint_manager: Checkpoint manager for recovery
             artifact_root: Root directory for artifacts
             harness_factory: Optional callable(stage_name) -> Harness
+            analytics_adapter: Optional analytics adapter enabling the Learn stage
+            outcome_tracker: Optional pre-configured OutcomeTracker
+            feedback_loop: Optional FeedbackLoop for alerts and Discovery feedback
         """
         self.agents = agents
         self.evaluation_pipeline = evaluation_pipeline
@@ -61,6 +72,18 @@ class ValueStreamOrchestrator:
         self.artifact_root = Path(artifact_root)
         self.harness_factory = harness_factory
         self.events: list[dict[str, Any]] = []
+
+        self.outcome_tracker: OutcomeTracker | None = outcome_tracker or (
+            OutcomeTracker(analytics_adapter) if analytics_adapter is not None else None
+        )
+        self.measurement_agent: Any | None = agents.get("measurement") or (
+            MeasurementAgent(self.outcome_tracker)
+            if self.outcome_tracker is not None
+            else None
+        )
+        self.feedback_loop: FeedbackLoop | None = feedback_loop or (
+            FeedbackLoop(self.outcome_tracker) if self.outcome_tracker is not None else None
+        )
 
     def _emit_event(
         self,
@@ -180,8 +203,35 @@ class ValueStreamOrchestrator:
                     self._emit_event("approval.granted", run.id, {"stage": next_stage})
                     run.status = RunStatus.RUNNING
 
+            outcome_achieved = True
+            if config.get("enable_measurement", False):
+                run.current_stage = "measure"
+                self._emit_event("stage.started", run.id, {"stage": "measure"})
+                measure_result, measured_achieved = await self._execute_learn_stage(
+                    run=run,
+                    config=config,
+                )
+                run.add_stage_result(measure_result)
+                self.checkpoint_manager.save_checkpoint(run)
+
+                if measure_result.status == StageStatus.FAILED:
+                    self._emit_event(
+                        "stage.failed",
+                        run.id,
+                        {"stage": "measure", "error": measure_result.error},
+                    )
+                    run.status = RunStatus.FAILED
+                    run.completed_at = datetime.now(UTC)
+                    self.checkpoint_manager.save_checkpoint(run)
+                    raise OrchestratorError(
+                        f"Stage measure failed: {measure_result.error}"
+                    )
+
+                self._emit_event("stage.completed", run.id, {"stage": "measure"})
+                outcome_achieved = measured_achieved
+
             run.status = RunStatus.COMPLETED
-            run.outcome_achieved = True
+            run.outcome_achieved = outcome_achieved
             run.completed_at = datetime.now(UTC)
             self.checkpoint_manager.save_checkpoint(run)
 
@@ -392,6 +442,146 @@ class ValueStreamOrchestrator:
             stage_result.error = str(e)
             stage_result.completed_at = datetime.now(UTC)
             return stage_result
+
+    async def _execute_learn_stage(
+        self,
+        run: ValueStreamRun,
+        config: dict[str, Any],
+    ) -> tuple[StageResult, bool]:
+        """
+        Execute the optional Learn stage (post-launch outcome measurement & feedback loop).
+
+        Returns:
+            Tuple of ``(StageResult, outcome_achieved)``
+        """
+        stage_result = StageResult(
+            stage_name="measure",
+            status=StageStatus.RUNNING,
+            started_at=datetime.now(UTC),
+        )
+        assert run.artifact_dir is not None
+
+        try:
+            outcome_stage = run.get_stage("outcome_hypothesis")
+            if not outcome_stage or not outcome_stage.artifact_path:
+                raise OrchestratorError("Outcome hypothesis artifact missing for Learn stage")
+            outcome = await self._load_artifact(outcome_stage.artifact_path)
+            outcome_id = str(outcome.get("id") or f"outcome-{run.problem_id}")
+
+            window_days = int(config.get("measurement_window_days", 30))
+            baseline_window_days = int(config.get("baseline_window_days", 30))
+            raw_deploy = config.get("deployment_date")
+            if isinstance(raw_deploy, datetime):
+                deploy_date = raw_deploy
+            elif isinstance(raw_deploy, str):
+                deploy_date = datetime.fromisoformat(raw_deploy)
+            else:
+                deploy_date = datetime.now(UTC) - timedelta(days=window_days)
+
+            stage_costs = {name: st.cost_usd for name, st in run.stages.items()}
+            if self.outcome_tracker is not None:
+                self.outcome_tracker.register_deployment(
+                    outcome_id=outcome_id,
+                    deployment_date=deploy_date,
+                    outcome_hypothesis=outcome,
+                    development_cost_usd=run.total_cost_usd,
+                    stage_costs=stage_costs,
+                    ongoing_cost_per_month_usd=config.get("ongoing_cost_per_month_usd"),
+                )
+
+            if config.get("defer_measurement", False):
+                schedule_artifact = {
+                    "outcome_id": outcome_id,
+                    "status": "SCHEDULED",
+                    "deployment_date": deploy_date.isoformat(),
+                    "measurement_window_days": window_days,
+                    "scheduled_for": (deploy_date + timedelta(days=window_days)).isoformat(),
+                }
+                artifact_path = await self._save_artifact(
+                    run.artifact_dir,
+                    "measurement_schedule.yaml",
+                    schedule_artifact,
+                )
+                stage_result.artifact_path = artifact_path
+                stage_result.agent_name = "measurement-scheduler"
+                stage_result.status = StageStatus.COMPLETED
+                stage_result.completed_at = datetime.now(UTC)
+                self._emit_event("measurement.scheduled", run.id, schedule_artifact)
+                return stage_result, True
+
+            if self.measurement_agent is None:
+                raise OrchestratorError(
+                    "Learn stage enabled but no measurement_agent or analytics_adapter configured"
+                )
+
+            measurement_input: dict[str, Any] = {
+                "outcome_id": outcome_id,
+                "measurement_window_days": window_days,
+                "baseline_window_days": baseline_window_days,
+                "generate_llm_insights": bool(config.get("measurement_llm_insights", False)),
+            }
+            output_artifact, cost_usd = await self._invoke_agent(
+                self.measurement_agent,
+                measurement_input,
+                "measure",
+                run.id,
+            )
+
+            artifact_path = await self._save_artifact(
+                run.artifact_dir,
+                "measurement.yaml",
+                output_artifact,
+            )
+
+            # Enrich outcome.yaml with post-launch measurement record
+            outcome["measurement"] = output_artifact
+            await self._save_artifact(run.artifact_dir, "outcome.yaml", outcome)
+
+            alerts_count = 0
+            if (
+                self.feedback_loop is not None
+                and self.outcome_tracker is not None
+                and outcome_id in self.outcome_tracker.measurements
+            ):
+                measurement_obj = self.outcome_tracker.measurements[outcome_id]
+                alerts = await self.feedback_loop.evaluate_measurement(measurement_obj)
+                alerts_count = len(alerts)
+                self.feedback_loop.record_feedback(measurement_obj)
+                await self._save_artifact(
+                    run.artifact_dir,
+                    "discovery_feedback.yaml",
+                    self.feedback_loop.build_discovery_context(),
+                )
+
+            self._emit_event(
+                "learning.captured",
+                run.id,
+                {
+                    "outcome_id": outcome_id,
+                    "status": output_artifact.get("status"),
+                    "alerts_count": alerts_count,
+                },
+            )
+
+            stage_result.artifact_path = artifact_path
+            stage_result.agent_name = getattr(self.measurement_agent, "name", "measurement-agent")
+            stage_result.cost_usd = cost_usd
+            stage_result.metadata = {
+                "outcome_id": outcome_id,
+                "measurement_status": output_artifact.get("status"),
+                "alerts_count": alerts_count,
+            }
+            stage_result.status = StageStatus.COMPLETED
+            stage_result.completed_at = datetime.now(UTC)
+
+            achieved = output_artifact.get("status") == "ACHIEVED"
+            return stage_result, achieved
+
+        except Exception as e:
+            stage_result.status = StageStatus.FAILED
+            stage_result.error = str(e)
+            stage_result.completed_at = datetime.now(UTC)
+            return stage_result, False
 
     async def _save_artifact(
         self,

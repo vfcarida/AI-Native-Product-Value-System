@@ -10,7 +10,9 @@ from product_value_system.__version__ import __version__
 from product_value_system.cli.commands import (
     init_command,
     list_command,
+    measure_outcome_command,
     run_command,
+    run_simulation_command,
     show_command,
     status_command,
     validate_command,
@@ -90,6 +92,124 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Max cumulative cost per month in USD",
     )
+    run_parser.add_argument(
+        "--enable-simulation",
+        action="store_true",
+        default=False,
+        help="Enable TinyTroupe synthetic customer simulation during discovery",
+    )
+    run_parser.add_argument(
+        "--simulation-budget",
+        type=float,
+        default=10.0,
+        help="Max USD budget for synthetic customer simulation (default: 10.0)",
+    )
+
+    # pvs run-simulation
+    sim_parser = subparsers.add_parser(
+        "run-simulation",
+        help="Run a synthetic customer simulation scenario",
+    )
+    sim_parser.add_argument(
+        "scenario",
+        type=Path,
+        help="Scenario configuration file (YAML)",
+    )
+    sim_parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=10.0,
+        help="Maximum simulation budget in USD (default: 10.0)",
+    )
+    sim_parser.add_argument(
+        "--templates",
+        type=Path,
+        default=None,
+        help="Optional path to persona_templates.yaml",
+    )
+
+    # pvs measure-outcome
+    measure_parser = subparsers.add_parser(
+        "measure-outcome",
+        help="Measure post-launch production outcome and attribute costs (Learn stage)",
+    )
+    measure_parser.add_argument(
+        "--outcome-id",
+        required=True,
+        help="Outcome identifier (e.g., outcome-acme-payment)",
+    )
+    measure_parser.add_argument(
+        "--outcome-file",
+        type=Path,
+        default=None,
+        help="Optional path to outcome.yaml containing success criteria",
+    )
+    measure_parser.add_argument(
+        "--measurement-window",
+        type=int,
+        default=30,
+        help="Post-deployment measurement window in days (default: 30)",
+    )
+    measure_parser.add_argument(
+        "--baseline-window",
+        type=int,
+        default=30,
+        help="Pre-deployment baseline window in days (default: 30)",
+    )
+    measure_parser.add_argument(
+        "--use-mock-analytics",
+        action="store_true",
+        default=False,
+        help="Use deterministic mock analytics adapter for local testing/demos",
+    )
+    measure_parser.add_argument(
+        "--db-url",
+        type=str,
+        default=None,
+        help="SQL analytics connection URL (e.g., sqlite:///analytics.db)",
+    )
+    measure_parser.add_argument(
+        "--prometheus-url",
+        type=str,
+        default=None,
+        help="Prometheus HTTP API URL (e.g., http://localhost:9090)",
+    )
+    measure_parser.add_argument(
+        "--metric",
+        type=str,
+        default=None,
+        help="Primary metric name override (default: 'Merchant retention rate')",
+    )
+    measure_parser.add_argument(
+        "--baseline",
+        type=float,
+        default=None,
+        help="Baseline value override (default: 85.0)",
+    )
+    measure_parser.add_argument(
+        "--target",
+        type=float,
+        default=None,
+        help="Target value override (default: 97.75)",
+    )
+    measure_parser.add_argument(
+        "--current-value",
+        type=float,
+        default=None,
+        help="Current metric value when using --use-mock-analytics",
+    )
+    measure_parser.add_argument(
+        "--dev-cost",
+        type=float,
+        default=12.50,
+        help="Development + LLM cost in USD to attribute (default: 12.50)",
+    )
+    measure_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output YAML path for measurement artifact",
+    )
 
     # pvs status
     status_parser = subparsers.add_parser(
@@ -157,6 +277,10 @@ def main(argv: list[str] | None = None) -> int:
             return init_command(args)
         if args.command == "run":
             return run_command(args)
+        if args.command == "run-simulation":
+            return run_simulation_command(args)
+        if args.command == "measure-outcome":
+            return measure_outcome_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

@@ -260,7 +260,11 @@ def run_command(args: argparse.Namespace) -> int:
     )
 
     agents = {
-        "discovery": DiscoveryAgent(schema_validator),
+        "discovery": DiscoveryAgent(
+            schema_validator,
+            enable_simulation=bool(getattr(args, "enable_simulation", False)),
+            simulation_budget_usd=float(getattr(args, "simulation_budget", 10.0)),
+        ),
         "specification": SpecificationAgent(schema_validator),
         "review_architecture": ArchitectureReviewAgent(schema_validator),
         "review_security": SecurityReviewAgent(schema_validator),
@@ -478,4 +482,240 @@ def validate_command(args: argparse.Namespace) -> int:
 
     except Exception as e:
         print_error(f"Validation failed: {e}")
+        return 1
+
+
+def run_simulation_command(args: argparse.Namespace) -> int:
+    """Execute a synthetic customer simulation scenario from YAML."""
+    from product_value_system.simulation.persona_factory import PersonaFactory
+    from product_value_system.simulation.scenario_runner import ScenarioRunner
+    from product_value_system.simulation.tinytroupe_adapter import TinyTroupeAdapter
+
+    scenario_path = Path(args.scenario)
+    if not scenario_path.exists():
+        print_error(f"Scenario file not found: {scenario_path}")
+        return 1
+
+    templates_path = (
+        Path(args.templates)
+        if getattr(args, "templates", None) is not None
+        else _repo_root() / "config" / "simulation" / "persona_templates.yaml"
+    )
+
+    try:
+        adapter = TinyTroupeAdapter(max_cost_usd=float(getattr(args, "max_cost", 10.0)))
+        factory = PersonaFactory(templates_path)
+        runner = ScenarioRunner(adapter=adapter, factory=factory)
+        result = asyncio.run(runner.run_scenario(scenario_path))
+
+        print_success(f"Simulation completed: {result.scenario_name}")
+        print(f"Population: {result.population_size} personas")
+        print(f"Interactions: {len(result.interactions)}")
+        print(f"Cost: ${result.cost_usd:.4f}")
+        print("Quality metrics:")
+        for metric, val in result.quality_metrics.items():
+            print(f"  {metric}: {val:.3f}")
+        print(f"Disclaimer: {result.disclaimer}")
+        return 0
+    except Exception as exc:
+        print_error(f"Simulation failed: {exc}")
+        return 1
+
+
+def measure_outcome_command(args: argparse.Namespace) -> int:
+    """Measure post-deployment outcome, attribute cost, and evaluate feedback alerts."""
+    from datetime import UTC, datetime, timedelta
+
+    from product_value_system.harness.context import ExecutionContext
+    from product_value_system.learning.analytics_adapter import (
+        AnalyticsAdapter,
+        MockAnalyticsAdapter,
+        PrometheusAnalyticsAdapter,
+        SQLAnalyticsAdapter,
+    )
+    from product_value_system.learning.feedback_loop import FeedbackLoop
+    from product_value_system.learning.measurement_agent import MeasurementAgent
+    from product_value_system.learning.outcome_tracker import OutcomeTracker
+
+    outcome_id = str(args.outcome_id)
+    window_days = int(getattr(args, "measurement_window", 30))
+    baseline_window_days = int(getattr(args, "baseline_window", 30))
+    dev_cost = float(getattr(args, "dev_cost", 12.50))
+
+    # Build or load outcome hypothesis
+    outcome_file = getattr(args, "outcome_file", None)
+    if outcome_file is not None:
+        outcome_path = Path(outcome_file)
+        if not outcome_path.exists():
+            print_error(f"Outcome file not found: {outcome_path}")
+            return 1
+        with open(outcome_path, encoding="utf-8") as f:
+            hypothesis: dict[str, Any] = yaml.safe_load(f) or {}
+        if "success_criteria" in hypothesis:
+            sc = hypothesis["success_criteria"]
+            pm = sc.get("primary_metric", {})
+            metric_name = str(getattr(args, "metric", None) or pm.get("name", "primary_metric"))
+            baseline = float(
+                args.baseline if args.baseline is not None else sc.get("baseline", 85.0)
+            )
+            target = float(args.target if args.target is not None else sc.get("target", 97.75))
+            pm["name"] = metric_name
+            sc["baseline"] = baseline
+            sc["target"] = target
+        else:
+            metric_name = str(getattr(args, "metric", None) or "Merchant retention rate")
+            baseline = float(args.baseline if args.baseline is not None else 85.0)
+            target = float(args.target if args.target is not None else 97.75)
+            hypothesis["primary_metric"] = {
+                "name": metric_name,
+                "baseline": baseline,
+                "target": target,
+            }
+    else:
+        metric_name = str(getattr(args, "metric", None) or "Merchant retention rate")
+        baseline = float(args.baseline if args.baseline is not None else 85.0)
+        target = float(args.target if args.target is not None else 97.75)
+        hypothesis = {
+            "id": outcome_id,
+            "success_criteria": {
+                "primary_metric": {
+                    "name": metric_name,
+                    "unit": "percentage",
+                    "measurement_method": "analytics",
+                },
+                "baseline": baseline,
+                "target": target,
+                "guardrails": [],
+            },
+        }
+
+    # Resolve analytics adapter
+    db_url = getattr(args, "db_url", None)
+    prometheus_url = getattr(args, "prometheus_url", None)
+    use_mock = bool(getattr(args, "use_mock_analytics", False))
+
+    adapter: AnalyticsAdapter
+    prom_adapter: PrometheusAnalyticsAdapter | None = None
+    if db_url:
+        adapter = SQLAnalyticsAdapter(str(db_url))
+    elif prometheus_url:
+        prom_adapter = PrometheusAnalyticsAdapter(str(prometheus_url))
+        adapter = prom_adapter
+    elif use_mock:
+        if getattr(args, "current_value", None) is not None:
+            current_val = float(args.current_value)
+        else:
+            current_val = (
+                target + abs(target - baseline) * 0.05
+                if target >= baseline
+                else target * 0.95
+            )
+        mock_metrics: dict[str, float] = {metric_name: round(current_val, 4)}
+        for g in hypothesis.get("success_criteria", {}).get("guardrails", []):
+            g_name = str(g.get("metric", ""))
+            g_thresh = g.get("threshold")
+            if g_name and isinstance(g_thresh, (int, float)):
+                g_dir = str(g.get("direction", "above")).lower()
+                mock_metrics[g_name] = (
+                    round(float(g_thresh) + 0.3, 4)
+                    if g_dir == "above"
+                    else round(float(g_thresh) * 0.9, 4)
+                )
+        adapter = MockAnalyticsAdapter(mock_metrics)
+    else:
+        print_error(
+            "No analytics source configured. "
+            "Pass --use-mock-analytics, --db-url, or --prometheus-url."
+        )
+        return 1
+
+    async def _run_measurement() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        try:
+            tracker = OutcomeTracker(adapter)
+            deploy_date = datetime.now(UTC) - timedelta(days=window_days)
+            tracker.register_deployment(
+                outcome_id=outcome_id,
+                deployment_date=deploy_date,
+                outcome_hypothesis=hypothesis,
+                development_cost_usd=dev_cost,
+            )
+            agent = MeasurementAgent(tracker)
+            loop = FeedbackLoop(tracker)
+
+            ctx = ExecutionContext(
+                run_id=f"measure-{outcome_id}",
+                stage_name="measure",
+                agent_name=agent.name,
+            )
+            harness = Harness(context=ctx)
+            result = await agent.execute(
+                input_artifact={
+                    "outcome_id": outcome_id,
+                    "measurement_window_days": window_days,
+                    "baseline_window_days": baseline_window_days,
+                },
+                harness=harness,
+                context=ctx,
+            )
+            if not result.success:
+                raise RuntimeError(result.error or "Measurement failed")
+
+            measurement_obj = tracker.measurements[outcome_id]
+            alerts = await loop.evaluate_measurement(measurement_obj)
+            loop.record_feedback(measurement_obj)
+            return result.output_artifact, [a.to_dict() for a in alerts]
+        finally:
+            if prom_adapter is not None:
+                await prom_adapter.close()
+
+    try:
+        output_artifact, alerts = asyncio.run(_run_measurement())
+
+        print_success(f"Outcome measurement completed: {outcome_id}")
+        print(f"Metric: {output_artifact['primary_metric_name']}")
+        print(
+            f"Baseline: {output_artifact['baseline_value']:.2f} | "
+            f"Current: {output_artifact['current_value']:.2f} | "
+            f"Target: {output_artifact['target_value']:.2f}"
+        )
+        print(
+            f"Status: {output_artifact['status']} (p={output_artifact['p_value']:.4f})"
+        )
+        if output_artifact.get("confidence_interval") is not None:
+            ci = output_artifact["confidence_interval"]
+            print(f"95% CI: [{ci[0]:.4f}, {ci[1]:.4f}]")
+
+        cost_attr = output_artifact.get("cost_attribution", {})
+        print(
+            f"Cost Attribution: dev=${cost_attr.get('development_cost_usd', 0.0):.2f}, "
+            f"improvement={cost_attr.get('improvement', 0.0):+.2f}, "
+            f"cost/unit={cost_attr.get('cost_per_unit_improvement')}"
+        )
+
+        if output_artifact.get("learning"):
+            print("\nLearnings:")
+            for item in output_artifact["learning"]:
+                print(f"  - {item}")
+
+        if output_artifact.get("recommendations"):
+            print("\nRecommendations:")
+            for rec in output_artifact["recommendations"]:
+                print(f"  - {rec}")
+
+        if alerts:
+            print("\nAlerts:")
+            for alert in alerts:
+                print(f"  [{alert['severity'].upper()}] {alert['message']}")
+
+        output_path = getattr(args, "output", None)
+        if output_path is not None:
+            out_file = Path(output_path)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(out_file, "w", encoding="utf-8") as f:
+                yaml.safe_dump(output_artifact, f, sort_keys=False)
+            print_success(f"Saved measurement report: {out_file}")
+
+        return 0
+    except Exception as exc:
+        print_error(f"Outcome measurement failed: {exc}")
         return 1

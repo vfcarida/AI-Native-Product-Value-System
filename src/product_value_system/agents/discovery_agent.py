@@ -3,7 +3,9 @@ Discovery agent: Problem -> Outcome hypothesis.
 """
 
 import json
+import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,17 @@ from product_value_system.contracts.validation import SchemaValidator
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
 from product_value_system.observability.tracing import traced
+from product_value_system.simulation.persona_factory import PersonaFactory
+from product_value_system.simulation.scenario_runner import ScenarioRunner
+from product_value_system.simulation.tinytroupe_adapter import (
+    SimulationResult,
+    TinyTroupeAdapter,
+)
+
+logger = logging.getLogger(__name__)
+DEFAULT_TEMPLATES_PATH = (
+    Path(__file__).resolve().parents[3] / "config" / "simulation" / "persona_templates.yaml"
+)
 
 
 class DiscoveryAgent(BaseAgent):
@@ -31,6 +44,11 @@ class DiscoveryAgent(BaseAgent):
         self,
         schema_validator: SchemaValidator,
         knowledge_base_path: Path | None = None,
+        *,
+        enable_simulation: bool = False,
+        simulation_budget_usd: float = 50.0,
+        scenario_runner: ScenarioRunner | None = None,
+        persona_templates_path: Path | str | None = None,
     ) -> None:
         """
         Initialize discovery agent.
@@ -38,6 +56,10 @@ class DiscoveryAgent(BaseAgent):
         Args:
             schema_validator: Schema validator for problem/outcome
             knowledge_base_path: Path to knowledge base (optional)
+            enable_simulation: Run optional TinyTroupe synthetic customer validation
+            simulation_budget_usd: Max USD budget allocated to simulation
+            scenario_runner: Optional pre-configured ScenarioRunner (useful for DI/testing)
+            persona_templates_path: Path to persona_templates.yaml
         """
         super().__init__(
             name="discovery-agent",
@@ -49,6 +71,19 @@ class DiscoveryAgent(BaseAgent):
         )
         self.schema_validator = schema_validator
         self.knowledge_base_path = knowledge_base_path
+        self.enable_simulation = enable_simulation
+        self.simulation_budget_usd = simulation_budget_usd
+        self._persona_templates_path = (
+            Path(persona_templates_path)
+            if persona_templates_path is not None
+            else DEFAULT_TEMPLATES_PATH
+        )
+        self.scenario_runner = scenario_runner
+
+        if self.enable_simulation and self.scenario_runner is None:
+            sim_adapter = TinyTroupeAdapter(max_cost_usd=self.simulation_budget_usd)
+            factory = PersonaFactory(self._persona_templates_path)
+            self.scenario_runner = ScenarioRunner(sim_adapter, factory)
 
     @traced("discovery_agent.execute")
     async def execute(  # type: ignore[override]
@@ -89,9 +124,64 @@ class DiscoveryAgent(BaseAgent):
             problem_artifact,
         )
 
+        # Optional synthetic customer simulation validation (EVO-009)
+        run_sim = self.enable_simulation or bool(
+            getattr(context, "metadata", {}).get("enable_simulation", False)
+        )
+        if run_sim:
+            try:
+                simulation_report = await self._simulate_outcome(
+                    outcome=outcome,
+                    problem=problem_artifact,
+                )
+                outcome["simulation_evidence"] = {
+                    "status": "completed",
+                    "scenario_name": simulation_report.scenario_name,
+                    "population_size": simulation_report.population_size,
+                    "aggregated_insights": simulation_report.aggregated_insights,
+                    "quality_metrics": simulation_report.quality_metrics,
+                    "cost_usd": simulation_report.cost_usd,
+                    "confidence": self._compute_confidence(simulation_report),
+                    "disclaimer": simulation_report.disclaimer,
+                }
+                harness.budget.spend(Decimal(str(simulation_report.cost_usd)))
+            except Exception as exc:
+                logger.warning("Customer simulation failed (discovery continues): %s", exc)
+                outcome["simulation_evidence"] = {
+                    "status": "failed",
+                    "error": str(exc),
+                }
+
         self.schema_validator.validate(outcome, "outcome.schema.json")
 
         return outcome
+
+    async def _simulate_outcome(
+        self,
+        outcome: dict[str, Any],
+        problem: dict[str, Any],
+    ) -> SimulationResult:
+        """Execute synthetic customer simulation to explore outcome hypothesis."""
+        if self.scenario_runner is None:
+            sim_adapter = TinyTroupeAdapter(max_cost_usd=self.simulation_budget_usd)
+            factory = PersonaFactory(self._persona_templates_path)
+            self.scenario_runner = ScenarioRunner(sim_adapter, factory)
+
+        return await self.scenario_runner.run_hypothesis_validation(
+            outcome_hypothesis=outcome,
+            problem_context=problem.get("context", {}),
+        )
+
+    def _compute_confidence(self, simulation_report: SimulationResult) -> float:
+        """Compute weighted confidence score [0.0, 1.0] from simulation quality metrics."""
+        quality = simulation_report.quality_metrics
+        weights = {
+            "persona_adherence": 0.4,
+            "interaction_realism": 0.3,
+            "response_diversity": 0.3,
+        }
+        score = sum(float(quality.get(metric, 0.0)) * weight for metric, weight in weights.items())
+        return round(max(0.0, min(1.0, score)), 3)
 
     def _build_system_prompt(self) -> str:
         """Build system prompt for discovery agent."""

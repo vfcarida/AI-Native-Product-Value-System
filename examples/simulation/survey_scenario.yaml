@@ -1,0 +1,22 @@
+scenario_name: survey_scenario
+description: Structured synthetic customer survey capturing adoption willingness and priorities.
+
+population:
+  template: mainstream_user
+  size: 25
+  diversity_factor: 0.3
+
+scenario:
+  interactions:
+    - prompt: >
+        Survey Q1: On a scale from 1 (not useful) to 5 (essential), how valuable are
+        real-time payment confirmation notifications to you? Briefly explain your rating.
+      target_personas: all
+    - prompt: >
+        Survey Q2: Which channel do you prefer for payment alerts—push notification, SMS,
+        or email—and why?
+      target_personas: all
+    - prompt: >
+        Survey Q3: What single improvement to banking notifications would increase your
+        trust in the app the most?
+      target_personas: all

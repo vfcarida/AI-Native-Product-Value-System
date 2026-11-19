@@ -24,7 +24,9 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 
 ### Core Workflow
 - ✅ **Outcome-Driven Development**: Transform problem statements into schema-validated, measurable outcome hypotheses
-- ✅ **5-Stage AI Agent Pipeline**: Discovery → Specification → Architecture Review → Security Review → Build
+- ✅ **Synthetic Customer Simulation**: Optional TinyTroupe-powered persona simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`) integrated into `DiscoveryAgent` and `pvs run-simulation`
+- ✅ **6-Stage AI Agent Pipeline**: Discovery → Specification → Architecture Review → Security Review → Build → Learn (`MeasurementAgent`)
+- ✅ **Outcome Measurement & Feedback Loops**: Production metric adapters (SQLite/SQLAlchemy, Prometheus, Mock), statistical significance & guardrail evaluation (`OutcomeTracker`), cost-to-outcome attribution (`CostAttributor`), regression alerting (`FeedbackLoop`), and `pvs measure-outcome` CLI
 - ✅ **Evaluation Framework**: Multi-judge quality gates combining deterministic judges (JSON Schema, syntax, test execution, coverage) and AI-based judges (completeness, clarity)
 - ✅ **Value Stream Orchestrator & Persistence**: State-machine orchestration with checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
 
@@ -52,11 +54,11 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 - **Google Gemini, Azure OpenAI, and local models (Ollama/vLLM)**: Planned for `v1.0` — not yet implemented. Only OpenAI, Anthropic, and Mock adapters exist in `src/product_value_system/adapters/`.
 
 ### Discovery & Evidence
-- **No customer simulation**: Synthetic persona simulation (TinyTroupe) is planned for `v0.3` (EVO-009) — no customer simulation code exists in this repository.
+- **Synthetic simulation disclaimer**: TinyTroupe customer simulation (`src/product_value_system/simulation/`) provides synthetic persona feedback (with a built-in local fallback when `tinytroupe` is not installed), NOT real human user research.
 - **Single-source evidence**: `DiscoveryAgent` analyzes a single structured `problem.yaml` input and does not yet synthesize multi-source customer interviews or telemetry (planned in EVO-022 / EVO-023).
 
 ### Lifecycle Stages
-- **No Learn stage**: Post-release outcome measurement and closed-loop feedback agents are not yet implemented (planned for `v0.4`, EVO-010).
+- **External analytics required for live Learn stage**: Post-release outcome measurement (`src/product_value_system/learning/`) supports SQLite, PostgreSQL/MySQL (SQLAlchemy), Prometheus, and Mock adapters; live measurement requires an external metrics database or Prometheus instance.
 - **No experiment design or progressive delivery**: A/B experiment design, feature flags, and production SLO monitoring/alerting are planned for `v0.4` (EVO-014, EVO-015, EVO-016).
 
 ### Evaluation & Testing
@@ -246,12 +248,12 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ Comprehensive 4-tier testing guide (EVO-008)
 
 ### v0.3 — Simulation & Multi-Source Evidence
-- 📋 TinyTroupe customer simulation (EVO-009)
+- ✅ TinyTroupe customer simulation (EVO-009)
 - 📋 Customer interview & multi-source evidence synthesis (EVO-022, EVO-023)
 - 📋 Automated baseline validation (EVO-019)
 
 ### v0.4 — Lifecycle Completion
-- 📋 Learn stage & outcome measurement agent (EVO-010)
+- ✅ Learn stage & outcome measurement agent (EVO-010)
 - 📋 Experiment design & statistical rigor tooling (EVO-016)
 - 📋 Production SLOs, monitoring & progressive delivery (EVO-014, EVO-015)
 
