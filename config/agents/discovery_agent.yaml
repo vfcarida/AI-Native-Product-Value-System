@@ -1,0 +1,40 @@
+apiVersion: pvs.ai/v1alpha1
+kind: AgentDefinition
+
+metadata:
+  name: discovery-agent
+  version: 0.1.0
+  description: Analyzes problems and generates outcome hypotheses
+
+spec:
+  objective: >
+    Transform problem statements into measurable outcome hypotheses
+    with clear success criteria and evidence requirements.
+
+  model:
+    provider: openai
+    model: gpt-4
+    temperature: 0.4
+    max_tokens: 2000
+
+  allowedTools:
+    - knowledge.query
+    - document.read
+    - schema.validate
+
+  deniedTools:
+    - repo.commit
+    - prod.deploy
+    - external.api
+
+  autonomy:
+    level: 2  # Assisted automation
+    maxIterations: 3
+    maxCostUsd: 2.00
+    humanApproval:
+      requiredFor:
+        - high_cost_hypothesis  # If predicted cost > threshold
+
+  outputs:
+    - type: outcome
+      schema: https://pvs.ai/schemas/outcome.schema.json

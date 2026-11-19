@@ -152,3 +152,6 @@ def set_run_context(run_id: str) -> None:
 def clear_run_context() -> None:
     """Clear run ID context."""
     CURRENT_RUN_ID.set(None)
+
+
+trace_span = traced

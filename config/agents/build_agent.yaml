@@ -1,0 +1,48 @@
+apiVersion: pvs.ai/v1alpha1
+kind: AgentDefinition
+
+metadata:
+  name: build-agent
+  version: 0.1.0
+  description: Generates code and tests from specifications in Docker sandbox
+
+spec:
+  objective: >
+    Implement specifications by generating code and tests, executing in
+    sandboxed environment with resource limits, and committing incrementally.
+
+  model:
+    provider: openai
+    model: gpt-4
+    temperature: 0.2
+    max_tokens: 2000
+
+  allowedTools:
+    - sandbox.execute
+    - sandbox.copy_in
+    - sandbox.copy_out
+    - git.commit
+    - test.run
+
+  deniedTools:
+    - prod.deploy
+    - external.api
+    - file.write  # Must use sandbox
+
+  autonomy:
+    level: 3  # Fully autonomous within sandbox
+    maxIterations: 10  # Can iterate on test failures
+    maxCostUsd: 5.00
+    humanApproval:
+      requiredFor:
+        - external_dependency  # If code requires external APIs
+
+  resourceLimits:
+    cpu: 2.0
+    memory_mb: 4096
+    disk_mb: 10240
+    timeout_seconds: 900
+
+  outputs:
+    - type: build_result
+      location: sandbox:/workspace

@@ -6,6 +6,8 @@
   "type": "object",
   "required": ["id", "version", "created", "problem_id", "hypothesis", "success_criteria"],
   "properties": {
+    "apiVersion": {"type": "string"},
+    "kind": {"type": "string"},
     "id": {
       "type": "string",
       "pattern": "^outcome-[a-z0-9-]+$",
@@ -73,20 +75,43 @@
         }
       }
     },
-    "evidence_requirements": {
+    "success_metrics": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["type", "description"],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": ["qualitative", "quantitative", "technical"]
-          },
-          "description": {"type": "string"},
-          "mandatory": {"type": "boolean", "default": true}
+      "items": {"type": "object"}
+    },
+    "guardrail_metrics": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "evidence_requirements": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "description"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["qualitative", "quantitative", "technical"]
+              },
+              "description": {"type": "string"},
+              "mandatory": {"type": "boolean", "default": true}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "discovery": {"type": "array", "items": {"type": "string"}},
+            "validation": {"type": "array", "items": {"type": "string"}}
+          }
         }
-      }
+      ]
+    },
+    "risks": {
+      "type": "array",
+      "items": {"type": "object"}
     }
   },
   "additionalProperties": false

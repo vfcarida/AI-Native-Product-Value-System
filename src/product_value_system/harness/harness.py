@@ -7,6 +7,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from product_value_system.adapters.mock_adapter import MockModelAdapter
+from product_value_system.adapters.model_adapter import (
+    Message as AdapterMessage,
+)
+from product_value_system.adapters.model_adapter import (
+    ModelAdapter,
+    ModelResponse,
+    Role,
+)
+from product_value_system.adapters.model_adapter import (
+    Tool as AdapterTool,
+)
 from product_value_system.harness.budget import Budget, BudgetExceededError
 from product_value_system.harness.checkpoint import Checkpoint, CheckpointManager
 from product_value_system.harness.context import ExecutionContext
@@ -37,11 +49,12 @@ class Harness:
 
     def __init__(
         self,
-        context: ExecutionContext,
-        policy_engine: PolicyEngine,
-        budget: Budget,
-        guardrails: Guardrails,
+        context: ExecutionContext | None = None,
+        policy_engine: PolicyEngine | None = None,
+        budget: Budget | None = None,
+        guardrails: Guardrails | None = None,
         checkpoint_dir: Path | None = None,
+        model_adapter: ModelAdapter | None = None,
     ) -> None:
         """
         Initialize harness.
@@ -52,12 +65,15 @@ class Harness:
             budget: Resource budget
             guardrails: Safety constraints
             checkpoint_dir: Directory for checkpoints (optional)
+            model_adapter: Model adapter for LLM invocations (optional)
         """
-        self.context = context
-        self.budget = budget
-        self.guardrails = guardrails
+        self.context = context or ExecutionContext(run_id="default-run")
+        self.budget = budget or Budget()
+        self.guardrails = guardrails or Guardrails()
+        self.model_adapter: ModelAdapter = model_adapter or MockModelAdapter()
 
-        self.tools = ToolRegistry(policy_engine)
+        resolved_policy_engine = policy_engine or PolicyEngine()
+        self.tools = ToolRegistry(resolved_policy_engine)
         self.memory = Memory()
 
         if checkpoint_dir:
@@ -75,6 +91,41 @@ class Harness:
     def is_killed(self) -> bool:
         """Check if killed."""
         return self.killed
+
+    @traced("harness.invoke_model")
+    async def invoke_model(
+        self,
+        messages: list[AdapterMessage | dict[str, Any]],
+        tools: list[AdapterTool] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> ModelResponse:
+        """
+        Invoke underlying model adapter within harness constraints.
+        """
+        self.budget.record_iteration()
+        self.check_constraints(self.budget.current_iterations)
+
+        normalized: list[AdapterMessage] = []
+        for msg in messages:
+            if isinstance(msg, AdapterMessage):
+                normalized.append(msg)
+            else:
+                role_str = str(msg.get("role", "user"))
+                content_str = str(msg.get("content", ""))
+                normalized.append(AdapterMessage(role=Role(role_str), content=content_str))
+                self.memory.add_message(role_str, content_str)
+
+        response = await self.model_adapter.invoke(
+            messages=normalized,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
+        )
+        self.memory.add_message("assistant", response.content)
+        return response
 
     @traced("harness.check_constraints")
     def check_constraints(self, iteration: int) -> None:

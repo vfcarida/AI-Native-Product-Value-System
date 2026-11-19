@@ -14,11 +14,11 @@ class ExecutionContext:
     """
 
     run_id: str
-    stage_name: str
-    agent_name: str
+    stage_name: str = "default"
+    agent_name: str = "default-agent"
 
     # System prompt components
-    system_prompt: str
+    system_prompt: str = ""
     examples: list[dict[str, Any]] = field(default_factory=list)
 
     # Tool guidance

@@ -4,11 +4,11 @@
   "title": "Evidence Artifact",
   "description": "Evidence supporting a claim, decision, or quality gate",
   "type": "object",
-  "required": ["id", "version", "created", "type", "verdict", "artifacts"],
+  "required": ["id", "version", "created", "type", "verdict"],
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^evidence-[a-z0-9-]+$"
+      "pattern": "^(evidence|spec|build|release|run|outcome)-[a-z0-9-]+$"
     },
     "version": {
       "type": "integer",
@@ -20,16 +20,39 @@
     },
     "type": {
       "type": "string",
-      "enum": ["test_result", "review", "evaluation", "measurement", "approval"],
+      "enum": [
+        "test_result",
+        "review",
+        "architecture_review",
+        "security_review",
+        "build_verification",
+        "release_review",
+        "outcome_measurement",
+        "evaluation",
+        "measurement",
+        "approval"
+      ],
       "description": "Type of evidence"
     },
     "subject_id": {
       "type": "string",
       "description": "ID of artifact being evaluated (spec, code, etc.)"
     },
+    "artifact_id": {
+      "type": "string",
+      "description": "ID of artifact being reviewed or verified"
+    },
     "verdict": {
       "type": "string",
-      "enum": ["pass", "fail", "warn", "blocked"],
+      "enum": [
+        "pass",
+        "fail",
+        "warn",
+        "blocked",
+        "approve",
+        "approve_with_concerns",
+        "reject"
+      ],
       "description": "Overall assessment"
     },
     "score": {
@@ -41,6 +64,36 @@
     "rationale": {
       "type": "string",
       "description": "Human-readable explanation of verdict"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Summary of review or evaluation"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "title", "description", "recommendation"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "category": {"type": "string"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "recommendation": {"type": "string"},
+          "references": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      },
+      "description": "Structured review findings"
+    },
+    "reviewer": {
+      "type": "string",
+      "description": "Agent or reviewer identity and version"
     },
     "artifacts": {
       "type": "array",

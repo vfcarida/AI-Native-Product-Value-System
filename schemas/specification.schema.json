@@ -45,7 +45,11 @@
           },
           "priority": {
             "type": "string",
-            "enum": ["must", "should", "could"]
+            "enum": ["must", "should", "could", "must-have", "should-have", "nice-to-have"]
+          },
+          "linked_to": {
+            "type": "array",
+            "items": {"type": "string"}
           }
         }
       }
@@ -57,25 +61,51 @@
           "type": "object",
           "properties": {
             "response_time_p95_ms": {"type": "number"},
+            "latency_ms": {"type": "number"},
             "throughput_rps": {"type": "number"}
           }
         },
         "reliability": {
-          "type": "object",
-          "properties": {
-            "availability_percent": {"type": "number"},
-            "error_budget_percent": {"type": "number"}
-          }
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "availability_percent": {"type": "number"},
+                "error_budget_percent": {"type": "number"}
+              }
+            },
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ]
         },
         "security": {
-          "type": "object",
-          "properties": {
-            "authentication_required": {"type": "boolean"},
-            "data_classification": {
-              "type": "string",
-              "enum": ["public", "internal", "confidential", "restricted"]
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "authentication_required": {"type": "boolean"},
+                "data_classification": {
+                  "type": "string",
+                  "enum": ["public", "internal", "confidential", "restricted"]
+                }
+              }
+            },
+            {
+              "type": "array",
+              "items": {"type": "string"}
             }
-          }
+          ]
+        },
+        "scalability": {
+          "oneOf": [
+            {"type": "object"},
+            {
+              "type": "array",
+              "items": {"type": "string"}
+            }
+          ]
         }
       }
     },
@@ -83,16 +113,51 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "title", "decision", "rationale"],
+        "required": ["id", "decision", "rationale"],
         "properties": {
-          "id": {"type": "string", "pattern": "^ADR-[0-9]{3}$"},
+          "id": {"type": "string", "pattern": "^AD(R)?-[0-9]{3}$"},
           "title": {"type": "string"},
           "decision": {"type": "string"},
           "rationale": {"type": "string"},
           "alternatives": {
             "type": "array",
             "items": {"type": "string"}
-          }
+          },
+          "trade_offs": {"type": "string"}
+        }
+      }
+    },
+    "testability_criteria": {
+      "type": "object",
+      "properties": {
+        "unit_tests": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "integration_tests": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "acceptance_tests": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "technical": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "operational": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "business": {
+          "type": "array",
+          "items": {"type": "string"}
         }
       }
     },

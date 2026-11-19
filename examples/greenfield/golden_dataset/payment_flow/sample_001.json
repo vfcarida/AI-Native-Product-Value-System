@@ -1,0 +1,23 @@
+{
+  "id": "sample-001",
+  "description": "Successful payment notification flow",
+  "input": {
+    "problem_id": "problem-acme-payment-notifications",
+    "context": {
+      "user_segment": "Mobile banking customers",
+      "evidence_count": 15
+    }
+  },
+  "expected_output": {
+    "outcome_generated": true,
+    "hypothesis_present": true,
+    "metrics_defined": true,
+    "success_criteria_count": 4,
+    "risks_identified": true
+  },
+  "metadata": {
+    "scenario": "greenfield_payment_notification",
+    "difficulty": "medium",
+    "expected_duration_seconds": 120
+  }
+}

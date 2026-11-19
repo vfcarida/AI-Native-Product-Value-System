@@ -1,0 +1,101 @@
+apiVersion: pvs.ai/v1alpha1
+kind: Problem
+
+id: problem-acme-payment-notifications
+version: 1
+created: "2026-11-18T10:00:00Z"
+
+statement: |
+  AcmeBank mobile app users do not receive timely notifications when their
+  instant payments complete, leading to uncertainty about payment status,
+  increased customer support calls, and user frustration.
+
+context:
+  user_segment: "Mobile banking customers (ages 25-55) using instant payments"
+
+  business_context: |
+    AcmeBank processed 2.3M instant payments in Q3 2026. Support tickets
+    related to payment status uncertainty increased 35% YoY. Customer
+    satisfaction (CSAT) for payments dropped from 4.2 to 3.7 (out of 5).
+
+  current_state: |
+    - Payments complete within 3-5 seconds
+    - Users must manually refresh app to see updated balance
+    - No push notifications for payment completion
+    - SMS notifications available but 40% delivery failure rate
+    - Email notifications delayed by 5-15 minutes
+
+  evidence:
+    - type: customer_interview
+      count: 15
+      key_insights:
+        - "I never know if my payment went through"
+        - "I have to keep refreshing the app"
+        - "Sometimes I pay twice by accident"
+
+    - type: support_ticket_analysis
+      count: 8432
+      period: "Q3 2026"
+      categories:
+        payment_status: 45%
+        duplicate_payments: 23%
+        delayed_confirmation: 32%
+
+    - type: analytics
+      metric: payment_completion_to_notification
+      current: "5-15 minutes (email)"
+      target: "< 3 seconds (push)"
+
+constraints:
+  no_pii: true
+  synthetic_only: true
+  max_cost_usd: 50.0
+  deadline: "2027-06-30"
+
+  technical:
+    - "Must integrate with existing payment platform (REST API)"
+    - "Must support iOS and Android"
+    - "Must handle 10,000 payments/minute at peak"
+    - "Must have <3 second latency from payment completion to notification"
+
+  security:
+    - "Must not expose sensitive payment details in notifications"
+    - "Must verify device ownership before sending notifications"
+    - "Must encrypt notification content"
+    - "Must comply with PCI-DSS requirements"
+
+  business:
+    - "Must launch by Q2 2027"
+    - "Must reduce support tickets by 50%"
+    - "Budget: $200K development + $50K/year operations"
+
+success_criteria:
+  outcome_metrics:
+    - name: notification_delivery_rate
+      baseline: 60%
+      target: 95%
+      measurement: "Successful deliveries / total payments"
+
+    - name: time_to_notification
+      baseline: "5-15 minutes"
+      target: "< 3 seconds"
+      measurement: "P95 latency from payment completion to notification"
+
+    - name: support_ticket_reduction
+      baseline: 8432
+      target: 4216
+      measurement: "Payment-related tickets per quarter"
+
+    - name: csat_improvement
+      baseline: 3.7
+      target: 4.5
+      measurement: "Customer satisfaction score (1-5)"
+
+metadata:
+  author: "Product Team, AcmeBank"
+  stakeholders:
+    - "VP Product"
+    - "Head of Mobile Engineering"
+    - "Customer Support Lead"
+  priority: "High"
+  business_value: "$2M annual cost savings (support reduction)"

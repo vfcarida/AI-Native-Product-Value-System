@@ -1,0 +1,40 @@
+apiVersion: pvs.ai/v1alpha1
+kind: AgentDefinition
+
+metadata:
+  name: security-review-agent
+  version: 0.1.0
+  description: Independent security review of technical specifications
+
+spec:
+  objective: >
+    Identify security risks, vulnerabilities, and gaps in technical specifications.
+    Operate with fresh context (no conversation history).
+
+  model:
+    provider: openai
+    model: gpt-4
+    temperature: 0.3
+    max_tokens: 3000
+
+  allowedTools:
+    - schema.validate
+    - threat.lookup
+
+  deniedTools:
+    - repo.commit
+    - prod.deploy
+    - external.api
+    - sandbox.execute
+    - memory.recall  # Fresh context - no memory
+
+  autonomy:
+    level: 3  # Fully autonomous review
+    maxIterations: 1  # Single-pass review
+    maxCostUsd: 1.00
+    humanApproval:
+      requiredFor: []  # Autonomous
+
+  outputs:
+    - type: evidence
+      schema: https://pvs.ai/schemas/evidence.schema.json

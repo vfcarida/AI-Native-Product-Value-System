@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit lint validate-policies docker-build docker-run clean
+.PHONY: help install test test-unit lint validate-policies docker-build docker-build-sandbox docker-run demo demo-greenfield clean
 
 help:
 	@echo "AI-native Product Value System - Development Commands"
@@ -10,6 +10,8 @@ help:
 	@echo "  make validate-policies  Validate Cedar policies"
 	@echo "  make docker-build       Build Docker image"
 	@echo "  make docker-run         Run Docker container"
+	@echo "  make demo               Run greenfield value stream demo"
+	@echo "  make demo-greenfield    Run AcmeBank payment notification demo"
 	@echo "  make clean              Clean build artifacts"
 
 install:
@@ -36,6 +38,27 @@ docker-build-sandbox:
 
 docker-run:
 	docker run --rm -it pvs:local
+
+demo-greenfield:
+	@echo "=== Greenfield Example: Payment Notifications ==="
+	@echo ""
+	@echo "Problem: AcmeBank mobile app users don't receive timely payment notifications"
+	@echo ""
+	@echo "Running value stream..."
+	pvs run examples/greenfield/problem_payment_flow.yaml
+	@echo ""
+	@echo "Greenfield demo complete!"
+	@echo ""
+	@echo "View results:"
+	@echo "  pvs list"
+
+demo:
+	@if [ -z "$(EXAMPLE)" ] || [ "$(EXAMPLE)" = "greenfield/payment_flow" ]; then \
+		$(MAKE) demo-greenfield; \
+	else \
+		echo "Usage: make demo EXAMPLE=greenfield/payment_flow"; \
+		exit 1; \
+	fi
 
 clean:
 	rm -rf build/ dist/ *.egg-info

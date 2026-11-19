@@ -37,6 +37,14 @@
           "type": "string",
           "description": "Agent's purpose and goals"
         },
+        "capabilities": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "requiredTools": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
         "model": {
           "type": "object",
           "required": ["provider", "model"],
@@ -66,7 +74,6 @@
         },
         "autonomy": {
           "type": "object",
-          "required": ["level"],
           "properties": {
             "level": {
               "type": "integer",
@@ -83,6 +90,10 @@
               "type": "number",
               "minimum": 0
             },
+            "maxDurationSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
             "humanApproval": {
               "type": "object",
               "properties": {
@@ -94,14 +105,31 @@
             }
           }
         },
+        "resourceLimits": {
+          "type": "object",
+          "properties": {
+            "cpu": {"type": "number", "minimum": 0},
+            "memory_mb": {"type": "integer", "minimum": 1},
+            "disk_mb": {"type": "integer", "minimum": 1},
+            "timeout_seconds": {"type": "integer", "minimum": 1}
+          }
+        },
+        "inputSchema": {"type": "string"},
+        "outputSchema": {"type": "string"},
+        "systemPrompt": {"type": "string"},
+        "examples": {
+          "type": "array",
+          "items": {"type": "object"}
+        },
         "outputs": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["type", "schema"],
+            "required": ["type"],
             "properties": {
               "type": {"type": "string"},
-              "schema": {"type": "string", "format": "uri"}
+              "schema": {"type": "string", "format": "uri"},
+              "location": {"type": "string"}
             }
           }
         }

@@ -1,0 +1,23 @@
+{
+  "id": "sample-002",
+  "description": "Specification generation from outcome",
+  "input": {
+    "outcome_id": "outcome-acme-payment-notifications",
+    "context": {
+      "hypothesis": "Real-time push notifications for payment completion"
+    }
+  },
+  "expected_output": {
+    "specification_generated": true,
+    "functional_requirements_count": 4,
+    "nonfunctional_requirements_count": 3,
+    "architecture_section_present": true,
+    "api_specifications_present": true,
+    "testing_requirements_present": true
+  },
+  "metadata": {
+    "scenario": "specification_from_outcome",
+    "difficulty": "medium",
+    "expected_duration_seconds": 180
+  }
+}

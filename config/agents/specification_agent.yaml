@@ -1,0 +1,44 @@
+apiVersion: pvs.ai/v1alpha1
+kind: AgentDefinition
+
+metadata:
+  name: specification-agent
+  version: 0.1.0
+  description: Converts outcome hypotheses into detailed technical specifications
+
+spec:
+  objective: >
+    Generate comprehensive technical specifications from validated outcome
+    hypotheses with functional requirements, architecture decisions, and
+    testability criteria.
+
+  model:
+    provider: openai
+    model: gpt-4
+    temperature: 0.2
+    max_tokens: 4000
+
+  allowedTools:
+    - knowledge.query
+    - spec.template.load
+    - architecture.pattern.search
+    - schema.validate
+
+  deniedTools:
+    - repo.commit
+    - prod.deploy
+    - external.api
+    - sandbox.execute
+
+  autonomy:
+    level: 2  # Assisted automation
+    maxIterations: 5
+    maxCostUsd: 1.50
+    humanApproval:
+      requiredFor:
+        - new_architecture_pattern  # If introducing new patterns
+        - external_dependency  # If specifying external services
+
+  outputs:
+    - type: specification
+      schema: https://pvs.ai/schemas/specification.schema.json

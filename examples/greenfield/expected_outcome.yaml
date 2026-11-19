@@ -1,0 +1,112 @@
+apiVersion: pvs.ai/v1alpha1
+kind: Outcome
+
+id: outcome-acme-payment-notifications
+version: 1
+problem_id: problem-acme-payment-notifications
+created: "2026-11-18T10:30:00Z"
+
+hypothesis: |
+  Implementing real-time push notifications for instant payment completion
+  will reduce payment status uncertainty, decrease support calls by 50%,
+  and improve customer satisfaction from 3.7 to 4.5 within one quarter
+  of launch.
+
+success_criteria:
+  primary_metric:
+    name: notification_delivery_rate
+    unit: percentage
+    measurement_method: "Track successful push notification deliveries: (delivered / completed payments) * 100"
+  baseline: 60.0
+  target: 95.0
+  guardrails:
+    - metric: notification_spam_rate
+      threshold: 2.0
+      direction: below
+    - metric: daily_battery_impact_percent
+      threshold: 1.0
+      direction: below
+
+success_metrics:
+  - name: notification_delivery_rate
+    target: 95%
+    measurement_method: |
+      Track successful push notification deliveries via Firebase Analytics.
+      Measure: (delivered notifications / completed payments) * 100
+
+    leading_indicators:
+      - "Device token registration rate > 90%"
+      - "Notification opt-in rate > 80%"
+      - "FCM/APNS delivery success > 98%"
+
+  - name: time_to_notification
+    target: "< 3 seconds (P95)"
+    measurement_method: |
+      Measure latency from payment platform webhook to notification delivery.
+      Track via distributed tracing (OpenTelemetry).
+
+    leading_indicators:
+      - "Webhook processing time < 500ms (P95)"
+      - "Queue depth < 1000 messages"
+      - "Service availability > 99.9%"
+
+  - name: support_ticket_reduction
+    target: "50% reduction (8432 -> 4216)"
+    measurement_method: |
+      Count payment-related support tickets (categories: payment_status,
+      duplicate_payments, delayed_confirmation) per quarter.
+
+    leading_indicators:
+      - "Week-over-week ticket trend decreasing"
+      - "First-contact resolution rate increasing"
+
+  - name: csat_improvement
+    target: "3.7 -> 4.5"
+    measurement_method: |
+      Post-payment CSAT survey (in-app, 1-5 scale).
+      Sample: 10% of payments, minimum 1000 responses/week.
+
+    leading_indicators:
+      - "NPS for payment feature improving"
+      - "App store ratings improving"
+
+guardrail_metrics:
+  - name: notification_spam_rate
+    threshold: "< 2%"
+    description: "Duplicate or erroneous notifications per user"
+
+  - name: battery_impact
+    threshold: "< 1% daily battery drain"
+    description: "Background service battery usage"
+
+  - name: privacy_violations
+    threshold: "0"
+    description: "PII exposure in notifications"
+
+evidence_requirements:
+  discovery:
+    - "User journey mapping (current vs. future)"
+    - "Technical feasibility assessment"
+    - "Competitive analysis (3 banks with similar features)"
+    - "Cost-benefit analysis"
+
+  validation:
+    - "Alpha test with 100 users (1 week)"
+    - "Beta test with 5,000 users (2 weeks)"
+    - "A/B test (50% rollout, 1 week)"
+
+risks:
+  - risk: "Push notification opt-out rate higher than expected"
+    mitigation: "Clear value proposition, progressive disclosure"
+    likelihood: "Medium"
+    impact: "High"
+
+  - risk: "Webhook reliability issues from payment platform"
+    mitigation: "Retry logic, dead letter queue, fallback polling"
+    likelihood: "Low"
+    impact: "High"
+
+  - risk: "Device token registration failures"
+    mitigation: "Background re-registration, graceful degradation"
+    likelihood: "Medium"
+    impact: "Medium"

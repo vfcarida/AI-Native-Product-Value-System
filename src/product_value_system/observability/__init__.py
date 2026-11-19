@@ -24,6 +24,7 @@ from product_value_system.observability.tracing import (
     clear_run_context,
     configure_tracing,
     set_run_context,
+    trace_span,
     traced,
 )
 
@@ -41,5 +42,6 @@ __all__ = [
     "sanitize_attributes",
     "sanitize_string",
     "set_run_context",
+    "trace_span",
     "traced",
 ]

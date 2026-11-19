@@ -1,0 +1,19 @@
+{
+  "id": "sample-005",
+  "description": "End-to-end payment notification build and evaluation gate",
+  "input": {
+    "specification_id": "spec-acme-payment-notifications",
+    "context": {
+      "stage": "quality_gate"
+    }
+  },
+  "expected_output": {
+    "passed": true,
+    "min_overall_score": 0.85
+  },
+  "metadata": {
+    "scenario": "quality_gate",
+    "difficulty": "medium",
+    "expected_duration_seconds": 90
+  }
+}

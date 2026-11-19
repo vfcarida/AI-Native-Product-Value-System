@@ -1,0 +1,19 @@
+{
+  "id": "sample-004",
+  "description": "Security review of payment notification specification",
+  "input": {
+    "specification_id": "spec-acme-payment-notifications",
+    "context": {
+      "review_type": "security"
+    }
+  },
+  "expected_output": {
+    "verdict": "approve",
+    "pii_controls_verified": true
+  },
+  "metadata": {
+    "scenario": "security_review",
+    "difficulty": "medium",
+    "expected_duration_seconds": 60
+  }
+}

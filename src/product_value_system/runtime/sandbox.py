@@ -28,6 +28,7 @@ class SandboxConfig:
     max_pids: int = 512  # Maximum processes
     timeout_seconds: int = 900  # 15 minutes
     network_enabled: bool = True
+    network_mode: str | None = None
     allowed_hosts: list[str] = field(default_factory=list)  # Allowlist for network egress
 
 

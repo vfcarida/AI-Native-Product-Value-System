@@ -6,6 +6,8 @@
   "type": "object",
   "required": ["id", "version", "created", "statement", "context", "constraints"],
   "properties": {
+    "apiVersion": {"type": "string"},
+    "kind": {"type": "string"},
     "id": {
       "type": "string",
       "pattern": "^problem-[a-z0-9-]+$",
@@ -44,10 +46,19 @@
           "type": "string",
           "description": "Business rationale and strategic alignment"
         },
+        "current_state": {
+          "type": "string",
+          "description": "Summary of current system/process state"
+        },
         "market_evidence": {
           "type": "array",
           "items": {"type": "string"},
           "description": "References to market research, customer feedback"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {"type": "object"},
+          "description": "Structured discovery evidence items"
         }
       }
     },
@@ -74,6 +85,27 @@
           "type": "string",
           "format": "date",
           "description": "Target completion date (YYYY-MM-DD)"
+        },
+        "technical": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "security": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "business": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "success_criteria": {
+      "type": "object",
+      "properties": {
+        "outcome_metrics": {
+          "type": "array",
+          "items": {"type": "object"}
         }
       }
     },
@@ -81,6 +113,13 @@
       "type": "object",
       "properties": {
         "created_by": {"type": "string"},
+        "author": {"type": "string"},
+        "stakeholders": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "priority": {"type": "string"},
+        "business_value": {"type": "string"},
         "tags": {
           "type": "array",
           "items": {"type": "string"}

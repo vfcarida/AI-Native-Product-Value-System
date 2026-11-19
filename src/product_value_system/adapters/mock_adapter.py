@@ -46,7 +46,7 @@ class MockModelAdapter:
 
     async def invoke(
         self,
-        messages: list[Message],
+        messages: list[Message] | list[Any],
         tools: list[Tool] | None = None,
         temperature: float = 0.7,
         max_tokens: int | None = None,
@@ -63,7 +63,10 @@ class MockModelAdapter:
         else:
             content = self._default_response
 
-        input_tokens = sum(len(msg.content.split()) for msg in messages)
+        input_tokens = sum(
+            len((msg.content if isinstance(msg, Message) else str(msg.get("content", ""))).split())
+            for msg in messages
+        )
         output_tokens = len(content.split())
 
         return ModelResponse(
