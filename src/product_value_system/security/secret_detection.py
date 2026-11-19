@@ -12,6 +12,8 @@ class SecretDetector:
     """
 
     PATTERNS: list[tuple[str, str]] = [
+        # Anthropic keys (specific prefix first)
+        (r"sk-ant-[a-zA-Z0-9_\-]{20,}", "ANTHROPIC_API_KEY"),
         # OpenAI keys (specific prefix first)
         (r"sk-[a-zA-Z0-9]{48}", "OPENAI_API_KEY"),
         # AWS keys

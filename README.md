@@ -32,7 +32,51 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - **Python 3.12+**
 - **Docker** (Desktop or Engine)
 - **Git**
-- **Model API Key** (OpenAI, Anthropic, Google, or Azure)
+- **Model API Key** (OpenAI or Anthropic; optional when using the built-in Mock adapter)
+
+---
+
+## Model Providers
+
+**Implemented**:
+- ✅ **OpenAI** (`OpenAIModelAdapter` — GPT-4, GPT-4 Turbo, GPT-3.5 Turbo)
+- ✅ **Anthropic** (`AnthropicAdapter` — Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku)
+- ✅ **Mock** (`MockModelAdapter` — deterministic local testing)
+
+**Planned**:
+- 🔜 Google (Gemini)
+- 🔜 Azure OpenAI
+- 🔜 Local models (Ollama)
+
+### Configuration
+
+See [config/model_adapters.yaml](config/model_adapters.yaml):
+
+```yaml
+default_adapter: anthropic
+
+adapters:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4
+
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    model: claude-3-5-sonnet-20241022
+```
+
+### Switching to Anthropic
+
+1. Set your API key:
+   ```bash
+   export ANTHROPIC_API_KEY="sk-ant-..."
+   ```
+2. Select the Anthropic adapter (`AnthropicAdapter`) and model (`claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, or `claude-3-haiku-20240307`) in `config/model_adapters.yaml` or agent configuration.
+
+**Cost Comparison (per 1M tokens)**:
+- OpenAI GPT-4 Turbo: \$10 input / \$30 output
+- Anthropic Claude 3.5 Sonnet: \$3 input / \$15 output
+- Anthropic Claude 3 Haiku: \$0.25 input / \$1.25 output
 
 ---
 

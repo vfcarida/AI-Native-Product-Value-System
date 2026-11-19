@@ -1,0 +1,31 @@
+# Model Adapter Configuration
+#
+# Supported adapters:
+# - openai:    OpenAI GPT-4 / GPT-3.5 (OPENAI_API_KEY)
+# - anthropic: Anthropic Claude 3.5 Sonnet / Opus / Haiku (ANTHROPIC_API_KEY)
+# - mock:      Deterministic mock adapter for local tests and demos
+
+default_adapter: anthropic
+
+adapters:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+    model: gpt-4
+    timeout: 60.0
+    max_retries: 3
+
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    base_url: https://api.anthropic.com
+    model: claude-3-5-sonnet-20241022
+    timeout: 60.0
+    max_retries: 3
+    # Available models:
+    # - claude-3-5-sonnet-20241022 ($3/1M input, $15/1M output)
+    # - claude-3-opus-20240229     ($15/1M input, $75/1M output)
+    # - claude-3-haiku-20240307    ($0.25/1M input, $1.25/1M output)
+
+  mock:
+    default_response: "Mock response"
+    simulate_latency_ms: 0

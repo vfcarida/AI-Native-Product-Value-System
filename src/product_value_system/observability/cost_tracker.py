@@ -13,6 +13,8 @@ MODEL_PRICING: dict[str, dict[str, Decimal]] = {
     "gpt-4-turbo": {"input": Decimal("10.00"), "output": Decimal("30.00")},
     "gpt-3.5-turbo": {"input": Decimal("0.50"), "output": Decimal("1.50")},
     # Anthropic
+    "claude-3-5-sonnet-20241022": {"input": Decimal("3.00"), "output": Decimal("15.00")},
+    "claude-3-5-sonnet-latest": {"input": Decimal("3.00"), "output": Decimal("15.00")},
     "claude-3-opus-20240229": {"input": Decimal("15.00"), "output": Decimal("75.00")},
     "claude-3-sonnet-20240229": {"input": Decimal("3.00"), "output": Decimal("15.00")},
     "claude-3-haiku-20240307": {"input": Decimal("0.25"), "output": Decimal("1.25")},
