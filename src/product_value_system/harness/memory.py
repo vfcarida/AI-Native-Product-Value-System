@@ -30,6 +30,7 @@ class Memory:
         self.max_messages = max_messages
         self.messages: list[Message] = []
         self.artifacts: dict[str, Any] = {}
+        self.cleared: bool = False
 
     def add_message(
         self,
@@ -45,6 +46,7 @@ class Memory:
             content: Message content
             metadata: Optional metadata
         """
+        self.cleared = False
         message = Message(role=role, content=content, metadata=metadata or {})
         self.messages.append(message)
 
@@ -62,6 +64,13 @@ class Memory:
     def clear_messages(self) -> None:
         """Clear conversation history."""
         self.messages.clear()
+        self.cleared = True
+
+    def clear(self) -> None:
+        """Clear both conversation messages and stored artifacts (Goldfish isolation)."""
+        self.messages.clear()
+        self.artifacts.clear()
+        self.cleared = True
 
     def store_artifact(self, key: str, value: Any) -> None:
         """Store artifact in long-term memory."""

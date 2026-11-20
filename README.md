@@ -25,7 +25,7 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 ### Core Workflow
 - ✅ **Outcome-Driven Development**: Transform problem statements into schema-validated, measurable outcome hypotheses
 - ✅ **Synthetic Customer Simulation**: Optional TinyTroupe-powered persona simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`) integrated into `DiscoveryAgent` and `pvs run-simulation`
-- ✅ **6-Stage AI Agent Pipeline**: Discovery → Specification → Architecture Review → Security Review → Build → Learn (`MeasurementAgent`)
+- ✅ **6-Stage AI Agent Pipeline + Multi-Agent Independent Review**: Discovery → Specification → Parallel 4-Perspective Review (Security, Performance, Maintainability, Architecture via Elephant-Goldfish pattern & conflict-resolving `ReviewSynthesizer`) → Build → Learn (`MeasurementAgent`)
 - ✅ **Outcome Measurement & Feedback Loops**: Production metric adapters (SQLite/SQLAlchemy, Prometheus, Mock), statistical significance & guardrail evaluation (`OutcomeTracker`), cost-to-outcome attribution (`CostAttributor`), regression alerting (`FeedbackLoop`), and `pvs measure-outcome` CLI
 - ✅ **Evaluation Framework, Golden Datasets & Trajectory Evaluation**: Multi-judge quality gates (`SchemaValidationJudge`, `RubricComplianceJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, plus 4 trajectory judges), 180 curated HELM-structured golden samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture` & `TrajectoryEvaluator`, `RegressionEvaluator` baseline drift detection, `pvs eval --with-trajectories`, and CI eval gates (`.github/workflows/eval-gate.yml`)
 - ✅ **Value Stream Orchestrator & Persistence**: State-machine orchestration with checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
@@ -34,7 +34,7 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Docker Sandbox Isolation**: Isolated container execution (`pvs/agent-sandbox:latest`) running as non-root (`UID 1000`), with dropped Linux capabilities, memory/CPU/PID limits, and network isolation
 - ✅ **Policy-Based Authorization**: Cedar policy schema (`policies/schema.cedarschema`) and rules (`policies/agent_authorization.cedar`) with a deterministic Python fallback evaluator
 - ✅ **Security Controls**: Input/schema validation, path traversal prevention, command sanitization, regex secret detection (`pre-commit` hook + CI), and OWASP LLM Top 10 threat model
-- ✅ **OpenTelemetry Observability**: GenAI semantic-convention distributed tracing, token/USD cost tracking, and span secret redaction
+- ✅ **OpenTelemetry Observability, Production Monitoring & SLOs**: GenAI semantic-convention distributed tracing, 12 OpenTelemetry/Prometheus metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, error-budget policies, automated rollback (`ProductionMonitor`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 4 Grafana dashboards (`docker-compose.monitoring.yml`)
 
 ### Model Support & Streaming
 - ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, and USD cost calculation
@@ -59,7 +59,7 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 
 ### Lifecycle Stages
 - **External analytics required for live Learn stage**: Post-release outcome measurement (`src/product_value_system/learning/`) supports SQLite, PostgreSQL/MySQL (SQLAlchemy), Prometheus, and Mock adapters; live measurement requires an external metrics database or Prometheus instance.
-- **No experiment design or progressive delivery**: A/B experiment design, feature flags, and production SLO monitoring/alerting are planned for `v0.4` (EVO-014, EVO-015, EVO-016).
+- **No progressive delivery / experiment design yet**: Feature flags, canary rollouts, and A/B experiment design tooling are planned for `v0.4` (EVO-015, EVO-016).
 
 ### Evaluation & Testing
 - **Trajectory & golden dataset evaluation**: 180 curated golden dataset samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture`/`TrajectoryEvaluator`, and automated regression evaluation gates (`pvs eval --with-trajectories`, `.github/workflows/eval-gate.yml`) are implemented; real-time trajectory visualization and replay remain future enhancements.
@@ -205,6 +205,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[How-To Guides](docs/howto/README.md)** — Custom agents, Cedar policies, judges, model adapters, troubleshooting
 - **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
 - **[Golden Dataset Curation Guide](golden_datasets/README.md)** — 180 HELM-structured golden samples, schema, curation CLI, and regression evaluation gates
+- **[Multi-Agent Review Guide](docs/review-guide.md)** — Elephant-Goldfish 4-perspective review, conflict resolution, and `pvs review` CLI
+- **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
@@ -259,13 +261,15 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 
 ### v0.4 — Lifecycle Completion
 - ✅ Learn stage & outcome measurement agent (EVO-010)
+- ✅ Production SLOs, Prometheus/Grafana monitoring & automated rollback (EVO-014)
+- 📋 Progressive delivery & feature flags (EVO-015)
 - 📋 Experiment design & statistical rigor tooling (EVO-016)
-- 📋 Production SLOs, monitoring & progressive delivery (EVO-014, EVO-015)
 
 ### v0.5 — Evaluation & Continuous Quality
 - ✅ Curated golden dataset evaluation suite (EVO-011)
 - ✅ Multi-turn trajectory evaluations (EVO-012)
-- 📋 Multi-agent review & drift detection (EVO-013, EVO-017)
+- ✅ Multi-agent independent review & conflict synthesis (EVO-013)
+- 📋 Automated drift detection (EVO-017)
 
 ### v1.0 — Production Grade
 - 📋 Token caching & cost optimization (EVO-025, EVO-026)

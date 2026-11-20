@@ -1,0 +1,76 @@
+{
+  "uid": "pvs-latency",
+  "title": "PVS — Latency & Responsiveness",
+  "tags": ["pvs", "slo", "latency"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "P50 / P95 / P99 Latency Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(pvs_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "pvs_latency_p95_seconds",
+          "legendFormat": "p95 (SLO <= 5.0s)"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(pvs_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 2,
+      "title": "Latency Distribution Heatmap",
+      "type": "heatmap",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(increase(pvs_latency_seconds_bucket[5m])) by (le)",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Latency & Throughput by Agent",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(rate(pvs_requests_total[5m])) by (status)",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Latency SLO Compliance (<5.0s Target)",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "pvs_error_budget_remaining{slo=\"latency_p95\"} * 100",
+          "legendFormat": "Budget Remaining %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    }
+  ]
+}

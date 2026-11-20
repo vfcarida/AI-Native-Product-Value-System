@@ -1,0 +1,88 @@
+{
+  "uid": "pvs-error-budget",
+  "title": "PVS — SLO Error Budgets & Burn Rates",
+  "tags": ["pvs", "slo", "sre", "error-budget"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Error Budget Remaining by SLO",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "pvs_error_budget_remaining * 100",
+          "legendFormat": "{{slo}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 25},
+              {"color": "green", "value": 50}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Availability Error Burn Rate (1h Window)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "(1 - sum(rate(pvs_requests_total{status=\"success\"}[1h])) / clamp_min(sum(rate(pvs_requests_total[1h])), 1e-9)) / 0.01",
+          "legendFormat": "Burn Rate Multiplier (x)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Active Runs Saturation",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "pvs_active_runs",
+          "legendFormat": "Active Value Stream Runs"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error Budget Policy Status (50% / 25% / 0% Gates)",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "min(pvs_error_budget_remaining) * 100",
+          "legendFormat": "Lowest SLO Budget %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 25},
+              {"color": "green", "value": 50}
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

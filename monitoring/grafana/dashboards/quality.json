@@ -1,0 +1,78 @@
+{
+  "uid": "pvs-quality",
+  "title": "PVS — AI Output Quality & Safety",
+  "tags": ["pvs", "slo", "quality", "ai"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Evaluation Pass Rate Over Time (SLO >= 95%)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "pvs_quality_pass_rate * 100",
+          "legendFormat": "Eval Pass Rate %"
+        },
+        {
+          "expr": "pvs_hallucination_free_rate * 100",
+          "legendFormat": "Hallucination-Free %"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}}
+    },
+    {
+      "id": 2,
+      "title": "Quality Score Distribution",
+      "type": "histogram",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "pvs_quality_pass_rate",
+          "legendFormat": "Quality Score"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Policy & Security Violations",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "pvs_policy_violations_total",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Quality SLO Compliance",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "pvs_quality_pass_rate * 100",
+          "legendFormat": "Pass Rate %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 85},
+              {"color": "green", "value": 95}
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

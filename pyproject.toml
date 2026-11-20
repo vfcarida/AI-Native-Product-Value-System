@@ -43,6 +43,12 @@ eval = [
     "jsonschema>=4.0",
     "inquirer>=3.1.0",
 ]
+monitoring = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "prometheus-client>=0.20",
+    "opentelemetry-exporter-prometheus>=0.46b0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

@@ -148,7 +148,11 @@ class Harness:
         self.budget.record_iteration()
         self.check_constraints(self.budget.current_iterations)
         capture_active = self.trajectory_capture.enabled
-        step_start = time.perf_counter() if capture_active else 0.0
+        step_start = time.perf_counter()
+
+        from product_value_system.monitoring.metrics import get_metrics
+
+        metrics = get_metrics()
 
         normalized: list[AdapterMessage] = []
         for msg in messages:
@@ -173,6 +177,16 @@ class Harness:
                     )
                     if not validation.is_valid:
                         self.violations.append(validation.reason)
+                        metrics.record_policy_violation(
+                            agent=self.context.agent_name,
+                            decision="DENY",
+                        )
+                        metrics.record_request(
+                            agent=self.context.agent_name,
+                            status="error",
+                            latency_seconds=time.perf_counter() - step_start,
+                            error_type="SecurityError",
+                        )
                         if capture_active:
                             self.trajectory_capture.log_step(
                                 thought="Input validation blocked suspicious user prompt",
@@ -201,19 +215,41 @@ class Harness:
         except EmergencyStopTriggered as exc:
             logger.critical("Emergency stop triggered before model call: %s", exc)
             self.violations.append(str(exc))
+            metrics.record_request(
+                agent=self.context.agent_name,
+                status="error",
+                latency_seconds=time.perf_counter() - step_start,
+                error_type="EmergencyStopTriggered",
+            )
             raise
         except BudgetExhausted as exc:
             logger.error("Budget exhausted before model call: %s", exc)
             self.violations.append(str(exc))
+            metrics.record_request(
+                agent=self.context.agent_name,
+                status="error",
+                latency_seconds=time.perf_counter() - step_start,
+                error_type="BudgetExhausted",
+            )
             raise
 
-        response = await self.model_adapter.invoke(
-            messages=normalized,
-            tools=tools,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        )
+        try:
+            response = await self.model_adapter.invoke(
+                messages=normalized,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            )
+        except Exception as exc:
+            metrics.record_request(
+                agent=self.context.agent_name,
+                status="error",
+                latency_seconds=time.perf_counter() - step_start,
+                error_type=type(exc).__name__,
+            )
+            raise
+
         actual_cost = 0.0
         actual_tokens = 0
         if response.usage is not None:
@@ -230,10 +266,20 @@ class Harness:
             if not within_budget:
                 raise BudgetExceededError(error)
 
+        elapsed_sec = time.perf_counter() - step_start
+        metrics.record_request(
+            agent=self.context.agent_name,
+            status="success",
+            latency_seconds=elapsed_sec,
+            cost_usd=actual_cost,
+            tokens=actual_tokens,
+            model=response.model or "unknown",
+        )
+
         self.memory.add_message("assistant", response.content)
 
         if capture_active:
-            latency_ms = (time.perf_counter() - step_start) * 1000.0
+            latency_ms = elapsed_sec * 1000.0
             thought = self._extract_thought(normalized, response.content)
             action: dict[str, Any] | None = None
             if response.tool_calls:

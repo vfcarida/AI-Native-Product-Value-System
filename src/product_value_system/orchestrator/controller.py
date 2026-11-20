@@ -50,6 +50,8 @@ class ValueStreamOrchestrator:
         analytics_adapter: AnalyticsAdapter | None = None,
         outcome_tracker: OutcomeTracker | None = None,
         feedback_loop: FeedbackLoop | None = None,
+        use_multi_agent_review: bool = False,
+        review_orchestrator: Any | None = None,
     ) -> None:
         """
         Initialize orchestrator.
@@ -64,6 +66,8 @@ class ValueStreamOrchestrator:
             analytics_adapter: Optional analytics adapter enabling the Learn stage
             outcome_tracker: Optional pre-configured OutcomeTracker
             feedback_loop: Optional FeedbackLoop for alerts and Discovery feedback
+            use_multi_agent_review: Enable parallel 4-agent independent review synthesis
+            review_orchestrator: Optional pre-configured MultiAgentReviewOrchestrator
         """
         self.agents = agents
         self.evaluation_pipeline = evaluation_pipeline
@@ -72,6 +76,8 @@ class ValueStreamOrchestrator:
         self.artifact_root = Path(artifact_root)
         self.harness_factory = harness_factory
         self.events: list[dict[str, Any]] = []
+        self.use_multi_agent_review = use_multi_agent_review
+        self.review_orchestrator = review_orchestrator
 
         self.outcome_tracker: OutcomeTracker | None = outcome_tracker or (
             OutcomeTracker(analytics_adapter) if analytics_adapter is not None else None
@@ -152,6 +158,11 @@ class ValueStreamOrchestrator:
         run.status = RunStatus.RUNNING
         self.checkpoint_manager.save_checkpoint(run)
 
+        from product_value_system.monitoring.metrics import get_metrics
+
+        metrics = get_metrics()
+        metrics.track_active_run(1)
+
         try:
             while True:
                 next_stage = state_machine.get_next_stage()
@@ -172,6 +183,11 @@ class ValueStreamOrchestrator:
                 self.checkpoint_manager.save_checkpoint(run)
 
                 if stage_result.status == StageStatus.FAILED:
+                    metrics.record_agent_execution(
+                        agent=stage_result.agent_name or next_stage,
+                        status="error",
+                        cost_usd=stage_result.cost_usd,
+                    )
                     self._emit_event(
                         "stage.failed",
                         run.id,
@@ -184,6 +200,11 @@ class ValueStreamOrchestrator:
                         f"Stage {next_stage} failed: {stage_result.error}"
                     )
 
+                metrics.record_agent_execution(
+                    agent=stage_result.agent_name or next_stage,
+                    status="success",
+                    cost_usd=stage_result.cost_usd,
+                )
                 self._emit_event("stage.completed", run.id, {"stage": next_stage})
 
                 if next_stage == "decision_gate" and config.get("require_human_approval"):
@@ -242,6 +263,8 @@ class ValueStreamOrchestrator:
             run.completed_at = datetime.now(UTC)
             self.checkpoint_manager.save_checkpoint(run)
             raise
+        finally:
+            metrics.track_active_run(-1)
 
     async def _invoke_agent(
         self,
@@ -338,56 +361,125 @@ class ValueStreamOrchestrator:
                 stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "review_architecture":
-                agent = self.agents.get("review_architecture") or self.agents.get(
-                    "architecture_review"
-                )
-                if agent:
+                use_multi = bool(config.get("enable_multi_review", self.use_multi_agent_review))
+                if use_multi:
                     spec_stage = run.get_stage("specification")
                     if not spec_stage or not spec_stage.artifact_path:
                         raise OrchestratorError("Specification artifact missing")
                     spec = await self._load_artifact(spec_stage.artifact_path)
-                    output_artifact, cost_usd = await self._invoke_agent(
-                        agent, spec, stage_name, run.id
+
+                    rev_orch = self.review_orchestrator
+                    if rev_orch is None:
+                        from product_value_system.contracts.validation import SchemaValidator
+                        from product_value_system.review.orchestrator import (
+                            MultiAgentReviewOrchestrator,
+                        )
+
+                        ref_agent = self.agents.get("review_architecture") or self.agents.get(
+                            "specification"
+                        )
+                        validator = getattr(ref_agent, "schema_validator", None) or SchemaValidator(
+                            Path(__file__).resolve().parents[3] / "schemas"
+                        )
+                        rev_orch = MultiAgentReviewOrchestrator(
+                            schema_validator=validator,
+                            harness_factory=self.harness_factory,
+                            policy_engine=self.policy_engine,
+                        )
+
+                    review_ctx = ExecutionContext(
+                        run_id=run.id,
+                        stage_name="multi_agent_review",
+                        agent_name="multi-agent-review-orchestrator",
                     )
+                    consolidated = await rev_orch.execute(spec, context=review_ctx)
                     artifact_path = await self._save_artifact(
                         run.artifact_dir,
-                        "architecture_review.yaml",
-                        output_artifact,
+                        "consolidated_review.yaml",
+                        consolidated.to_dict(),
+                    )
+                    self._emit_event(
+                        "review.synthesized",
+                        run.id,
+                        {
+                            "review_id": consolidated.review_id,
+                            "verdict": consolidated.verdict,
+                            "gate_decision": consolidated.gate_decision,
+                            "summary": consolidated.summary,
+                            "conflicts": len(consolidated.conflicts),
+                        },
                     )
                     stage_result.artifact_path = artifact_path
-                    stage_result.agent_name = getattr(
-                        agent, "name", "architecture-review-agent"
+                    stage_result.agent_name = "multi-agent-review-orchestrator"
+                    stage_result.cost_usd = consolidated.total_cost_usd
+                    stage_result.metadata = {
+                        "verdict": consolidated.verdict,
+                        "gate_decision": consolidated.gate_decision,
+                        "reviewers": consolidated.reviewers_executed,
+                    }
+                    if consolidated.gate_decision == "FAIL":
+                        raise OrchestratorError(
+                            f"Multi-agent review gate failed: {consolidated.gate_reason}"
+                        )
+                    stage_result.status = StageStatus.COMPLETED
+                else:
+                    agent = self.agents.get("review_architecture") or self.agents.get(
+                        "architecture_review"
                     )
-                    stage_result.cost_usd = cost_usd
-                    if output_artifact.get("verdict") == "reject":
-                        raise OrchestratorError("Architecture review rejected specification")
-                stage_result.status = StageStatus.COMPLETED
+                    if agent:
+                        spec_stage = run.get_stage("specification")
+                        if not spec_stage or not spec_stage.artifact_path:
+                            raise OrchestratorError("Specification artifact missing")
+                        spec = await self._load_artifact(spec_stage.artifact_path)
+                        output_artifact, cost_usd = await self._invoke_agent(
+                            agent, spec, stage_name, run.id
+                        )
+                        artifact_path = await self._save_artifact(
+                            run.artifact_dir,
+                            "architecture_review.yaml",
+                            output_artifact,
+                        )
+                        stage_result.artifact_path = artifact_path
+                        stage_result.agent_name = getattr(
+                            agent, "name", "architecture-review-agent"
+                        )
+                        stage_result.cost_usd = cost_usd
+                        if output_artifact.get("verdict") == "reject":
+                            raise OrchestratorError("Architecture review rejected specification")
+                    stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "review_security":
-                agent = self.agents.get("review_security") or self.agents.get(
-                    "security_review"
-                )
-                if agent:
-                    spec_stage = run.get_stage("specification")
-                    if not spec_stage or not spec_stage.artifact_path:
-                        raise OrchestratorError("Specification artifact missing")
-                    spec = await self._load_artifact(spec_stage.artifact_path)
-                    output_artifact, cost_usd = await self._invoke_agent(
-                        agent, spec, stage_name, run.id
+                if bool(config.get("enable_multi_review", self.use_multi_agent_review)):
+                    # Security perspective already executed concurrently in multi-agent review
+                    arch_stage = run.get_stage("review_architecture")
+                    stage_result.artifact_path = arch_stage.artifact_path if arch_stage else None
+                    stage_result.agent_name = "security-review-agent (parallel)"
+                    stage_result.status = StageStatus.COMPLETED
+                else:
+                    agent = self.agents.get("review_security") or self.agents.get(
+                        "security_review"
                     )
-                    artifact_path = await self._save_artifact(
-                        run.artifact_dir,
-                        "security_review.yaml",
-                        output_artifact,
-                    )
-                    stage_result.artifact_path = artifact_path
-                    stage_result.agent_name = getattr(
-                        agent, "name", "security-review-agent"
-                    )
-                    stage_result.cost_usd = cost_usd
-                    if output_artifact.get("verdict") == "reject":
-                        raise OrchestratorError("Security review rejected specification")
-                stage_result.status = StageStatus.COMPLETED
+                    if agent:
+                        spec_stage = run.get_stage("specification")
+                        if not spec_stage or not spec_stage.artifact_path:
+                            raise OrchestratorError("Specification artifact missing")
+                        spec = await self._load_artifact(spec_stage.artifact_path)
+                        output_artifact, cost_usd = await self._invoke_agent(
+                            agent, spec, stage_name, run.id
+                        )
+                        artifact_path = await self._save_artifact(
+                            run.artifact_dir,
+                            "security_review.yaml",
+                            output_artifact,
+                        )
+                        stage_result.artifact_path = artifact_path
+                        stage_result.agent_name = getattr(
+                            agent, "name", "security-review-agent"
+                        )
+                        stage_result.cost_usd = cost_usd
+                        if output_artifact.get("verdict") == "reject":
+                            raise OrchestratorError("Security review rejected specification")
+                    stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "build":
                 agent = self.agents.get("build")

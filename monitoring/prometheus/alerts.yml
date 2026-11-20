@@ -1,0 +1,122 @@
+groups:
+  - name: pvs_slo_burn_rate_alerts
+    rules:
+      # Multi-window, multi-burn-rate fast burn alert (Google SRE Workbook pattern)
+      - alert: SLOBurnRateFast
+        expr: |
+          (
+            (1 - sum(rate(pvs_requests_total{status="success"}[1h])) / clamp_min(sum(rate(pvs_requests_total[1h])), 1e-9))
+            > 10 * (1 - 0.99)
+          )
+          and
+          (
+            (1 - sum(rate(pvs_requests_total{status="success"}[5m])) / clamp_min(sum(rate(pvs_requests_total[5m])), 1e-9))
+            > 10 * (1 - 0.99)
+          )
+        for: 2m
+        labels:
+          severity: critical
+          slo: availability
+        annotations:
+          summary: "SLO burn rate exceeds 10x target (99% availability SLO)"
+          description: "Availability error budget is burning >10x faster than allowable; exhaustion imminent."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnratefast"
+
+      # Multi-window, multi-burn-rate slow burn alert
+      - alert: SLOBurnRateSlow
+        expr: |
+          (
+            (1 - sum(rate(pvs_requests_total{status="success"}[6h])) / clamp_min(sum(rate(pvs_requests_total[6h])), 1e-9))
+            > 2 * (1 - 0.99)
+          )
+          and
+          (
+            (1 - sum(rate(pvs_requests_total{status="success"}[30m])) / clamp_min(sum(rate(pvs_requests_total[30m])), 1e-9))
+            > 2 * (1 - 0.99)
+          )
+        for: 15m
+        labels:
+          severity: warning
+          slo: availability
+        annotations:
+          summary: "SLO burn rate exceeds 2x target (99% availability SLO)"
+          description: "Elevated error rate will exhaust the 30-day error budget if trend persists."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnrateslow"
+
+      # Multi-window latency SLO breach (critical)
+      - alert: LatencySLOBurnFast
+        expr: |
+          (avg_over_time(pvs_latency_p95_seconds[1h]) > 5.0)
+          and
+          (avg_over_time(pvs_latency_p95_seconds[5m]) > 5.0)
+        for: 5m
+        labels:
+          severity: critical
+          slo: latency_p95
+        annotations:
+          summary: "P95 latency exceeds 5.0s SLO target across 5m and 1h windows"
+          description: "Sustained latency degradation affecting agent responsiveness."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#latencysloburnfast"
+
+      # Multi-window latency trend warning
+      - alert: LatencySLOBurnSlow
+        expr: |
+          (avg_over_time(pvs_latency_p95_seconds[6h]) > 4.0)
+          and
+          (avg_over_time(pvs_latency_p95_seconds[30m]) > 4.0)
+        for: 15m
+        labels:
+          severity: warning
+          slo: latency_p95
+        annotations:
+          summary: "P95 latency trending above 4.0s (approaching 5.0s SLO)"
+          description: "Investigate model provider latency or agent loop count before SLO breach."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#latencysloburnslow"
+
+  - name: pvs_ai_quality_alerts
+    rules:
+      - alert: QualityDegradationCritical
+        expr: pvs_quality_pass_rate < 0.85
+        for: 5m
+        labels:
+          severity: critical
+          slo: quality_score
+        annotations:
+          summary: "AI output quality pass rate dropped below 85% (SLO target 95%)"
+          description: "Critical quality degradation detected; automated rollback recommended."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#qualitydegradationcritical"
+
+      - alert: QualityDegradationWarning
+        expr: pvs_quality_pass_rate < 0.95
+        for: 15m
+        labels:
+          severity: warning
+          slo: quality_score
+        annotations:
+          summary: "AI output quality pass rate below 95% SLO target"
+          description: "Run pvs eval all --with-trajectories to identify regressed agent or prompt."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#qualitydegradationwarning"
+
+  - name: pvs_cost_and_safety_alerts
+    rules:
+      - alert: CostPerOutcomeOverrun
+        expr: (increase(pvs_cost_usd_total[1h]) / clamp_min(increase(pvs_requests_total{status="success"}[1h]), 1)) > 0.50
+        for: 10m
+        labels:
+          severity: warning
+          slo: cost_per_outcome
+        annotations:
+          summary: "Average cost per outcome exceeded $0.50 SLO target"
+          description: "Verify token usage, budget guards (EVO-007), and agent retry loops."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#costperoutcomeoverrun"
+
+      - alert: PolicyViolationSpike
+        expr: increase(pvs_policy_violations_total[15m]) >= 5
+        for: 2m
+        labels:
+          severity: critical
+          slo: safety_compliance
+        annotations:
+          summary: "Spike of >=5 policy/security violations in 15 minutes"
+          description: "Possible prompt injection wave or misconfigured agent authorization policy."
+          runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#policyviolationspike"

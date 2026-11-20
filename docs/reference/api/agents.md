@@ -66,7 +66,7 @@ Transforms validated `outcome.yaml` hypotheses into detailed `specification.yaml
 
 **Source**: [`src/product_value_system/agents/architecture_review_agent.py`](../../../src/product_value_system/agents/architecture_review_agent.py)
 
-Conducts independent technical reviews of specifications with fresh context isolation (`harness.memory.clear_messages()`), producing `evidence.schema.json`-compliant review artifacts.
+Subclasses `BaseReviewAgent`. Conducts independent technical reviews of specifications with fresh Goldfish context isolation (`harness.memory.clear()`), producing `evidence.schema.json`-compliant review artifacts.
 
 ---
 
@@ -74,7 +74,32 @@ Conducts independent technical reviews of specifications with fresh context isol
 
 **Source**: [`src/product_value_system/agents/security_review_agent.py`](../../../src/product_value_system/agents/security_review_agent.py)
 
-Conducts independent security reviews of specifications with fresh context isolation, identifying authentication, authorization, data protection, and injection risks.
+Subclasses `BaseReviewAgent`. Conducts independent OWASP LLM Top 10 & AppSec reviews (LLM01, LLM02, LLM04, LLM06, LLM07, LLM08) with fresh context isolation.
+
+---
+
+### Class: `PerformanceReviewAgent`
+
+**Source**: [`src/product_value_system/agents/performance_review_agent.py`](../../../src/product_value_system/agents/performance_review_agent.py)
+
+Subclasses `BaseReviewAgent`. Conducts independent latency, algorithmic complexity, memory, N+1 I/O, caching, and scalability reviews in Goldfish mode.
+
+---
+
+### Class: `MaintainabilityReviewAgent`
+
+**Source**: [`src/product_value_system/agents/maintainability_review_agent.py`](../../../src/product_value_system/agents/maintainability_review_agent.py)
+
+Subclasses `BaseReviewAgent`. Conducts independent requirement clarity, acceptance-criteria completeness, testability, documentation, and technical-debt reviews in Goldfish mode.
+
+---
+
+### Multi-Agent Review Orchestration (`product_value_system.review`)
+
+**Sources**:
+- [`src/product_value_system/review/models.py`](../../../src/product_value_system/review/models.py) — `FindingSeverity`, `FindingCategory`, `ReviewFinding`, `ReviewConflict`, `ReviewResult`
+- [`src/product_value_system/review/synthesizer.py`](../../../src/product_value_system/review/synthesizer.py) — `ReviewSynthesizer` (aggregation, conflict detection & resolution, release gate decision)
+- [`src/product_value_system/review/orchestrator.py`](../../../src/product_value_system/review/orchestrator.py) — `MultiAgentReviewOrchestrator` & `execute_multi_agent_review()` (concurrent `asyncio.gather()` execution across all 4 independent perspectives)
 
 ---
 

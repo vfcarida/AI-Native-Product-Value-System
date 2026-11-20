@@ -1,0 +1,69 @@
+{
+  "uid": "pvs-cost",
+  "title": "PVS — LLM Cost & Budget Guards",
+  "tags": ["pvs", "slo", "cost", "finops"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cumulative USD Cost Over Time",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "pvs_cost_usd_total",
+          "legendFormat": "Total Cost (USD)"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    },
+    {
+      "id": 2,
+      "title": "Cost Breakdown by Agent",
+      "type": "piechart",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(increase(pvs_cost_usd_total[24h])) by (agent)",
+          "legendFormat": "{{agent}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    },
+    {
+      "id": 3,
+      "title": "Average Cost Per Outcome (SLO <= $0.50)",
+      "type": "barchart",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "increase(pvs_cost_usd_total[1h]) / clamp_min(increase(pvs_requests_total{status=\"success\"}[1h]), 1)",
+          "legendFormat": "USD / Outcome"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}}
+    },
+    {
+      "id": 4,
+      "title": "Cost SLO Error Budget Remaining",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "pvs_error_budget_remaining{slo=\"cost_per_outcome\"} * 100",
+          "legendFormat": "Cost Budget %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    }
+  ]
+}

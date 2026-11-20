@@ -114,12 +114,19 @@ class EvaluationPipeline:
         )
 
         passed = overall_score >= self.passing_threshold and deterministic_passed
+        artifact_type = str(context.get("artifact_type", "unknown")) if context else "unknown"
+
+        from product_value_system.monitoring.metrics import get_metrics
+
+        get_metrics().record_evaluation(
+            artifact_type=artifact_type,
+            score=overall_score,
+            passed=passed,
+        )
 
         return EvaluationResult(
             artifact_id=str(artifact.get("id", "unknown")),
-            artifact_type=(
-                str(context.get("artifact_type", "unknown")) if context else "unknown"
-            ),
+            artifact_type=artifact_type,
             judge_results=list(judge_results),
             overall_score=overall_score,
             passed=passed,

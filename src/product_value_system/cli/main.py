@@ -12,6 +12,7 @@ from product_value_system.cli.commands import (
     init_command,
     list_command,
     measure_outcome_command,
+    review_command,
     run_command,
     run_simulation_command,
     show_command,
@@ -118,6 +119,12 @@ def create_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional JSON file path to save captured trajectory (with --capture-trajectory)",
+    )
+    run_parser.add_argument(
+        "--multi-review",
+        action="store_true",
+        default=False,
+        help="Run parallel 4-agent independent review (Security, Perf, Maint, Architecture)",
     )
 
     # pvs run-simulation
@@ -309,6 +316,35 @@ def create_parser() -> argparse.ArgumentParser:
         help="Directory of golden trajectories (default: golden_datasets/trajectories)",
     )
 
+    # pvs review
+    review_parser = subparsers.add_parser(
+        "review",
+        help="Run parallel 4-agent independent review (Elephant-Goldfish pattern)",
+    )
+    review_parser.add_argument(
+        "specification",
+        type=Path,
+        help="Specification file (YAML or JSON)",
+    )
+    review_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional YAML/JSON path to save consolidated review report",
+    )
+    review_parser.add_argument(
+        "--max-high",
+        type=int,
+        default=5,
+        help="Maximum HIGH findings allowed before failing release gate (default: 5)",
+    )
+    review_parser.add_argument(
+        "--use-mock",
+        action="store_true",
+        default=False,
+        help="Force deterministic offline mock reviewers ($0 cost)",
+    )
+
     # pvs status
     status_parser = subparsers.add_parser(
         "status",
@@ -381,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
             return measure_outcome_command(args)
         if args.command == "eval":
             return eval_command(args)
+        if args.command == "review":
+            return review_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

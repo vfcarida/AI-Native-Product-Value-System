@@ -299,7 +299,10 @@ def run_command(args: argparse.Namespace) -> int:
     print(f"Starting value stream run for: {problem['statement'][:60]}...")
 
     try:
-        run = asyncio.run(orchestrator.execute_run(problem))
+        run_config: dict[str, Any] = {}
+        if getattr(args, "multi_review", False):
+            run_config["enable_multi_review"] = True
+        run = asyncio.run(orchestrator.execute_run(problem, config=run_config))
 
         if trajectory_capture is not None:
             final_traj = trajectory_capture.finalize_trajectory(
@@ -1166,4 +1169,124 @@ def eval_command(args: argparse.Namespace) -> int:
         return 0
     except Exception as exc:
         print_error(f"Evaluation failed: {exc}")
+        return 1
+
+
+def review_command(args: argparse.Namespace) -> int:
+    """Run parallel 4-agent independent review (Security, Performance, Maintainability, Arch)."""
+    from product_value_system.harness.context import ExecutionContext
+    from product_value_system.review.orchestrator import MultiAgentReviewOrchestrator
+    from product_value_system.review.synthesizer import ReviewSynthesizer
+
+    spec_path = Path(args.specification)
+    if not spec_path.exists():
+        print_error(f"Specification file not found: {spec_path}")
+        return 1
+
+    with open(spec_path, encoding="utf-8") as f:
+        if spec_path.suffix.lower() == ".json":
+            spec = json.load(f)
+        else:
+            spec = yaml.safe_load(f)
+
+    config = load_config(args)
+    schema_validator = SchemaValidator(Path(config["schemas_dir"]))
+
+    try:
+        schema_validator.validate(spec, "specification.schema.json")
+    except Exception as exc:
+        print_error(f"Specification validation failed: {exc}")
+        return 1
+
+    use_mock = bool(getattr(args, "use_mock", False))
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    live_adapter: Any | None = None
+
+    if not use_mock and openai_key:
+        from product_value_system.adapters.openai_adapter import OpenAIModelAdapter
+
+        live_adapter = OpenAIModelAdapter(
+            api_key=openai_key,
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        )
+    elif not use_mock and anthropic_key:
+        from product_value_system.adapters.anthropic_adapter import AnthropicAdapter
+
+        live_adapter = AnthropicAdapter(
+            api_key=anthropic_key,
+            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        )
+
+    def _mock_harness_factory(reviewer_key: str) -> Harness:
+        mock_payload = json.dumps(
+            {
+                "findings": [],
+                "overall_verdict": "approve",
+                "summary": f"Independent {reviewer_key} review found no blocking defects.",
+            }
+        )
+        return Harness(model_adapter=MockModelAdapter(responses=[mock_payload]))
+
+    synthesizer = ReviewSynthesizer(max_high_findings=int(getattr(args, "max_high", 5)))
+    orchestrator = MultiAgentReviewOrchestrator(
+        schema_validator=schema_validator,
+        harness_factory=None if live_adapter is not None else _mock_harness_factory,
+        model_adapter=live_adapter,
+        synthesizer=synthesizer,
+    )
+
+    try:
+        ctx = ExecutionContext(run_id=f"review-{spec.get('id', 'spec')}", stage_name="review")
+        result = asyncio.run(orchestrator.execute(spec, context=ctx))
+
+        print(f"\nConsolidated Multi-Agent Review: {result.specification_id}")
+        print("=" * 60)
+        print(f"Review ID:    {result.review_id}")
+        print(f"Reviewers:    {', '.join(result.reviewers_executed)}")
+        print(f"Verdict:      {result.verdict}")
+        print(f"Gate:         {result.gate_decision} ({result.gate_reason})")
+        print(f"Duration:     {result.duration_seconds:.2f}s | Cost: ${result.total_cost_usd:.4f}")
+        print(
+            "Findings:     "
+            f"CRITICAL={result.summary['CRITICAL']}, HIGH={result.summary['HIGH']}, "
+            f"MEDIUM={result.summary['MEDIUM']}, LOW={result.summary['LOW']}"
+        )
+
+        if result.findings:
+            print("\nPrioritized Findings:")
+            for finding in result.findings:
+                req = f" [{finding.requirement_id}]" if finding.requirement_id else ""
+                print(
+                    f"  - [{finding.severity.value}] ({finding.category.value} / "
+                    f"{finding.reviewer}){req}: {finding.description}"
+                )
+                print(f"    Recommendation: {finding.recommendation}")
+
+        if result.conflicts:
+            print("\nResolved Conflicts:")
+            for conflict in result.conflicts:
+                print(
+                    f"  - {conflict.conflict_type} ({conflict.requirement_id or 'global'}): "
+                    f"{conflict.resolution} — {conflict.rationale}"
+                )
+
+        output_path = getattr(args, "output", None)
+        if output_path is not None:
+            out_file = Path(output_path)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            if out_file.suffix.lower() == ".json":
+                out_file.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+            else:
+                with open(out_file, "w", encoding="utf-8") as f:
+                    yaml.safe_dump(result.to_dict(), f, sort_keys=False)
+            print_success(f"Saved consolidated review report: {out_file}")
+
+        if result.gate_decision == "FAIL":
+            print_error(f"Review gate FAILED: {result.gate_reason}")
+            return 1
+        print_success(f"Review gate PASSED ({result.verdict})")
+        return 0
+    except Exception as exc:
+        print_error(f"Multi-agent review failed: {exc}")
         return 1
