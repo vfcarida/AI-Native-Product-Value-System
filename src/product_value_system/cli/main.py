@@ -8,6 +8,8 @@ from pathlib import Path
 
 from product_value_system.__version__ import __version__
 from product_value_system.cli.commands import (
+    adr_command,
+    drift_command,
     eval_command,
     experiment_command,
     flags_command,
@@ -521,6 +523,209 @@ def create_parser() -> argparse.ArgumentParser:
     exp_size.add_argument("--power", type=float, default=0.80, help="Statistical power")
     exp_size.add_argument("--daily-traffic", type=int, default=1000, help="Expected daily traffic")
 
+    # pvs drift
+    drift_parser = subparsers.add_parser(
+        "drift",
+        help="Detect specification, API, and behavioral trace drift (EVO-017)",
+    )
+    drift_sub = drift_parser.add_subparsers(dest="drift_action", help="Drift actions")
+
+    drift_check = drift_sub.add_parser(
+        "check",
+        help="Scan code vs specifications (and optional traces) for drift",
+    )
+    drift_check.add_argument("--code", nargs="+", default=["src/"], help="Code path(s) to scan")
+    drift_check.add_argument("--spec", nargs="+", default=["docs/"], help="Spec path(s) to scan")
+    drift_check.add_argument(
+        "--severity",
+        default="critical,major,moderate,minor",
+        help="Comma-separated severities to check (default: all)",
+    )
+    drift_check.add_argument(
+        "--include-behavior",
+        action="store_true",
+        default=False,
+        help="Compare OpenTelemetry traces against behavioral SLA specifications",
+    )
+    drift_check.add_argument(
+        "--traces",
+        nargs="+",
+        default=None,
+        help="OpenTelemetry trace JSON/JSONL file(s) or directory",
+    )
+    drift_check.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="Optional brownfield baseline JSON snapshot to suppress known drift",
+    )
+    drift_check.add_argument(
+        "--save-baseline",
+        type=Path,
+        default=None,
+        help="Save current findings as a baseline JSON snapshot",
+    )
+    drift_check.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Optional Markdown report output path",
+    )
+    drift_check.add_argument(
+        "--json-report",
+        type=Path,
+        default=None,
+        help="Optional JSON report output path",
+    )
+    drift_check.add_argument(
+        "--max-major",
+        type=int,
+        default=3,
+        help="Maximum allowed MAJOR findings before failing gate (default: 3)",
+    )
+
+    drift_report = drift_sub.add_parser(
+        "report",
+        help="Generate Markdown or JSON drift report (supports weekly digest)",
+    )
+    drift_report.add_argument("--code", nargs="+", default=["src/"], help="Code path(s) to scan")
+    drift_report.add_argument("--spec", nargs="+", default=["docs/"], help="Spec path(s) to scan")
+    drift_report.add_argument(
+        "--output",
+        type=Path,
+        default=Path("drift_report.md"),
+        help="Report output path (default: drift_report.md)",
+    )
+    drift_report.add_argument(
+        "--format",
+        choices=["markdown", "json"],
+        default="markdown",
+        help="Report output format (default: markdown)",
+    )
+    drift_report.add_argument(
+        "--since",
+        default=None,
+        help="Optional reporting window label (e.g., '7 days ago')",
+    )
+    drift_report.add_argument(
+        "--include-behavior",
+        action="store_true",
+        default=False,
+        help="Include behavioral OpenTelemetry trace comparison",
+    )
+    drift_report.add_argument("--traces", nargs="+", default=None, help="Trace path(s)")
+
+    drift_hook = drift_sub.add_parser(
+        "install-hook",
+        help="Install Git pre-commit drift detection hook",
+    )
+    drift_hook.add_argument(
+        "--hooks-dir",
+        type=Path,
+        default=Path(".git/hooks"),
+        help="Target Git hooks directory (default: .git/hooks)",
+    )
+
+    # pvs adr
+    adr_parser = subparsers.add_parser(
+        "adr",
+        help="Manage Architecture Decision Records (EVO-018)",
+    )
+    adr_parser.add_argument(
+        "--dir",
+        dest="adr_dir",
+        type=Path,
+        default=Path("docs/adr"),
+        help="ADR directory (default: docs/adr)",
+    )
+    adr_sub = adr_parser.add_subparsers(dest="adr_action", help="ADR actions")
+
+    adr_new = adr_sub.add_parser("new", help="Create a new auto-numbered ADR")
+    adr_new.add_argument("title", help="ADR title")
+    adr_new.add_argument("--author", default="unknown", help="ADR author(s), comma-separated")
+    adr_new.add_argument(
+        "--status",
+        choices=["proposed", "accepted", "deprecated", "superseded"],
+        default="proposed",
+        help="Initial status (default: proposed)",
+    )
+    adr_new.add_argument("--context", default="", help="Optional initial context")
+    adr_new.add_argument("--decision", default="", help="Optional initial decision")
+    adr_new.add_argument("--req", action="append", default=[], help="Related requirement ID")
+    adr_new.add_argument("--code", action="append", default=[], help="Related code path")
+    adr_new.add_argument("--tag", action="append", default=[], help="ADR tag")
+    adr_new.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_list = adr_sub.add_parser("list", help="List ADRs with optional filtering")
+    adr_list.add_argument(
+        "--status",
+        choices=["proposed", "accepted", "deprecated", "superseded"],
+        default=None,
+        help="Filter by status",
+    )
+    adr_list.add_argument("--tag", default=None, help="Filter by tag")
+    adr_list.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    adr_list.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_show = adr_sub.add_parser("show", help="Display an ADR by ID")
+    adr_show.add_argument("adr_id", help="ADR ID (e.g., ADR-0001)")
+    adr_show.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_search = adr_sub.add_parser("search", help="Search ADRs by keyword")
+    adr_search.add_argument("query", help="Search keyword")
+    adr_search.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_supersede = adr_sub.add_parser(
+        "supersede",
+        help="Mark an existing ADR as superseded by a newer ADR",
+    )
+    adr_supersede.add_argument("old_adr_id", help="ID of ADR being superseded")
+    adr_supersede.add_argument("new_adr_id", help="ID of superseding ADR")
+    adr_supersede.add_argument(
+        "--dir", dest="adr_dir", type=Path, default=None, help="ADR directory"
+    )
+
+    adr_accept = adr_sub.add_parser("accept", help="Mark a proposed ADR as accepted")
+    adr_accept.add_argument("adr_id", help="ADR ID to accept")
+    adr_accept.add_argument("--reviewer", default=None, help="Approving reviewer handle")
+    adr_accept.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_deprecate = adr_sub.add_parser("deprecate", help="Mark an ADR as deprecated")
+    adr_deprecate.add_argument("adr_id", help="ADR ID to deprecate")
+    adr_deprecate.add_argument(
+        "--dir", dest="adr_dir", type=Path, default=None, help="ADR directory"
+    )
+
+    adr_graph = adr_sub.add_parser(
+        "graph",
+        help="Print Mermaid decision graph visualizing ADR supersession links",
+    )
+    adr_graph.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_log = adr_sub.add_parser(
+        "log",
+        help="Generate Markdown decision log for team onboarding",
+    )
+    adr_log.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output Markdown path (prints to stdout if omitted)",
+    )
+    adr_log.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
+    adr_scan = adr_sub.add_parser(
+        "scan-code",
+        help="Scan source code comments for `# See ADR-XXXX` references",
+    )
+    adr_scan.add_argument("--code", nargs="+", default=["src/"], help="Source path(s) to scan")
+    adr_scan.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
+
     # pvs validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -567,6 +772,10 @@ def main(argv: list[str] | None = None) -> int:
             return flags_command(args)
         if args.command == "experiment":
             return experiment_command(args)
+        if args.command == "drift":
+            return drift_command(args)
+        if args.command == "adr":
+            return adr_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

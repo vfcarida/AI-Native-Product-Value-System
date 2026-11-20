@@ -1529,3 +1529,273 @@ def experiment_command(args: argparse.Namespace) -> int:
 
     print_error(f"Unknown experiment action: {action}")
     return 1
+
+
+def drift_command(args: argparse.Namespace) -> int:
+    """Run automated code-to-spec and trace drift detection commands (EVO-017)."""
+    from product_value_system.drift.comparator import DriftSeverity
+    from product_value_system.drift.detector import scan_drift
+    from product_value_system.drift.reporter import DriftReporter
+
+    action = getattr(args, "drift_action", None) or "check"
+    reporter = DriftReporter()
+
+    if action == "install-hook":
+        hooks_dir = Path(getattr(args, "hooks_dir", Path(".git/hooks")))
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        hook_path = hooks_dir / "pre-commit"
+        snippet = (
+            "\n# EVO-017: Automated drift detection gate\n"
+            "python scripts/pre-commit-drift-check.py --severity critical,major\n"
+        )
+        if hook_path.exists():
+            existing = hook_path.read_text(encoding="utf-8")
+            if "pre-commit-drift-check.py" not in existing:
+                hook_path.write_text(existing.rstrip() + "\n" + snippet, encoding="utf-8")
+        else:
+            hook_path.write_text("#!/usr/bin/env bash\nset -e\n" + snippet, encoding="utf-8")
+        try:
+            hook_path.chmod(0o755)
+        except OSError:
+            pass
+        print_success(f"Installed drift detection pre-commit hook at: {hook_path}")
+        return 0
+
+    if action == "report":
+        try:
+            scan = scan_drift(
+                code_paths=list(args.code),
+                spec_paths=list(args.spec),
+                trace_paths=list(args.traces) if args.traces else None,
+                include_behavior=bool(getattr(args, "include_behavior", False)),
+            )
+            out_path = Path(args.output)
+            if getattr(args, "format", "markdown") == "json" or out_path.suffix.lower() == ".json":
+                summary = reporter.generate_report(
+                    scan.findings,
+                    out_path,
+                    total_checked=scan.total_checked,
+                    since=getattr(args, "since", None),
+                )
+            else:
+                reporter.generate_markdown_report(
+                    scan.findings,
+                    out_path,
+                    total_checked=scan.total_checked,
+                    since=getattr(args, "since", None),
+                )
+                summary = reporter.summarize(scan.findings, total_checked=scan.total_checked)
+
+            print_success(
+                f"Drift report written to {out_path} "
+                f"({summary['diverged_items']} diverged items, "
+                f"{summary['total_findings']} findings)"
+            )
+            return 0
+        except Exception as exc:
+            print_error(f"Drift report generation failed: {exc}")
+            return 1
+
+    if action == "check":
+        try:
+            severities = {
+                DriftSeverity[s.strip().upper()]
+                for s in str(args.severity).split(",")
+                if s.strip()
+            }
+            scan = scan_drift(
+                code_paths=list(args.code),
+                spec_paths=list(args.spec),
+                trace_paths=list(args.traces) if args.traces else None,
+                include_behavior=bool(getattr(args, "include_behavior", False)),
+                baseline_path=getattr(args, "baseline", None),
+            )
+            filtered = [f for f in scan.findings if f.severity in severities]
+
+            save_baseline = getattr(args, "save_baseline", None)
+            if save_baseline is not None:
+                reporter.generate_report(
+                    scan.findings,
+                    save_baseline,
+                    total_checked=scan.total_checked,
+                )
+                print_success(f"Saved drift baseline snapshot: {save_baseline}")
+
+            if getattr(args, "report", None) is not None:
+                reporter.generate_markdown_report(
+                    filtered,
+                    args.report,
+                    total_checked=scan.total_checked,
+                )
+            if getattr(args, "json_report", None) is not None:
+                reporter.generate_report(
+                    filtered,
+                    args.json_report,
+                    total_checked=scan.total_checked,
+                )
+
+            summary = reporter.summarize(filtered, total_checked=scan.total_checked)
+            print(
+                f"Scanned {scan.code_functions_count} code functions, "
+                f"{scan.code_endpoints_count} endpoints vs "
+                f"{scan.spec_functions_count} spec functions, "
+                f"{scan.spec_endpoints_count} OpenAPI endpoints."
+            )
+            if filtered:
+                print(
+                    f"Found {len(filtered)} drift finding(s) "
+                    f"(critical={summary['critical']}, major={summary['major']}, "
+                    f"moderate={summary['moderate']}, minor={summary['minor']}):"
+                )
+                for finding in filtered:
+                    print(f"  [{finding.severity.value.upper()}] {finding.description}")
+                    print(f"    Code: {finding.code_location}")
+                    print(f"    Spec: {finding.spec_location}")
+                    print(f"    Fix:  {finding.suggestion}")
+                return 1
+
+            print_success("No drift detected.")
+            return 0
+        except Exception as exc:
+            print_error(f"Drift check failed: {exc}")
+            return 1
+
+    print_error(f"Unknown drift action: {action}")
+    return 1
+
+
+def adr_command(args: argparse.Namespace) -> int:
+    """Manage Architecture Decision Records (EVO-018)."""
+    from product_value_system.adr.manager import ADRManager
+
+    action = getattr(args, "adr_action", None) or "list"
+    adr_dir = getattr(args, "adr_dir", None) or Path("docs/adr")
+    manager = ADRManager(adr_dir=adr_dir)
+
+    if action == "new":
+        try:
+            adr = manager.create(
+                title=args.title,
+                author=args.author,
+                context=args.context,
+                decision=args.decision,
+                status=args.status,
+                related_requirements=list(args.req),
+                related_code=list(args.code),
+                tags=list(args.tag),
+            )
+            print_success(f"Created {adr.metadata.id}: {adr.title}")
+            print(f"Edit: {adr.file_path}")
+            return 0
+        except Exception as exc:
+            print_error(f"Failed to create ADR: {exc}")
+            return 1
+
+    if action == "list":
+        adrs = manager.list_adrs(
+            status=getattr(args, "status", None),
+            tag=getattr(args, "tag", None),
+        )
+        if getattr(args, "format", "table") == "json":
+            data = [
+                {
+                    "id": a.metadata.id,
+                    "status": a.metadata.status,
+                    "date": a.metadata.date,
+                    "title": a.title,
+                    "authors": a.metadata.authors,
+                    "supersedes": a.metadata.supersedes,
+                    "file_path": a.file_path,
+                }
+                for a in adrs
+            ]
+            print(json.dumps(data, indent=2))
+            return 0
+
+        print(f"\n{'ID':<12} {'Status':<12} {'Date':<12} {'Title'}")
+        print("-" * 80)
+        for a in adrs:
+            print(f"{a.metadata.id:<12} {a.metadata.status:<12} {a.metadata.date:<12} {a.title}")
+        return 0
+
+    if action == "show":
+        adr_found = manager.get(args.adr_id)
+        if adr_found is None:
+            print_error(f"ADR {args.adr_id} not found")
+            return 1
+        print(f"\n# {adr_found.metadata.id}: {adr_found.title}\n")
+        print(f"Status:  {adr_found.metadata.status}")
+        print(f"Date:    {adr_found.metadata.date}")
+        print(f"Authors: {', '.join(adr_found.metadata.authors)}")
+        if adr_found.metadata.supersedes:
+            print(f"Supersedes: {', '.join(adr_found.metadata.supersedes)}")
+        print(f"\n## Context\n\n{adr_found.context}")
+        print(f"\n## Decision\n\n{adr_found.decision}")
+        if adr_found.alternatives:
+            print("\n## Alternatives Considered\n")
+            for alt in adr_found.alternatives:
+                print(f"- {alt['name']}: {alt.get('verdict', 'N/A')}")
+        print(f"\nFull ADR: {adr_found.file_path}")
+        return 0
+
+    if action == "search":
+        results = manager.search(args.query)
+        print(f"Found {len(results)} ADR(s) matching '{args.query}':\n")
+        for a in results:
+            print(f"{a.metadata.id}: {a.title}")
+            print(f"  Status: {a.metadata.status}, Date: {a.metadata.date}\n")
+        return 0
+
+    if action == "supersede":
+        try:
+            old_adr, new_adr = manager.supersede(args.old_adr_id, args.new_adr_id)
+            print_success(f"{old_adr.metadata.id} superseded by {new_adr.metadata.id}")
+            return 0
+        except ValueError as exc:
+            print_error(str(exc))
+            return 1
+
+    if action == "accept":
+        try:
+            adr_acc = manager.accept(args.adr_id, reviewer=getattr(args, "reviewer", None))
+            print_success(f"{adr_acc.metadata.id} marked as accepted")
+            return 0
+        except ValueError as exc:
+            print_error(str(exc))
+            return 1
+
+    if action == "deprecate":
+        try:
+            adr_dep = manager.deprecate(args.adr_id)
+            print_success(f"{adr_dep.metadata.id} marked as deprecated")
+            return 0
+        except ValueError as exc:
+            print_error(str(exc))
+            return 1
+
+    if action == "graph":
+        print(manager.build_decision_graph())
+        return 0
+
+    if action == "log":
+        out = getattr(args, "output", None)
+        log_md = manager.generate_decision_log(output_path=out)
+        if out is not None:
+            print_success(f"Decision log written to {out}")
+        else:
+            print(log_md)
+        return 0
+
+    if action == "scan-code":
+        refs = manager.scan_code_references(list(args.code))
+        if not refs:
+            print("No inline `# See ADR-XXXX` code references found.")
+            return 0
+        for ref_id, locations in sorted(refs.items()):
+            print(f"{ref_id}: {len(locations)} reference(s)")
+            for loc in locations:
+                print(f"  - {loc}")
+        return 0
+
+    print_error(f"Unknown adr action: {action}")
+    return 1
