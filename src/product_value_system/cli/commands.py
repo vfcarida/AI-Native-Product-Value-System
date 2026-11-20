@@ -1527,6 +1527,77 @@ def experiment_command(args: argparse.Namespace) -> int:
             print_error(f"Experiment analysis failed: {exc}")
             return 1
 
+    if action == "validate-baseline":
+        from datetime import datetime as dt_cls
+
+        from product_value_system.validation import (
+            BaselineCollector,
+            BaselineData,
+            StabilityChecker,
+            StatisticalValidator,
+            ValidationGate,
+        )
+        from product_value_system.validation import (
+            PowerAnalyzer as BaselinePowerAnalyzer,
+        )
+
+        try:
+            baseline_file = getattr(args, "baseline_file", None)
+            traces_file = getattr(args, "traces", None)
+            if baseline_file is not None:
+                baseline = BaselineData.load(baseline_file)
+            elif traces_file is not None:
+                collector = BaselineCollector()
+                start_dt = (
+                    dt_cls.fromisoformat(str(args.start).replace("Z", "+00:00"))
+                    if getattr(args, "start", None)
+                    else None
+                )
+                end_dt = (
+                    dt_cls.fromisoformat(str(args.end).replace("Z", "+00:00"))
+                    if getattr(args, "end", None)
+                    else None
+                )
+                baseline = collector.collect_from_trace_file(
+                    traces_file,
+                    metric_name=str(args.metric),
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
+            else:
+                print_error("Provide either a baseline_file or --traces path")
+                return 1
+
+            gate = ValidationGate(
+                collector=BaselineCollector(),
+                validator=StatisticalValidator(
+                    min_sample_size=int(args.min_samples),
+                    max_cv=float(args.max_cv),
+                ),
+                power_analyzer=BaselinePowerAnalyzer(target_power=float(args.target_power)),
+                stability_checker=StabilityChecker(),
+            )
+            gate_result = gate.validate_baseline(
+                baseline,
+                effect_size_percent=float(args.effect_size),
+                strict=not bool(getattr(args, "non_strict", False)),
+            )
+            print(f"\n{gate_result.summary}")
+
+            out_path = getattr(args, "output", None)
+            if out_path is not None:
+                out_file = Path(out_path)
+                out_file.parent.mkdir(parents=True, exist_ok=True)
+                out_file.write_text(json.dumps(gate_result.to_dict(), indent=2), encoding="utf-8")
+                print_success(f"Saved baseline validation report: {out_file}")
+
+            if gate_result.passed or gate_result.can_proceed_with_warning:
+                return 0
+            return 1
+        except Exception as exc:
+            print_error(f"Baseline validation failed: {exc}")
+            return 1
+
     print_error(f"Unknown experiment action: {action}")
     return 1
 
@@ -1798,4 +1869,112 @@ def adr_command(args: argparse.Namespace) -> int:
         return 0
 
     print_error(f"Unknown adr action: {action}")
+    return 1
+
+
+def spec_command(args: argparse.Namespace) -> int:
+    """Execute Spec-Kit template, validation, traceability, and export commands (EVO-020)."""
+    from product_value_system.spec_kit import SpecManager
+
+    action = getattr(args, "spec_action", None)
+    if not action:
+        print_error("Specify a spec subcommand: new, validate, trace, coverage, or export")
+        return 1
+
+    if action == "new":
+        try:
+            manager = SpecManager(spec_dir=args.spec_dir)
+            variables: dict[str, str] = {
+                "USER_ROLE": str(args.role),
+                "METHOD": str(args.method).upper(),
+                "CATEGORY": str(args.category),
+            }
+            if getattr(args, "goal", None):
+                variables["GOAL"] = str(args.goal)
+            if getattr(args, "benefit", None):
+                variables["BENEFIT"] = str(args.benefit)
+            if getattr(args, "api_path", None):
+                variables["PATH"] = str(args.api_path)
+
+            created_path = manager.create(
+                args.template_type,
+                title=args.title,
+                spec_id=getattr(args, "spec_id", None),
+                variables=variables,
+                output_path=getattr(args, "output", None),
+            )
+            print_success(f"Created specification: {created_path}")
+            return 0
+        except Exception as exc:
+            print_error(f"Failed to create specification: {exc}")
+            return 1
+
+    if action == "validate":
+        target = Path(args.target)
+        if not target.exists():
+            print_error(f"Specification path not found: {target}")
+            return 1
+        manager = SpecManager()
+        min_score = float(getattr(args, "min_score", 0.0))
+
+        if target.is_file():
+            res = manager.validate(target, spec_type=getattr(args, "spec_type", None))
+            passed = res.valid and res.score >= min_score
+            verdict = "PASSED" if passed else "FAILED"
+            print(f"Spec validation {verdict} ({res.spec_type}, Score: {res.score:.0f}/100)")
+            for issue in res.issues:
+                print(
+                    f"  [{issue.severity.upper()}] ({issue.location}) {issue.message} "
+                    f"— {issue.suggestion}"
+                )
+            return 0 if passed else 1
+
+        results = manager.validate_directory(target)
+        all_passed = True
+        for file_str, res in results.items():
+            ok = res.valid and res.score >= min_score
+            if not ok:
+                all_passed = False
+            status = "PASS" if ok else "FAIL"
+            print(f"[{status}] {file_str} ({res.spec_type}, {res.score:.0f}/100)")
+        return 0 if all_passed else 1
+
+    if action == "trace":
+        manager = SpecManager(project_root=args.root)
+        links = manager.trace(args.spec_id)
+        code_links = [lnk for lnk in links if lnk.target_type == "code"]
+        test_links = [lnk for lnk in links if lnk.target_type == "test"]
+        print(f"{args.spec_id} referenced in ({len(links)} total):")
+        print("  Code:")
+        for lnk in code_links:
+            print(f"    - {lnk.target_path}:{lnk.line_number} ({lnk.context})")
+        print("  Tests:")
+        for lnk in test_links:
+            print(f"    - {lnk.target_path}:{lnk.line_number} ({lnk.context})")
+        return 0
+
+    if action == "coverage":
+        manager = SpecManager(spec_dir=args.spec_dir, project_root=args.root)
+        report = manager.coverage(args.spec_dir)
+        if getattr(args, "format", "text") == "json":
+            print(json.dumps(report, indent=2))
+            return 0
+        print("\nTraceability Coverage Report")
+        print("=" * 50)
+        print(f"Total specs:       {report['total_specs']}")
+        print(f"Specs with code:   {report['specs_with_code']}")
+        print(f"Specs with tests:  {report['specs_with_tests']}")
+        print(f"Orphaned specs:    {len(report['orphaned_specs'])}")
+        for orphan in report["orphaned_specs"]:
+            print(f"  - {orphan}")
+        print(f"Overall coverage:  {report['coverage_percentage']:.1f}%")
+        return 0
+
+    if action == "export":
+        manager = SpecManager(spec_dir=args.spec_dir, project_root=args.root)
+        manager.export_docs(directory=args.spec_dir, output_path=args.output)
+        print_success(f"Exported specification catalog to {args.output}")
+        return 0
+
+    print_error(f"Unknown spec action: {action}")
     return 1

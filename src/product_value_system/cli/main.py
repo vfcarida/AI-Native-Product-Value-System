@@ -20,6 +20,7 @@ from product_value_system.cli.commands import (
     run_command,
     run_simulation_command,
     show_command,
+    spec_command,
     status_command,
     validate_command,
 )
@@ -523,6 +524,67 @@ def create_parser() -> argparse.ArgumentParser:
     exp_size.add_argument("--power", type=float, default=0.80, help="Statistical power")
     exp_size.add_argument("--daily-traffic", type=int, default=1000, help="Expected daily traffic")
 
+    exp_validate = exp_sub.add_parser(
+        "validate-baseline",
+        help="Validate baseline statistical quality, power, and stability (EVO-019)",
+    )
+    exp_validate.add_argument(
+        "baseline_file",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="Path to baseline JSON/YAML file",
+    )
+    exp_validate.add_argument(
+        "--traces",
+        type=Path,
+        default=None,
+        help="OpenTelemetry trace JSON/JSONL file to extract baseline from",
+    )
+    exp_validate.add_argument(
+        "--metric",
+        default="latency_ms",
+        help="Metric name when extracting from traces (default: latency_ms)",
+    )
+    exp_validate.add_argument("--start", default=None, help="Optional ISO start timestamp filter")
+    exp_validate.add_argument("--end", default=None, help="Optional ISO end timestamp filter")
+    exp_validate.add_argument(
+        "--effect-size",
+        type=float,
+        default=10.0,
+        help="Target detectable effect size in percent (default: 10.0)",
+    )
+    exp_validate.add_argument(
+        "--min-samples",
+        type=int,
+        default=30,
+        help="Minimum required baseline sample size (default: 30)",
+    )
+    exp_validate.add_argument(
+        "--max-cv",
+        type=float,
+        default=0.30,
+        help="Maximum allowed coefficient of variation (default: 0.30)",
+    )
+    exp_validate.add_argument(
+        "--target-power",
+        type=float,
+        default=0.80,
+        help="Target statistical power (default: 0.80)",
+    )
+    exp_validate.add_argument(
+        "--non-strict",
+        action="store_true",
+        default=False,
+        help="Allow proceeding with warnings if no hard statistical errors exist",
+    )
+    exp_validate.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional JSON output path for validation gate result",
+    )
+
     # pvs drift
     drift_parser = subparsers.add_parser(
         "drift",
@@ -726,6 +788,109 @@ def create_parser() -> argparse.ArgumentParser:
     adr_scan.add_argument("--code", nargs="+", default=["src/"], help="Source path(s) to scan")
     adr_scan.add_argument("--dir", dest="adr_dir", type=Path, default=None, help="ADR directory")
 
+    # pvs spec
+    spec_parser = subparsers.add_parser(
+        "spec",
+        help="Spec-Kit templates, validation, traceability, and export (EVO-020)",
+    )
+    spec_sub = spec_parser.add_subparsers(dest="spec_action", help="Spec-Kit actions")
+
+    spec_new = spec_sub.add_parser("new", help="Generate a Spec-Kit specification from template")
+    spec_new.add_argument(
+        "template_type",
+        choices=["user-story", "scenario", "api-contract", "nfr", "decision"],
+        help="Template type to generate",
+    )
+    spec_new.add_argument("--title", required=True, help="Specification title or feature name")
+    spec_new.add_argument(
+        "--id",
+        dest="spec_id",
+        default=None,
+        help="Optional explicit ID (e.g., US-042)",
+    )
+    spec_new.add_argument("--role", default="customer", help="User role for user stories")
+    spec_new.add_argument("--goal", default=None, help="Goal statement for user stories")
+    spec_new.add_argument("--benefit", default=None, help="Benefit statement for user stories")
+    spec_new.add_argument("--method", default="POST", help="HTTP method for API contracts")
+    spec_new.add_argument(
+        "--path",
+        dest="api_path",
+        default=None,
+        help="URL path for API contracts",
+    )
+    spec_new.add_argument("--category", default="performance", help="Category for NFRs")
+    spec_new.add_argument(
+        "--dir",
+        dest="spec_dir",
+        type=Path,
+        default=Path("docs/specs"),
+        help="Target specs directory (default: docs/specs)",
+    )
+    spec_new.add_argument("--output", type=Path, default=None, help="Explicit output Markdown path")
+
+    spec_val = spec_sub.add_parser(
+        "validate",
+        help="Validate specification completeness and score (0-100)",
+    )
+    spec_val.add_argument("target", type=Path, help="Specification Markdown file or directory")
+    spec_val.add_argument(
+        "--type",
+        dest="spec_type",
+        default=None,
+        help="Optional explicit spec type",
+    )
+    spec_val.add_argument(
+        "--min-score",
+        type=float,
+        default=0.0,
+        help="Optional minimum score threshold (0-100)",
+    )
+
+    spec_trace = spec_sub.add_parser(
+        "trace",
+        help="Find source code and test references for a specification ID",
+    )
+    spec_trace.add_argument("spec_id", help="Specification ID (e.g., US-042, SCENARIO-015)")
+    spec_trace.add_argument("--root", type=Path, default=Path("."), help="Project root directory")
+
+    spec_cov = spec_sub.add_parser(
+        "coverage",
+        help="Report spec-to-code and spec-to-test traceability coverage",
+    )
+    spec_cov.add_argument(
+        "spec_dir",
+        nargs="?",
+        type=Path,
+        default=Path("docs/specs"),
+        help="Specifications directory (default: docs/specs)",
+    )
+    spec_cov.add_argument("--root", type=Path, default=Path("."), help="Project root directory")
+    spec_cov.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    spec_export = spec_sub.add_parser(
+        "export",
+        help="Export consolidated Markdown catalog of specifications",
+    )
+    spec_export.add_argument(
+        "spec_dir",
+        nargs="?",
+        type=Path,
+        default=Path("docs/specs"),
+        help="Specifications directory (default: docs/specs)",
+    )
+    spec_export.add_argument("--root", type=Path, default=Path("."), help="Project root directory")
+    spec_export.add_argument(
+        "--output",
+        type=Path,
+        default=Path("docs/specs/CATALOG.md"),
+        help="Output Markdown catalog path",
+    )
+
     # pvs validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -776,6 +941,8 @@ def main(argv: list[str] | None = None) -> int:
             return drift_command(args)
         if args.command == "adr":
             return adr_command(args)
+        if args.command == "spec":
+            return spec_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

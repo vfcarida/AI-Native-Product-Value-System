@@ -52,9 +52,45 @@ class ABTest:
         self.completed_at: datetime | None = None
         self.alert_callback = alert_callback
         self.alerts_sent: list[str] = []
+        self.baseline_gate_result: Any | None = None
 
-    def start(self, *, started_at: datetime | None = None) -> None:
-        """Transition experiment from DRAFT to RUNNING."""
+    def start(
+        self,
+        *,
+        started_at: datetime | None = None,
+        baseline: Any | None = None,
+        validation_gate: Any | None = None,
+        auto_validate: bool = False,
+        strict_validation: bool = True,
+        effect_size_percent: float | None = None,
+    ) -> None:
+        """
+        Transition experiment from DRAFT to RUNNING.
+
+        When ``auto_validate=True`` (or ``baseline`` is supplied), runs EVO-019
+        ``ValidationGate`` before starting and raises ``ValueError`` if blocked.
+        """
+        if auto_validate or baseline is not None:
+            if baseline is None:
+                raise ValueError("baseline data is required when auto_validate=True")
+            if validation_gate is None:
+                from product_value_system.validation.gate import ValidationGate
+
+                validation_gate = ValidationGate()
+            effect_pct = (
+                effect_size_percent
+                if effect_size_percent is not None
+                else self.design.hypothesis.minimum_detectable_effect * 100.0
+            )
+            gate_result = validation_gate.validate_baseline(
+                baseline,
+                effect_size_percent=effect_pct,
+                strict=strict_validation,
+            )
+            self.baseline_gate_result = gate_result
+            if not gate_result.passed and not gate_result.can_proceed_with_warning:
+                raise ValueError(f"Baseline validation failed:\n{gate_result.summary}")
+
         self.status = ExperimentStatus.RUNNING
         self.started_at = started_at or datetime.now(UTC)
 

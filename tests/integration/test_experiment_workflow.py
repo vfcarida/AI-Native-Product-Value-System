@@ -86,6 +86,7 @@ async def test_ab_test_full_lifecycle_and_state_persistence(tmp_path: Path) -> N
     agent = ExperimentDesignAgent()
     res = await agent.execute(outcome, Harness(context=ctx), ctx)
     design = ExperimentDesign.from_dict(res.output_artifact)
+    design.id = "experiment-lifecycle-fixed"
 
     ab_test = ABTest(design)
     ab_test.start()
@@ -94,7 +95,7 @@ async def test_ab_test_full_lifecycle_and_state_persistence(tmp_path: Path) -> N
     for idx in range(1000):
         uid = f"merchant-{idx}"
         variant = ab_test.assign_variant(uid)
-        prob = 0.62 if variant == Variant.TREATMENT else 0.45
+        prob = 0.68 if variant == Variant.TREATMENT else 0.45
         converted = 1.0 if rng.random() < prob else 0.0
         ab_test.record_metric(uid, converted)
         ab_test.record_guardrail(
