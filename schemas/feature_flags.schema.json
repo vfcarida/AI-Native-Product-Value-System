@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://product-value-system.local/schemas/feature_flags.schema.json",
+  "title": "Feature Flags Configuration",
+  "description": "Schema for EVO-015 progressive delivery and feature flag definitions (flags.yaml).",
+  "type": "object",
+  "required": ["flags"],
+  "additionalProperties": false,
+  "properties": {
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "enabled", "rollout_stage", "rollout_percentage"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{1,63}$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "type": {
+            "type": "string",
+            "enum": ["release", "experiment", "ops", "permission"]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "rollout_stage": {
+            "type": "string",
+            "enum": ["dark", "canary", "staged_5", "staged_25", "staged_50", "full"]
+          },
+          "rollout_percentage": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "targeting_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["user_id", "environment", "percentage", "attribute"]
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": ["in", "not_in", "equals", "not_equals"]
+                },
+                "attribute": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "value": {},
+                "values": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

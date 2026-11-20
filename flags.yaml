@@ -1,0 +1,52 @@
+# EVO-015: Feature Flags & Progressive Delivery Configuration
+# Managed via Git, CLI (`pvs flags`), or Admin UI (`/admin/flags`).
+flags:
+  - name: new_discovery_prompt
+    description: "Enhanced discovery agent prompt with TinyTroupe simulation"
+    type: release
+    enabled: true
+    rollout_stage: canary
+    rollout_percentage: 0.05
+    targeting_rules:
+      - type: user_id
+        operator: in
+        values:
+          - user-123
+          - user-456
+      - type: percentage
+        value: 0.05
+    created_at: "2026-11-20T10:00:00Z"
+    updated_at: "2026-11-20T10:00:00Z"
+
+  - name: multi_agent_review
+    description: "Multi-agent independent review (Elephant-Goldfish pattern, EVO-013)"
+    type: release
+    enabled: true
+    rollout_stage: dark
+    rollout_percentage: 0.0
+    targeting_rules:
+      - type: environment
+        operator: equals
+        value: staging
+    created_at: "2026-11-20T11:00:00Z"
+    updated_at: "2026-11-20T11:00:00Z"
+
+  - name: cost_kill_switch
+    description: "Emergency stop for runaway LLM/agent execution costs"
+    type: ops
+    enabled: false
+    rollout_stage: full
+    rollout_percentage: 1.0
+    targeting_rules: []
+    created_at: "2026-11-20T12:00:00Z"
+    updated_at: "2026-11-20T12:00:00Z"
+
+  - name: experiment_concise_spec_format
+    description: "A/B experiment comparing structured specification output format"
+    type: experiment
+    enabled: true
+    rollout_stage: staged_25
+    rollout_percentage: 0.25
+    targeting_rules: []
+    created_at: "2026-11-20T12:30:00Z"
+    updated_at: "2026-11-20T12:30:00Z"

@@ -52,6 +52,8 @@ class ValueStreamOrchestrator:
         feedback_loop: FeedbackLoop | None = None,
         use_multi_agent_review: bool = False,
         review_orchestrator: Any | None = None,
+        feature_flag_service: Any | None = None,
+        experiment_design_agent: Any | None = None,
     ) -> None:
         """
         Initialize orchestrator.
@@ -68,6 +70,8 @@ class ValueStreamOrchestrator:
             feedback_loop: Optional FeedbackLoop for alerts and Discovery feedback
             use_multi_agent_review: Enable parallel 4-agent independent review synthesis
             review_orchestrator: Optional pre-configured MultiAgentReviewOrchestrator
+            feature_flag_service: Optional FeatureFlagService for progressive delivery gating
+            experiment_design_agent: Optional ExperimentDesignAgent for A/B experiment blueprints
         """
         self.agents = agents
         self.evaluation_pipeline = evaluation_pipeline
@@ -78,6 +82,8 @@ class ValueStreamOrchestrator:
         self.events: list[dict[str, Any]] = []
         self.use_multi_agent_review = use_multi_agent_review
         self.review_orchestrator = review_orchestrator
+        self.feature_flag_service = feature_flag_service
+        self.experiment_design_agent = experiment_design_agent or agents.get("experiment_design")
 
         self.outcome_tracker: OutcomeTracker | None = outcome_tracker or (
             OutcomeTracker(analytics_adapter) if analytics_adapter is not None else None
@@ -109,6 +115,37 @@ class ValueStreamOrchestrator:
                 "data": data,
             }
         )
+
+    def _evaluate_flag(
+        self,
+        flag_name: str,
+        run_id: str,
+        config: dict[str, Any],
+    ) -> Any | None:
+        """Evaluate feature flag if configured and emit an audit event."""
+        if self.feature_flag_service is None:
+            return None
+        user_id = config.get("user_id")
+        req_ctx = dict(config.get("request_context") or {})
+        req_ctx.setdefault("request_id", run_id)
+        if "environment" in config and "environment" not in req_ctx:
+            req_ctx["environment"] = config["environment"]
+        evaluation = self.feature_flag_service.is_enabled(
+            flag_name,
+            user_id=str(user_id) if user_id is not None else None,
+            request_context=req_ctx,
+        )
+        self._emit_event("feature_flag.evaluated", run_id, evaluation.to_dict())
+        return evaluation
+
+    def _is_multi_review_enabled(self, run_id: str, config: dict[str, Any]) -> bool:
+        """Determine whether multi-agent review is active via config or feature flag."""
+        if "enable_multi_review" in config:
+            return bool(config["enable_multi_review"])
+        if self.use_multi_agent_review:
+            return True
+        evaluation = self._evaluate_flag("multi_agent_review", run_id, config)
+        return bool(evaluation and evaluation.enabled)
 
     def _get_harness(self, stage_name: str, run_id: str, agent_name: str) -> Harness:
         """Build or retrieve harness for an agent execution."""
@@ -164,6 +201,13 @@ class ValueStreamOrchestrator:
         metrics.track_active_run(1)
 
         try:
+            kill_eval = self._evaluate_flag("cost_kill_switch", run.id, config)
+            if kill_eval is not None and kill_eval.enabled:
+                raise OrchestratorError(
+                    "Run blocked by ops feature flag 'cost_kill_switch' "
+                    f"({kill_eval.reason})"
+                )
+
             while True:
                 next_stage = state_machine.get_next_stage()
                 if not next_stage:
@@ -320,6 +364,7 @@ class ValueStreamOrchestrator:
                 if not agent:
                     raise OrchestratorError("Discovery agent not found")
 
+                discovery_flag = self._evaluate_flag("new_discovery_prompt", run.id, config)
                 output_artifact, cost_usd = await self._invoke_agent(
                     agent, problem, stage_name, run.id
                 )
@@ -333,6 +378,40 @@ class ValueStreamOrchestrator:
                 stage_result.artifact_path = artifact_path
                 stage_result.agent_name = getattr(agent, "name", "discovery-agent")
                 stage_result.cost_usd = cost_usd
+                if discovery_flag is not None:
+                    stage_result.metadata["new_discovery_prompt"] = discovery_flag.enabled
+                if config.get("enable_experiment_design", False):
+                    exp_agent = self.experiment_design_agent
+                    if exp_agent is None:
+                        from product_value_system.agents.experiment_design_agent import (
+                            ExperimentDesignAgent,
+                        )
+
+                        exp_agent = ExperimentDesignAgent()
+                    exp_design, exp_cost = await self._invoke_agent(
+                        exp_agent,
+                        output_artifact,
+                        "experiment_design",
+                        run.id,
+                    )
+                    exp_path = await self._save_artifact(
+                        run.artifact_dir,
+                        "experiment_design.yaml",
+                        exp_design,
+                    )
+                    stage_result.cost_usd += exp_cost
+                    stage_result.metadata["experiment_design_path"] = exp_path
+                    stage_result.metadata["experiment_id"] = exp_design.get("id")
+                    self._emit_event(
+                        "experiment.designed",
+                        run.id,
+                        {
+                            "experiment_id": exp_design.get("id"),
+                            "sample_size_per_variant": exp_design.get("sample_size_per_variant"),
+                            "duration_days": exp_design.get("duration_days"),
+                            "artifact_path": exp_path,
+                        },
+                    )
                 stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "specification":
@@ -361,7 +440,7 @@ class ValueStreamOrchestrator:
                 stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "review_architecture":
-                use_multi = bool(config.get("enable_multi_review", self.use_multi_agent_review))
+                use_multi = self._is_multi_review_enabled(run.id, config)
                 if use_multi:
                     spec_stage = run.get_stage("specification")
                     if not spec_stage or not spec_stage.artifact_path:
@@ -449,9 +528,14 @@ class ValueStreamOrchestrator:
                     stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "review_security":
-                if bool(config.get("enable_multi_review", self.use_multi_agent_review)):
+                arch_stage = run.get_stage("review_architecture")
+                ran_multi = bool(
+                    arch_stage and arch_stage.agent_name == "multi-agent-review-orchestrator"
+                )
+                if ran_multi or bool(
+                    config.get("enable_multi_review", self.use_multi_agent_review)
+                ):
                     # Security perspective already executed concurrently in multi-agent review
-                    arch_stage = run.get_stage("review_architecture")
                     stage_result.artifact_path = arch_stage.artifact_path if arch_stage else None
                     stage_result.agent_name = "security-review-agent (parallel)"
                     stage_result.status = StageStatus.COMPLETED

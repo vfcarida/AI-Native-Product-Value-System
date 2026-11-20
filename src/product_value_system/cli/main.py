@@ -9,6 +9,8 @@ from pathlib import Path
 from product_value_system.__version__ import __version__
 from product_value_system.cli.commands import (
     eval_command,
+    experiment_command,
+    flags_command,
     init_command,
     list_command,
     measure_outcome_command,
@@ -377,6 +379,148 @@ def create_parser() -> argparse.ArgumentParser:
         help="Run ID",
     )
 
+    # pvs flags
+    flags_parser = subparsers.add_parser(
+        "flags",
+        help="Manage feature flags and progressive rollouts (EVO-015)",
+    )
+    flags_parser.add_argument(
+        "--file",
+        type=Path,
+        default=Path("flags.yaml"),
+        help="Feature flags YAML file (default: flags.yaml)",
+    )
+    flags_sub = flags_parser.add_subparsers(dest="flags_action", help="Feature flag actions")
+
+    flags_list = flags_sub.add_parser("list", help="List all configured feature flags")
+    flags_list.add_argument(
+        "--file",
+        type=Path,
+        default=None,
+        help="Feature flags YAML file (default: flags.yaml)",
+    )
+
+    flags_toggle = flags_sub.add_parser("toggle", help="Toggle a feature flag on/off")
+    flags_toggle.add_argument("name", help="Feature flag name")
+    flags_toggle.add_argument("--actor", default="cli", help="Audit actor identifier")
+    flags_toggle.add_argument("--file", type=Path, default=None, help="Feature flags YAML file")
+
+    flags_rollout = flags_sub.add_parser("rollout", help="Update rollout percentage or stage")
+    flags_rollout.add_argument("name", help="Feature flag name")
+    flags_rollout.add_argument(
+        "--percentage",
+        type=float,
+        default=None,
+        help="Rollout percentage (0.0 to 1.0)",
+    )
+    flags_rollout.add_argument(
+        "--stage",
+        choices=["dark", "canary", "staged_5", "staged_25", "staged_50", "full"],
+        default=None,
+        help="Rollout stage",
+    )
+    flags_rollout.add_argument("--actor", default="cli", help="Audit actor identifier")
+    flags_rollout.add_argument("--file", type=Path, default=None, help="Feature flags YAML file")
+
+    flags_eval = flags_sub.add_parser("evaluate", help="Evaluate a flag for a user/environment")
+    flags_eval.add_argument("name", help="Feature flag name")
+    flags_eval.add_argument("--user", default=None, help="User ID for consistent hashing")
+    flags_eval.add_argument("--env", default=None, help="Environment name (e.g., staging)")
+    flags_eval.add_argument("--file", type=Path, default=None, help="Feature flags YAML file")
+
+    flags_advance = flags_sub.add_parser(
+        "advance",
+        help="Advance a flag to the next rollout stage after checking SLO quality gates",
+    )
+    flags_advance.add_argument("name", help="Feature flag name")
+    flags_advance.add_argument("--file", type=Path, default=None, help="Feature flags YAML file")
+
+    # pvs experiment
+    exp_parser = subparsers.add_parser(
+        "experiment",
+        help="Design and analyze statistically rigorous A/B experiments (EVO-016)",
+    )
+    exp_sub = exp_parser.add_subparsers(dest="experiment_action", help="Experiment actions")
+
+    exp_design = exp_sub.add_parser(
+        "design",
+        help="Generate an A/B experiment design from an outcome hypothesis YAML/JSON",
+    )
+    exp_design.add_argument("outcome", type=Path, help="Outcome hypothesis file (YAML or JSON)")
+    exp_design.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output YAML/JSON path for experiment design",
+    )
+    exp_design.add_argument(
+        "--daily-traffic",
+        type=int,
+        default=1000,
+        help="Expected total daily users (default: 1000)",
+    )
+    exp_design.add_argument(
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="Confidence level 1 - alpha (default: 0.95)",
+    )
+    exp_design.add_argument(
+        "--power",
+        type=float,
+        default=0.80,
+        help="Statistical power 1 - beta (default: 0.80)",
+    )
+    exp_design.add_argument(
+        "--test-type",
+        choices=["ttest", "chi_square", "bayesian"],
+        default="ttest",
+        help="Primary statistical test type (default: ttest)",
+    )
+
+    exp_analyze = exp_sub.add_parser(
+        "analyze",
+        help="Analyze recorded A/B test observations and print recommendation",
+    )
+    exp_analyze.add_argument(
+        "experiment_file",
+        type=Path,
+        help="Saved experiment state file (JSON or YAML)",
+    )
+    exp_analyze.add_argument(
+        "--test-type",
+        choices=["ttest", "chi_square", "bayesian"],
+        default=None,
+        help="Override statistical test (ttest, chi_square, bayesian)",
+    )
+    exp_analyze.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output JSON path for experiment result",
+    )
+
+    exp_size = exp_sub.add_parser(
+        "sample-size",
+        help="Compute required per-variant sample size via power analysis",
+    )
+    exp_size.add_argument("--baseline", type=float, required=True, help="Baseline metric value")
+    exp_size.add_argument(
+        "--mde",
+        type=float,
+        required=True,
+        help="Minimum detectable relative lift (e.g., 0.10 for 10%%)",
+    )
+    exp_size.add_argument(
+        "--metric-type",
+        choices=["continuous", "proportion"],
+        default="continuous",
+        help="Metric distribution type (default: continuous)",
+    )
+    exp_size.add_argument("--confidence", type=float, default=0.95, help="Confidence level")
+    exp_size.add_argument("--power", type=float, default=0.80, help="Statistical power")
+    exp_size.add_argument("--daily-traffic", type=int, default=1000, help="Expected daily traffic")
+
     # pvs validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -419,6 +563,10 @@ def main(argv: list[str] | None = None) -> int:
             return eval_command(args)
         if args.command == "review":
             return review_command(args)
+        if args.command == "flags":
+            return flags_command(args)
+        if args.command == "experiment":
+            return experiment_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

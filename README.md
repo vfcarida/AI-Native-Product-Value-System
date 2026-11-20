@@ -35,6 +35,8 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Policy-Based Authorization**: Cedar policy schema (`policies/schema.cedarschema`) and rules (`policies/agent_authorization.cedar`) with a deterministic Python fallback evaluator
 - ✅ **Security Controls**: Input/schema validation, path traversal prevention, command sanitization, regex secret detection (`pre-commit` hook + CI), and OWASP LLM Top 10 threat model
 - ✅ **OpenTelemetry Observability, Production Monitoring & SLOs**: GenAI semantic-convention distributed tracing, 12 OpenTelemetry/Prometheus metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, error-budget policies, automated rollback (`ProductionMonitor`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 4 Grafana dashboards (`docker-compose.monitoring.yml`)
+- ✅ **Progressive Delivery & Feature Flags**: Schema-validated YAML feature flags (`flags.yaml`), consistent SHA-256 user bucketing, targeting rules (`user_id`, `environment`, `attribute`, `percentage`), 6-stage `RolloutController` (`dark` → `canary` → `staged_5/25/50` → `full`) with SLO quality gates & automatic rollback, FastAPI Admin UI (`/admin/flags`), orchestrator gating, and `pvs flags` CLI
+- ✅ **Experiment Design & A/B Testing**: `ExperimentDesignAgent` turning outcome hypotheses into schema-validated `ExperimentDesign` blueprints, `PowerAnalyzer` (`scipy.stats` sample size & duration), privacy-safe `ABTest` framework with consistent SHA-256 assignment, Welch's t-test / chi-square / Bayesian posterior analysis, guardrail monitoring, early stopping, and `pvs experiment` CLI
 
 ### Model Support & Streaming
 - ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, and USD cost calculation
@@ -59,7 +61,7 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 
 ### Lifecycle Stages
 - **External analytics required for live Learn stage**: Post-release outcome measurement (`src/product_value_system/learning/`) supports SQLite, PostgreSQL/MySQL (SQLAlchemy), Prometheus, and Mock adapters; live measurement requires an external metrics database or Prometheus instance.
-- **No progressive delivery / experiment design yet**: Feature flags, canary rollouts, and A/B experiment design tooling are planned for `v0.4` (EVO-015, EVO-016).
+- **No automated model/data drift detection yet**: Progressive delivery (`src/product_value_system/feature_flags/`, EVO-015) and experiment design / A/B testing (`src/product_value_system/experiment/`, EVO-016) are implemented; automated production drift detection is planned in EVO-017.
 
 ### Evaluation & Testing
 - **Trajectory & golden dataset evaluation**: 180 curated golden dataset samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture`/`TrajectoryEvaluator`, and automated regression evaluation gates (`pvs eval --with-trajectories`, `.github/workflows/eval-gate.yml`) are implemented; real-time trajectory visualization and replay remain future enhancements.
@@ -207,6 +209,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Golden Dataset Curation Guide](golden_datasets/README.md)** — 180 HELM-structured golden samples, schema, curation CLI, and regression evaluation gates
 - **[Multi-Agent Review Guide](docs/review-guide.md)** — Elephant-Goldfish 4-perspective review, conflict resolution, and `pvs review` CLI
 - **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
+- **[Progressive Delivery & Feature Flags](docs/progressive-delivery.md)** — Dark launches, canary/staged rollouts, [Flag Management](docs/flag-management.md), and [Developer Flag Integration](docs/developer/flag-integration.md)
+- **[Experiment Design & A/B Testing](docs/experiment-design.md)** — Power analysis, guardrails, stopping criteria, and [A/B Testing Best Practices](docs/ab-testing.md)
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
@@ -262,8 +266,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 ### v0.4 — Lifecycle Completion
 - ✅ Learn stage & outcome measurement agent (EVO-010)
 - ✅ Production SLOs, Prometheus/Grafana monitoring & automated rollback (EVO-014)
-- 📋 Progressive delivery & feature flags (EVO-015)
-- 📋 Experiment design & statistical rigor tooling (EVO-016)
+- ✅ Progressive delivery, feature flags, Admin UI & SLO-driven rollback (EVO-015)
+- ✅ Experiment design agent, power analysis & A/B testing framework (EVO-016)
 
 ### v0.5 — Evaluation & Continuous Quality
 - ✅ Curated golden dataset evaluation suite (EVO-011)

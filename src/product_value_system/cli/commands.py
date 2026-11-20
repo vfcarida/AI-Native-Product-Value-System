@@ -1290,3 +1290,242 @@ def review_command(args: argparse.Namespace) -> int:
     except Exception as exc:
         print_error(f"Multi-agent review failed: {exc}")
         return 1
+
+
+def flags_command(args: argparse.Namespace) -> int:
+    """Manage feature flags and progressive delivery rollouts (EVO-015)."""
+    from product_value_system.feature_flags.rollout import MetricsSLOMonitor, RolloutController
+    from product_value_system.feature_flags.service import FeatureFlagService
+
+    action = getattr(args, "flags_action", None) or "list"
+    flags_file = getattr(args, "file", None) or Path("flags.yaml")
+
+    try:
+        service = FeatureFlagService.from_yaml(flags_file)
+    except Exception as exc:
+        print_error(f"Failed to load feature flags from {flags_file}: {exc}")
+        return 1
+
+    if action == "list":
+        print(f"\nFeature Flags ({flags_file}):")
+        print("=" * 78)
+        print(f"{'NAME':<32} {'TYPE':<11} {'ENABLED':<8} {'STAGE':<11} {'ROLLOUT':<8}")
+        print("-" * 78)
+        for flag in service.list_flags():
+            status = "ON" if flag.enabled else "OFF"
+            print(
+                f"{flag.name:<32} {flag.type.value:<11} {status:<8} "
+                f"{flag.rollout_stage.value:<11} {flag.rollout_percentage:>6.0%}"
+            )
+        print("=" * 78)
+        return 0
+
+    if action == "toggle":
+        try:
+            flag = service.toggle_flag(args.name, actor=getattr(args, "actor", "cli"))
+            state = "ENABLED" if flag.enabled else "DISABLED"
+            print_success(f"Flag '{flag.name}' is now {state} (saved to {flags_file})")
+            return 0
+        except KeyError:
+            print_error(f"Flag not found: {args.name}")
+            return 1
+
+    if action == "rollout":
+        try:
+            flag = service.set_rollout(
+                args.name,
+                percentage=getattr(args, "percentage", None),
+                stage=getattr(args, "stage", None),
+                actor=getattr(args, "actor", "cli"),
+            )
+            print_success(
+                f"Flag '{flag.name}' updated: stage={flag.rollout_stage.value}, "
+                f"rollout={flag.rollout_percentage:.0%}"
+            )
+            return 0
+        except (KeyError, ValueError) as exc:
+            print_error(str(exc))
+            return 1
+
+    if action == "evaluate":
+        req_ctx: dict[str, Any] = {}
+        if getattr(args, "env", None):
+            req_ctx["environment"] = args.env
+        evaluation = service.is_enabled(
+            args.name,
+            user_id=getattr(args, "user", None),
+            request_context=req_ctx,
+        )
+        print(
+            f"Flag '{evaluation.flag_name}': "
+            f"{'ENABLED' if evaluation.enabled else 'DISABLED'} ({evaluation.reason})"
+        )
+        return 0
+
+    if action == "advance":
+        controller = RolloutController(
+            flag_service=service,
+            slo_monitor=MetricsSLOMonitor(),
+            auto_rollback_enabled=True,
+        )
+        try:
+            result = asyncio.run(controller.advance_rollout(args.name, actor="cli"))
+        except KeyError:
+            print_error(f"Flag not found: {args.name}")
+            return 1
+        if result.advanced:
+            print_success(
+                f"Advanced '{result.flag_name}': {result.from_stage.value} -> "
+                f"{result.to_stage.value} ({result.rollout_percentage:.0%})"
+            )
+            return 0
+        if result.rolled_back:
+            print_error(f"Rollout gate failed — rolled back '{result.flag_name}': {result.reason}")
+            return 1
+        print(f"No stage change for '{result.flag_name}': {result.reason}")
+        return 0
+
+    print_error(f"Unknown flags action: {action}")
+    return 1
+
+
+def experiment_command(args: argparse.Namespace) -> int:
+    """Design and analyze statistically rigorous A/B experiments (EVO-016)."""
+    from product_value_system.agents.experiment_design_agent import ExperimentDesignAgent
+    from product_value_system.experiment.ab_test import ABTest
+    from product_value_system.experiment.models import StatisticalTestType
+    from product_value_system.experiment.power_analysis import PowerAnalyzer
+    from product_value_system.harness.context import ExecutionContext
+
+    action = getattr(args, "experiment_action", None)
+    if not action:
+        print_error("Specify an experiment subcommand: design, analyze, or sample-size")
+        return 1
+
+    if action == "sample-size":
+        try:
+            if args.metric_type == "proportion":
+                sample_size = PowerAnalyzer.compute_proportion_sample_size(
+                    baseline_rate=float(args.baseline),
+                    minimum_detectable_effect=float(args.mde),
+                    confidence_level=float(args.confidence),
+                    statistical_power=float(args.power),
+                )
+            else:
+                sample_size = PowerAnalyzer.compute_ttest_sample_size(
+                    baseline_value=float(args.baseline),
+                    minimum_detectable_effect=float(args.mde),
+                    confidence_level=float(args.confidence),
+                    statistical_power=float(args.power),
+                )
+            days = PowerAnalyzer.estimate_duration_days(
+                sample_size,
+                daily_traffic=int(args.daily_traffic),
+            )
+            print(f"Sample size per variant: {sample_size:,}")
+            print(f"Total required samples:  {sample_size * 2:,}")
+            print(f"Estimated duration:      {days} days (at {args.daily_traffic:,} daily users)")
+            return 0
+        except Exception as exc:
+            print_error(f"Power analysis failed: {exc}")
+            return 1
+
+    if action == "design":
+        outcome_path = Path(args.outcome)
+        if not outcome_path.exists():
+            print_error(f"Outcome file not found: {outcome_path}")
+            return 1
+        try:
+            raw = outcome_path.read_text(encoding="utf-8")
+            outcome = (
+                json.loads(raw)
+                if outcome_path.suffix.lower() == ".json"
+                else yaml.safe_load(raw)
+            )
+            if not isinstance(outcome, dict):
+                print_error("Outcome file must contain a YAML/JSON object")
+                return 1
+            outcome.setdefault("daily_traffic", int(args.daily_traffic))
+
+            agent = ExperimentDesignAgent(
+                confidence_level=float(args.confidence),
+                statistical_power=float(args.power),
+                default_daily_traffic=int(args.daily_traffic),
+                default_test_type=StatisticalTestType(args.test_type),
+            )
+            harness = Harness(
+                context=ExecutionContext(
+                    run_id=f"exp-design-{outcome.get('id', 'outcome')}",
+                    stage_name="experiment_design",
+                    agent_name=agent.name,
+                )
+            )
+            result = asyncio.run(
+                agent.execute(
+                    outcome,
+                    harness,
+                    harness.context,
+                )
+            )
+            if not result.success:
+                print_error(f"Experiment design failed: {result.error}")
+                return 1
+
+            design = result.output_artifact
+            hyp = design["hypothesis"]
+            print(f"\nExperiment Design: {design['id']}")
+            print("=" * 64)
+            print(f"Primary Metric:     {hyp['primary_metric']}")
+            print(
+                f"Baseline -> Target: {hyp['baseline_value']} -> {hyp['expected_value']} "
+                f"(MDE={hyp['minimum_detectable_effect']:.1%})"
+            )
+            print(f"Test Type:          {design['test_type']}")
+            print(f"Sample / Variant:   {design['sample_size_per_variant']:,}")
+            print(f"Duration:           {design['duration_days']} days")
+            print(f"Guardrails ({len(design['guardrails'])}):")
+            for g in design["guardrails"]:
+                print(
+                    f"  - {g['name']}: {g['direction']} threshold={g['threshold']:+.2%} "
+                    f"({g['description']})"
+                )
+
+            out_path = getattr(args, "output", None)
+            if out_path is not None:
+                out_file = Path(out_path)
+                out_file.parent.mkdir(parents=True, exist_ok=True)
+                if out_file.suffix.lower() == ".json":
+                    out_file.write_text(json.dumps(design, indent=2), encoding="utf-8")
+                else:
+                    out_file.write_text(
+                        yaml.safe_dump(design, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                print_success(f"Saved experiment design: {out_file}")
+            return 0
+        except Exception as exc:
+            print_error(f"Experiment design failed: {exc}")
+            return 1
+
+    if action == "analyze":
+        exp_path = Path(args.experiment_file)
+        if not exp_path.exists():
+            print_error(f"Experiment file not found: {exp_path}")
+            return 1
+        try:
+            ab_test = ABTest.load_state(exp_path)
+            result = ab_test.analyze(test_type=getattr(args, "test_type", None))
+            print(f"\n{result.format_report()}")
+            out_path = getattr(args, "output", None)
+            if out_path is not None:
+                out_file = Path(out_path)
+                out_file.parent.mkdir(parents=True, exist_ok=True)
+                out_file.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+                print_success(f"Saved experiment analysis report: {out_file}")
+            return 0
+        except Exception as exc:
+            print_error(f"Experiment analysis failed: {exc}")
+            return 1
+
+    print_error(f"Unknown experiment action: {action}")
+    return 1

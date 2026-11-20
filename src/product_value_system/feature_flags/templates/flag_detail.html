@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flag Detail: {{FLAG_NAME}} — PVS Admin</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+    a { color: #38bdf8; text-decoration: none; }
+    .card { background: #1e293b; border-radius: 8px; padding: 1.25rem; margin-top: 1rem; border: 1px solid #334155; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+    pre { background: #0f172a; padding: 1rem; border-radius: 6px; overflow-x: auto; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <p><a href="/admin/flags">&larr; Back to Feature Flags</a></p>
+  <h1>{{FLAG_NAME}}</h1>
+  <p>{{DESCRIPTION}}</p>
+  <div class="card meta">
+    <div><strong>Type:</strong> {{FLAG_TYPE}}</div>
+    <div><strong>Enabled:</strong> {{ENABLED}}</div>
+    <div><strong>Stage:</strong> {{STAGE}}</div>
+    <div><strong>Rollout:</strong> {{PERCENTAGE}}</div>
+    <div><strong>Updated:</strong> {{UPDATED_AT}}</div>
+  </div>
+  <div class="card">
+    <h2>Targeting Rules</h2>
+    <pre>{{TARGETING_RULES}}</pre>
+  </div>
+  <div class="card">
+    <h2>Recent Audit History</h2>
+    <pre>{{AUDIT_LOG}}</pre>
+  </div>
+</body>
+</html>

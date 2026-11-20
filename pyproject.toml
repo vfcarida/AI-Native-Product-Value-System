@@ -49,6 +49,10 @@ monitoring = [
     "prometheus-client>=0.20",
     "opentelemetry-exporter-prometheus>=0.46b0",
 ]
+experiments = [
+    "scipy>=1.11",
+    "numpy>=1.26",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
