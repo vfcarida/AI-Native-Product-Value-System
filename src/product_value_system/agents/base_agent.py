@@ -108,6 +108,13 @@ class BaseAgent:
             )
 
         harness.budget.start()
+        started_trajectory = False
+        if (
+            harness.trajectory_capture.enabled
+            and harness.trajectory_capture.get_current_trajectory() is None
+        ):
+            harness.trajectory_capture.start_trajectory(self.name, input_artifact)
+            started_trajectory = True
 
         try:
             result = await self._execute_impl(
@@ -118,10 +125,23 @@ class BaseAgent:
 
             self._validate_output(result.output_artifact)
             result.duration_seconds = time.time() - start_time
+            if started_trajectory:
+                result.trajectory = harness.trajectory_capture.finalize_trajectory(
+                    result.output_artifact,
+                    success=result.success,
+                    error=result.error,
+                )
 
             return result
 
         except Exception as e:
+            captured_traj = None
+            if started_trajectory:
+                captured_traj = harness.trajectory_capture.finalize_trajectory(
+                    {},
+                    success=False,
+                    error=str(e),
+                )
             return AgentResult(
                 success=False,
                 output_artifact={},
@@ -133,6 +153,7 @@ class BaseAgent:
                 checkpoints=[],
                 error=str(e),
                 violations=harness.violations,
+                trajectory=captured_traj,
             )
 
     async def _execute_impl(

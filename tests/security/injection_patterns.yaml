@@ -75,7 +75,7 @@ jailbreak:
     severity: CRITICAL
     description: "Explicit jailbreak trigger"
 
-  - pattern: "you\\s+are\\s+now\\s+(?:in\\s+character\\s+as|(?:an?\\s+)?(?:unfiltered|unrestricted|uncensored)|freed\\s+from)"
+  - pattern: "you\\s+are\\s+now\\s+(?:in\\s+character\\s+as|(?:an?\\s+)?(?:unfiltered|unrestricted|uncensored)|DAN\\b|freed\\s+from)"
     severity: HIGH
     description: "Unrestricted persona assumption"
 

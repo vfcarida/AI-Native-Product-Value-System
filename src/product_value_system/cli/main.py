@@ -8,6 +8,7 @@ from pathlib import Path
 
 from product_value_system.__version__ import __version__
 from product_value_system.cli.commands import (
+    eval_command,
     init_command,
     list_command,
     measure_outcome_command,
@@ -103,6 +104,20 @@ def create_parser() -> argparse.ArgumentParser:
         type=float,
         default=10.0,
         help="Max USD budget for synthetic customer simulation (default: 10.0)",
+    )
+    run_parser.add_argument(
+        "--capture-trajectory",
+        action="store_true",
+        default=False,
+        help="Capture ReAct execution trajectory during value stream run",
+    )
+    run_parser.add_argument(
+        "--output",
+        "--trajectory-output",
+        dest="trajectory_output",
+        type=Path,
+        default=None,
+        help="Optional JSON file path to save captured trajectory (with --capture-trajectory)",
     )
 
     # pvs run-simulation
@@ -211,6 +226,89 @@ def create_parser() -> argparse.ArgumentParser:
         help="Optional output YAML path for measurement artifact",
     )
 
+    # pvs eval
+    eval_parser = subparsers.add_parser(
+        "eval",
+        help="Run regression evaluation against golden datasets",
+    )
+    eval_parser.add_argument(
+        "agent",
+        choices=["discovery", "specification", "build", "review", "brownfield", "all"],
+        help="Agent to evaluate (or 'all' for full golden suite)",
+    )
+    eval_parser.add_argument(
+        "--dataset-version",
+        type=int,
+        default=1,
+        help="Golden dataset version (default: 1)",
+    )
+    eval_parser.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=None,
+        help="Golden dataset root directory (default: golden_datasets)",
+    )
+    eval_parser.add_argument(
+        "--fast",
+        action="store_true",
+        default=False,
+        help="Fast mode: evaluate deterministic subset of samples (for CI)",
+    )
+    eval_parser.add_argument(
+        "--subset-size",
+        type=int,
+        default=10,
+        help="Number of samples per agent in fast mode (default: 10)",
+    )
+    eval_parser.add_argument(
+        "--category",
+        choices=["happy-path", "edge-case", "adversarial"],
+        default=None,
+        help="Optional HELM category filter",
+    )
+    eval_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.75,
+        help="Minimum pass rate threshold (default: 0.75)",
+    )
+    eval_parser.add_argument(
+        "--baseline-dir",
+        type=Path,
+        default=Path(".eval_baselines"),
+        help="Directory for regression baseline storage (default: .eval_baselines)",
+    )
+    eval_parser.add_argument(
+        "--output-json",
+        type=Path,
+        default=None,
+        help="Optional path (or directory when agent='all') for JSON eval reports",
+    )
+    eval_parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=10.0,
+        help="Maximum evaluation USD budget warning/cap (default: 10.0)",
+    )
+    eval_parser.add_argument(
+        "--use-mock",
+        action="store_true",
+        default=False,
+        help="Force deterministic offline mock adapters ($0 cost)",
+    )
+    eval_parser.add_argument(
+        "--with-trajectories",
+        action="store_true",
+        default=False,
+        help="Enable trajectory capture and behavioral trajectory evaluation",
+    )
+    eval_parser.add_argument(
+        "--trajectories-dir",
+        type=Path,
+        default=None,
+        help="Directory of golden trajectories (default: golden_datasets/trajectories)",
+    )
+
     # pvs status
     status_parser = subparsers.add_parser(
         "status",
@@ -281,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_simulation_command(args)
         if args.command == "measure-outcome":
             return measure_outcome_command(args)
+        if args.command == "eval":
+            return eval_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

@@ -32,9 +32,12 @@ class AgentResult:
     error: str | None = None
     violations: list[str] = field(default_factory=list)
 
+    # Optional captured execution trajectory (EVO-012)
+    trajectory: Any | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize result to dictionary."""
-        return {
+        payload: dict[str, Any] = {
             "success": self.success,
             "output_artifact": self.output_artifact,
             "iterations": self.iterations,
@@ -46,6 +49,13 @@ class AgentResult:
             "error": self.error,
             "violations": self.violations,
         }
+        if self.trajectory is not None:
+            payload["trajectory"] = (
+                self.trajectory.to_dict()
+                if hasattr(self.trajectory, "to_dict")
+                else self.trajectory
+            )
+        return payload
 
 
 @runtime_checkable

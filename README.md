@@ -27,7 +27,7 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Synthetic Customer Simulation**: Optional TinyTroupe-powered persona simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`) integrated into `DiscoveryAgent` and `pvs run-simulation`
 - ✅ **6-Stage AI Agent Pipeline**: Discovery → Specification → Architecture Review → Security Review → Build → Learn (`MeasurementAgent`)
 - ✅ **Outcome Measurement & Feedback Loops**: Production metric adapters (SQLite/SQLAlchemy, Prometheus, Mock), statistical significance & guardrail evaluation (`OutcomeTracker`), cost-to-outcome attribution (`CostAttributor`), regression alerting (`FeedbackLoop`), and `pvs measure-outcome` CLI
-- ✅ **Evaluation Framework**: Multi-judge quality gates combining deterministic judges (JSON Schema, syntax, test execution, coverage) and AI-based judges (completeness, clarity)
+- ✅ **Evaluation Framework, Golden Datasets & Trajectory Evaluation**: Multi-judge quality gates (`SchemaValidationJudge`, `RubricComplianceJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, plus 4 trajectory judges), 180 curated HELM-structured golden samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture` & `TrajectoryEvaluator`, `RegressionEvaluator` baseline drift detection, `pvs eval --with-trajectories`, and CI eval gates (`.github/workflows/eval-gate.yml`)
 - ✅ **Value Stream Orchestrator & Persistence**: State-machine orchestration with checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
 
 ### Infrastructure & Security
@@ -62,7 +62,7 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 - **No experiment design or progressive delivery**: A/B experiment design, feature flags, and production SLO monitoring/alerting are planned for `v0.4` (EVO-014, EVO-015, EVO-016).
 
 ### Evaluation & Testing
-- **Golden dataset curation & trajectory evaluation**: The evaluation framework and sample golden artifacts exist, but comprehensive curated golden datasets and multi-turn trajectory judges are planned for `v0.5` (EVO-011, EVO-012).
+- **Trajectory & golden dataset evaluation**: 180 curated golden dataset samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture`/`TrajectoryEvaluator`, and automated regression evaluation gates (`pvs eval --with-trajectories`, `.github/workflows/eval-gate.yml`) are implemented; real-time trajectory visualization and replay remain future enhancements.
 - **Real integration suite requires explicit opt-in**: Standard CI runs fast mocked integration tests (`tests/integration/`); live LLM/Docker/Cedar tests (`tests/integration_real/`) run on-demand or nightly with `RUN_REAL_INTEGRATION_TESTS=1`.
 
 ### Security & Deployment Scale
@@ -170,6 +170,10 @@ pvs run examples/brownfield/problem_document_legacy.yaml
 # Inspect persisted runs
 pvs list
 pvs show <run-id>
+
+# Capture an execution trajectory and run golden dataset + trajectory regression eval
+pvs run examples/greenfield/problem_payment_flow.yaml --capture-trajectory --output trajectory.json
+pvs eval discovery --fast --subset-size 10 --with-trajectories --use-mock
 ```
 
 **Expected Output**: Orchestrator executes problem analysis, discovery, specification, review, and build stages, storing run metadata in `pvs.db` and artifacts under `artifacts/runs/<problem-id>/`.
@@ -200,6 +204,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[API & Schema Reference](docs/reference/README.md)** — Public APIs, schemas, configuration, and CLI commands
 - **[How-To Guides](docs/howto/README.md)** — Custom agents, Cedar policies, judges, model adapters, troubleshooting
 - **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
+- **[Golden Dataset Curation Guide](golden_datasets/README.md)** — 180 HELM-structured golden samples, schema, curation CLI, and regression evaluation gates
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
@@ -258,8 +263,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - 📋 Production SLOs, monitoring & progressive delivery (EVO-014, EVO-015)
 
 ### v0.5 — Evaluation & Continuous Quality
-- 📋 Curated golden dataset evaluation suite (EVO-011)
-- 📋 Multi-turn trajectory evaluations (EVO-012)
+- ✅ Curated golden dataset evaluation suite (EVO-011)
+- ✅ Multi-turn trajectory evaluations (EVO-012)
 - 📋 Multi-agent review & drift detection (EVO-013, EVO-017)
 
 ### v1.0 — Production Grade

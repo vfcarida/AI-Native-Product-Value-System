@@ -2,12 +2,15 @@
 Main harness implementation.
 """
 
+from __future__ import annotations
+
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
 
@@ -44,6 +47,9 @@ from product_value_system.security.input_validator import (
     SecurityError,
 )
 
+if TYPE_CHECKING:
+    from product_value_system.evaluation.trajectory_capture import TrajectoryCapture
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +80,7 @@ class Harness:
         checkpoint_dir: Path | None = None,
         model_adapter: ModelAdapter | None = None,
         input_validator: PromptInputValidator | None = None,
+        trajectory_capture: TrajectoryCapture | None = None,
     ) -> None:
         """
         Initialize harness.
@@ -86,6 +93,7 @@ class Harness:
             checkpoint_dir: Directory for checkpoints (optional)
             model_adapter: Model adapter for LLM invocations (optional)
             input_validator: Prompt injection input validator (optional)
+            trajectory_capture: Optional trajectory capture collector (disabled by default)
         """
         self.context = context or ExecutionContext(run_id="default-run")
         self.budget = budget or Budget()
@@ -94,6 +102,12 @@ class Harness:
         self.input_validator: PromptInputValidator = (
             input_validator or PromptInputValidator()
         )
+        if trajectory_capture is not None:
+            self.trajectory_capture: TrajectoryCapture = trajectory_capture
+        else:
+            from product_value_system.evaluation.trajectory_capture import TrajectoryCapture
+
+            self.trajectory_capture = TrajectoryCapture(enabled=False)
 
         resolved_policy_engine = policy_engine or PolicyEngine()
         self.tools = ToolRegistry(resolved_policy_engine)
@@ -106,6 +120,10 @@ class Harness:
 
         self.violations: list[str] = []
         self.killed = False
+
+    def set_trajectory_capture(self, capture: TrajectoryCapture) -> None:
+        """Attach or replace the active ``TrajectoryCapture`` collector."""
+        self.trajectory_capture = capture
 
     def kill(self) -> None:
         """Kill switch: stop execution immediately."""
@@ -129,6 +147,8 @@ class Harness:
         """
         self.budget.record_iteration()
         self.check_constraints(self.budget.current_iterations)
+        capture_active = self.trajectory_capture.enabled
+        step_start = time.perf_counter() if capture_active else 0.0
 
         normalized: list[AdapterMessage] = []
         for msg in messages:
@@ -153,6 +173,15 @@ class Harness:
                     )
                     if not validation.is_valid:
                         self.violations.append(validation.reason)
+                        if capture_active:
+                            self.trajectory_capture.log_step(
+                                thought="Input validation blocked suspicious user prompt",
+                                action=None,
+                                observation=f"BLOCKED: {validation.reason}",
+                                latency_ms=(time.perf_counter() - step_start) * 1000.0,
+                                policy_checked=True,
+                                policy_decision="DENY",
+                            )
                         raise SecurityError(
                             f"Input blocked: {validation.reason}",
                             risk_level=validation.risk_level,
@@ -185,22 +214,97 @@ class Harness:
             max_tokens=max_tokens,
             **kwargs,
         )
+        actual_cost = 0.0
+        actual_tokens = 0
         if response.usage is not None:
             actual_tokens = response.usage.total_tokens
             if hasattr(self.model_adapter, "calculate_cost"):
-                actual_cost = self.model_adapter.calculate_cost(
-                    response.usage,
-                    response.model,
+                actual_cost = float(
+                    self.model_adapter.calculate_cost(
+                        response.usage,
+                        response.model,
+                    )
                 )
-            else:
-                actual_cost = 0.0
             self.budget.spend(Decimal(str(actual_cost)), tokens=actual_tokens)
             within_budget, error = self.budget.check_all()
             if not within_budget:
                 raise BudgetExceededError(error)
 
         self.memory.add_message("assistant", response.content)
+
+        if capture_active:
+            latency_ms = (time.perf_counter() - step_start) * 1000.0
+            thought = self._extract_thought(normalized, response.content)
+            action: dict[str, Any] | None = None
+            if response.tool_calls:
+                first_tc = response.tool_calls[0]
+                action = {
+                    "tool": first_tc.name,
+                    "parameters": first_tc.arguments,
+                }
+            self.trajectory_capture.log_step(
+                thought=thought,
+                action=action,
+                observation=None,
+                latency_ms=latency_ms,
+                tokens_used=actual_tokens,
+                cost_usd=actual_cost,
+                policy_checked=True,
+                policy_decision="ALLOW",
+            )
+
         return response
+
+    async def execute_tool(
+        self,
+        tool_name: str,
+        parameters: dict[str, Any],
+        context: dict[str, Any] | None = None,
+    ) -> Any:
+        """Execute a registered tool with policy check and trajectory observation logging."""
+        capture_active = self.trajectory_capture.enabled
+        start_time = time.perf_counter() if capture_active else 0.0
+        tool_call = await self.tools.execute(
+            agent_name=self.context.agent_name,
+            tool_name=tool_name,
+            parameters=parameters,
+            context=context or {},
+        )
+        if capture_active:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            obs = (
+                f"ERROR: {tool_call.error}"
+                if tool_call.error is not None
+                else str(tool_call.result)[:500]
+            )
+            self.trajectory_capture.attach_observation(
+                observation=obs,
+                tool_name=tool_name,
+                parameters=parameters,
+                policy_checked=True,
+                policy_decision="ALLOW" if tool_call.authorized else "DENY",
+                latency_ms=latency_ms,
+            )
+        return tool_call
+
+    @staticmethod
+    def _extract_thought(
+        messages: list[AdapterMessage],
+        response_content: str = "",
+    ) -> str:
+        """Extract ReAct ``Thought:`` reasoning from model output or latest prompt."""
+        for candidate in (response_content, messages[-1].content if messages else ""):
+            if "Thought:" in candidate:
+                after = candidate.split("Thought:", 1)[1]
+                for delimiter in ("Action:", "Final Answer:", "\n\n"):
+                    if delimiter in after:
+                        after = after.split(delimiter, 1)[0]
+                cleaned = after.strip()
+                if cleaned:
+                    return cleaned[:300]
+        if messages:
+            return messages[-1].content.strip()[:200]
+        return ""
 
     def _estimate_cost(
         self,

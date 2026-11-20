@@ -3,11 +3,18 @@ Evaluation pipeline (runs multiple judges).
 """
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from product_value_system.evaluation.golden_dataset import GoldenSample
+from product_value_system.evaluation.golden_dataset import GoldenSample as LegacyGoldenSample
+from product_value_system.evaluation.golden_dataset_loader import (
+    GoldenDataset,
+)
+from product_value_system.evaluation.golden_dataset_loader import (
+    GoldenSample as VersionedGoldenSample,
+)
 from product_value_system.evaluation.judge import Judge, JudgeResult
 
 
@@ -120,19 +127,28 @@ class EvaluationPipeline:
 
     async def evaluate_golden_dataset(
         self,
-        samples: list[GoldenSample],
+        samples: Sequence[LegacyGoldenSample | VersionedGoldenSample] | GoldenDataset,
         artifact_type: str,
     ) -> list[EvaluationResult]:
-        """Evaluate multiple golden dataset samples."""
+        """Evaluate multiple golden samples (supports legacy lists and ``GoldenDataset``)."""
+        sample_list = samples.samples if isinstance(samples, GoldenDataset) else samples
         results: list[EvaluationResult] = []
 
-        for sample in samples:
+        for sample in sample_list:
+            ctx: dict[str, Any] = {
+                "artifact_type": artifact_type,
+                "expected_output": sample.expected_output,
+                "expected": sample.expected_output,
+                "sample_id": sample.id,
+            }
+            if isinstance(sample, VersionedGoldenSample):
+                ctx["rubric"] = sample.evaluation_rubric
+                ctx["pass_threshold"] = sample.pass_threshold
+                ctx["category"] = sample.category
+
             result = await self.evaluate(
                 sample.input_artifact,
-                context={
-                    "artifact_type": artifact_type,
-                    "expected_output": sample.expected_output,
-                },
+                context=ctx,
             )
             results.append(result)
 

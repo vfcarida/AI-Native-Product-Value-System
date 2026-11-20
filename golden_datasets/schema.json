@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pvs.ai/schemas/golden_dataset_sample.schema.json",
+  "title": "Golden Dataset Sample",
+  "description": "Schema for a single JSONL golden dataset evaluation sample (EVO-011)",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "created",
+    "validated",
+    "category",
+    "tags",
+    "input",
+    "expected_output",
+    "evaluation_rubric",
+    "pass_threshold"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]+$",
+      "description": "Unique identifier for the golden sample (e.g., discovery-001)"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Dataset schema version"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 creation timestamp"
+    },
+    "validated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 last validation timestamp"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["happy-path", "edge-case", "adversarial"],
+      "description": "HELM evaluation dimension category"
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Domain, capability, and coverage tags"
+    },
+    "input": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Agent-specific input artifact payload"
+    },
+    "expected_output": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Expected structural properties, metrics, or safety behavior"
+    },
+    "evaluation_rubric": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["weight", "criteria"],
+        "properties": {
+          "weight": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "criteria": {
+            "type": "string",
+            "minLength": 5
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Weighted grading rubric criteria"
+    },
+    "pass_threshold": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Minimum rubric score required for sample to pass"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional provenance, domain, or curation notes"
+    }
+  },
+  "additionalProperties": false
+}

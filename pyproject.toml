@@ -38,6 +38,11 @@ simulation = [
     "tinytroupe>=0.2.0",
     "scipy>=1.11",
 ]
+eval = [
+    "scipy>=1.11",
+    "jsonschema>=4.0",
+    "inquirer>=3.1.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
