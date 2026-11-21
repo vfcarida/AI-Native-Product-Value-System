@@ -49,6 +49,9 @@ from product_value_system.security.input_validator import (
 
 if TYPE_CHECKING:
     from product_value_system.evaluation.trajectory_capture import TrajectoryCapture
+    from product_value_system.routing.fallback_handler import AdapterFactory
+    from product_value_system.routing.model_router import ModelRouter, RoutingDecision
+    from product_value_system.routing.quality_validator import QualityValidator
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +84,9 @@ class Harness:
         model_adapter: ModelAdapter | None = None,
         input_validator: PromptInputValidator | None = None,
         trajectory_capture: TrajectoryCapture | None = None,
+        model_router: ModelRouter | None = None,
+        adapter_factory: AdapterFactory | None = None,
+        quality_validator: QualityValidator | None = None,
     ) -> None:
         """
         Initialize harness.
@@ -99,6 +105,10 @@ class Harness:
         self.budget = budget or Budget()
         self.guardrails = guardrails or Guardrails()
         self.model_adapter: ModelAdapter = model_adapter or MockModelAdapter()
+        self.model_router: ModelRouter | None = model_router
+        self.adapter_factory: AdapterFactory | None = adapter_factory
+        self.quality_validator: QualityValidator | None = quality_validator
+        self.last_routing_decision: RoutingDecision | None = None
         self.input_validator: PromptInputValidator = (
             input_validator or PromptInputValidator()
         )
@@ -235,8 +245,42 @@ class Harness:
 
         from product_value_system.observability.genai_tracer import GenAITracer
 
-        adapter_model = str(getattr(self.model_adapter, "model", "unknown"))
+        task_type = kwargs.pop("task_type", None)
+        user_override_model = kwargs.pop("user_override_model", None)
         msg_dicts = [{"role": m.role.value, "content": m.content} for m in normalized]
+
+        active_adapter: ModelAdapter = self.model_adapter
+        routing_decision: RoutingDecision | None = None
+        use_fallback = False
+
+        if self.model_router is not None and self.model_router.enabled:
+            routing_decision = self.model_router.route(
+                messages=msg_dicts,
+                task_type=task_type,
+                metadata={
+                    "agent_name": self.context.agent_name,
+                    "stage_name": self.context.stage_name,
+                },
+                user_override_model=user_override_model,
+            )
+            self.last_routing_decision = routing_decision
+            if not routing_decision.is_shadow and self.adapter_factory is not None:
+                if (
+                    self.quality_validator is not None
+                    and self.model_router.policy.quality_check_enabled
+                ):
+                    use_fallback = True
+                else:
+                    active_adapter = self.adapter_factory(
+                        routing_decision.provider,
+                        routing_decision.model,
+                    )
+
+        adapter_model = (
+            routing_decision.model
+            if (routing_decision is not None and not routing_decision.is_shadow)
+            else str(getattr(active_adapter, "model", "unknown"))
+        )
         genai_tracer = GenAITracer(trace.get_tracer(__name__), sanitize_content=True)
 
         with genai_tracer.trace_chat_completion(
@@ -248,13 +292,44 @@ class Harness:
             tool_call_count=len(tools) if tools else None,
         ) as genai_span:
             try:
-                response = await self.model_adapter.invoke(
-                    messages=normalized,
-                    tools=tools,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    **kwargs,
-                )
+                if (
+                    use_fallback
+                    and self.model_router is not None
+                    and routing_decision is not None
+                    and self.adapter_factory is not None
+                ):
+                    from product_value_system.routing.fallback_handler import FallbackHandler
+
+                    handler = FallbackHandler(self.model_router, self.quality_validator)
+                    response = await handler.execute_with_fallback(
+                        messages=normalized,
+                        routing_decision=routing_decision,
+                        adapter_factory=self.adapter_factory,
+                        tools=tools,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                else:
+                    response = await active_adapter.invoke(
+                        messages=normalized,
+                        tools=tools,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        **kwargs,
+                    )
+                    if (
+                        self.model_router is not None
+                        and routing_decision is not None
+                        and not routing_decision.is_shadow
+                        and response.usage is not None
+                    ):
+                        self.model_router.record_execution(
+                            model_id=response.model or routing_decision.model,
+                            input_tokens=response.usage.input_tokens,
+                            output_tokens=response.usage.output_tokens,
+                            used_fallback=False,
+                        )
             except Exception as exc:
                 metrics.record_request(
                     agent=self.context.agent_name,
@@ -272,13 +347,19 @@ class Harness:
                 actual_tokens = response.usage.total_tokens
                 prompt_tokens = response.usage.prompt_tokens
                 completion_tokens = response.usage.completion_tokens
-                if hasattr(self.model_adapter, "calculate_cost"):
+                if hasattr(active_adapter, "calculate_cost"):
                     actual_cost = float(
-                        self.model_adapter.calculate_cost(
+                        active_adapter.calculate_cost(
                             response.usage,
                             response.model,
                         )
                     )
+                elif self.model_router is not None:
+                    found_spec = self.model_router.policy.find_model(
+                        response.model or adapter_model
+                    )
+                    if found_spec is not None:
+                        actual_cost = found_spec[1].estimate_cost(prompt_tokens, completion_tokens)
                 self.budget.spend(Decimal(str(actual_cost)), tokens=actual_tokens)
                 within_budget, error = self.budget.check_all()
                 if not within_budget:

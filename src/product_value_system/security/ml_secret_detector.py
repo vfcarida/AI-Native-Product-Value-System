@@ -116,6 +116,35 @@ _DECODED_SECRET_HINT_RE = re.compile(
 )
 
 
+_CODE_VAR_NAMES = frozenset(
+    {"password", "passwd", "secret", "token", "api_key", "apikey", "none", "null", "true", "false"}
+)
+_CODE_EXPR_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?:\([^)]*\))?$|"
+    r"^[A-Za-z_][A-Za-z0-9_]*\([^)]*\)$"
+)
+
+
+def _is_unquoted_code_reference(snippet: str, payload: str) -> bool:
+    """Return True if an unquoted assignment RHS is a code variable or call expression."""
+    m = re.match(
+        r"^(?:aws_secret_access_key|api[_-]?key|apikey|pass(?:word|wd)|token|secret)\s*[:=]\s*(.+)$",
+        snippet.strip(),
+        re.I,
+    )
+    if not m:
+        return False
+    rhs = m.group(1).strip().rstrip(",;)")
+    if rhs and rhs[0] in {'"', "'"}:
+        return False
+    if rhs.lower() in _CODE_VAR_NAMES or payload.lower() in _CODE_VAR_NAMES:
+        return True
+    # Match dotted/call expressions like redis_cfg.get(...) or self.password
+    if _CODE_EXPR_RE.match(rhs) or ".get(" in rhs or "getenv(" in rhs or "environ[" in rhs:
+        return True
+    return False
+
+
 def calculate_shannon_entropy(value: str) -> float:
     """Compute Shannon entropy in bits per character."""
     if not value:
@@ -383,6 +412,16 @@ class MLSecretDetector:
         payload = extract_secret_payload(snippet)
         lower_context = context.lower()
         reasons: list[str] = []
+
+        # 0. Reject unquoted code variable / call references (e.g. password=password)
+        if _is_unquoted_code_reference(snippet, payload):
+            return MLAnalysisResult(
+                entity_type=entity_type,
+                confidence=0.1,
+                is_real_secret=False,
+                backend="ml_classifier",
+                reasons=["unquoted_code_reference"],
+            )
 
         entropy = calculate_shannon_entropy(payload)
         char_classes = sum(

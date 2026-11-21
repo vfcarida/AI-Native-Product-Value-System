@@ -133,6 +133,8 @@ class AnthropicAdapter:
         )
         self.timeout = timeout
         self.max_retries = max_retries
+        self.cache = cache
+        self.cache_max_temperature = float(cache_max_temperature)
 
         if client is not None:
             self.client = client
@@ -238,6 +240,21 @@ class AnthropicAdapter:
             max_tokens=max_tokens,
             **kwargs,
         )
+        model_name = str(payload.get("model") or self.model)
+        should_cache = self.cache is not None and temperature < self.cache_max_temperature
+        if should_cache and self.cache is not None:
+            from product_value_system.caching.prompt_cache import deserialize_model_response
+
+            cached = await self.cache.get(
+                messages=messages,
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+            )
+            if cached is not None:
+                logger.info("PromptCache hit for Anthropic model %s", model_name)
+                return deserialize_model_response(cached)
 
         for attempt in range(self.max_retries):
             try:
@@ -275,7 +292,19 @@ class AnthropicAdapter:
                     raise ModelError(f"Anthropic API error: {safe_msg}")
 
                 data: dict[str, Any] = response.json()
-                return self._parse_response(data)
+                model_response = self._parse_response(data)
+                if should_cache and self.cache is not None:
+                    from product_value_system.caching.prompt_cache import serialize_model_response
+
+                    await self.cache.set(
+                        messages=messages,
+                        model=model_name,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        response=serialize_model_response(model_response),
+                        tools=tools,
+                    )
+                return model_response
 
             except httpx.RequestError as exc:
                 if attempt < self.max_retries - 1:

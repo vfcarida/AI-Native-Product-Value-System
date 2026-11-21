@@ -45,8 +45,10 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Multi-Source Evidence Synthesis Agent**: `EvidenceCollector` (interviews, JSON/CSV support tickets, analytics, competitor research, URLs), `QualityScorer` (recency decay, log sample size, Primary/Secondary/Tertiary hierarchy), semantic `ContradictionDetector` with human-review flags, weighted `SynthesisEngine` with provenance & agreement scores, Mermaid + interactive HTML/SVG evidence networks, and `pvs evidence` CLI
 
 ### Model Support & Streaming
-- ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, and USD cost calculation
-- ✅ **Anthropic Adapter**: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku with real typed SSE streaming, retries, tool-format translation, output secret redaction, and USD cost calculation
+- ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, optional semantic `PromptCache`, and USD cost calculation
+- ✅ **Anthropic Adapter**: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku with real typed SSE streaming, retries, tool-format translation, output secret redaction, optional semantic `PromptCache`, and USD cost calculation
+- ✅ **LLM Token & Semantic Prompt Caching**: Hybrid exact (`xxhash64`) + semantic similarity caching (`PromptCache`, `SimilarityMatcher`) with `MemoryCacheBackend` (LRU), `SQLiteCacheBackend`, `RedisCacheBackend`, `TieredCacheBackend`, TTL expiration, model invalidation, and `config/caching.yaml`
+- ✅ **Complexity-Based Model Routing**: `ComplexityClassifier` (6-feature scoring with `tiktoken`), `RoutingPolicy` & `ModelRouter` (LOW/MEDIUM/HIGH tier routing, user overrides, shadow mode, hot-reload, FinOps savings metrics), `QualityValidator` (JSON Schema & LLM-judge), `FallbackHandler`, `RoutedModelAdapter`, `Harness` integration, and `config/routing.yaml`
 - ✅ **Mock Adapter**: Deterministic local testing and demos with zero API cost
 
 ### Extensibility
@@ -226,6 +228,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
 - **[Cost Management](docs/COST_MANAGEMENT.md)** — Per-run/daily/monthly budget guards and emergency stop
+- **[LLM Token Caching Guide](docs/token-caching.md)** — Exact & semantic prompt caching, Memory/SQLite/Redis/Tiered backends, TTL, model invalidation, and `config/caching.yaml`
+- **[Model Routing Guide](docs/model-routing.md)** — Complexity classification, cost-sorted model tiers, quality validation & automatic fallback, shadow/rollback modes, and `config/routing.yaml`
 - **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Secret scanning and redaction controls
 
 ---
@@ -291,7 +295,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ OpenTelemetry GenAI semantic conventions (v1.28+), metrics & migration shim (EVO-021)
 
 ### v1.0 — Production Grade
-- 📋 Token caching & cost optimization (EVO-025, EVO-026)
+- ✅ LLM token & semantic prompt caching (`Memory`/`SQLite`/`Redis`/`Tiered`, EVO-025)
+- ✅ Complexity-based model routing, quality validation & automatic fallback (EVO-026)
 - ✅ Hybrid ML + regex secret detection (Microsoft Presidio + entropy/Base64 classifier, EVO-024)
 - 📋 Google Gemini, Azure OpenAI, and local (Ollama/vLLM) model adapters
 - 📋 Brownfield Git history analysis & Strangler Fig modernization (EVO-030, EVO-031)

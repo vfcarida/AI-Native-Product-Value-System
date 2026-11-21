@@ -1,0 +1,30 @@
+# LLM Token & Semantic Prompt Caching Configuration (EVO-025)
+caching:
+  enabled: true
+  backend: memory  # Options: memory, sqlite, redis, tiered
+
+  # Redis backend (for distributed multi-node caching)
+  redis:
+    host: localhost
+    port: 6379
+    db: 0
+    password: null
+
+  # SQLite backend (for single-node persistent local caching)
+  sqlite:
+    path: .cache/llm_cache.db
+
+  # TTL expiration (default: 7 days)
+  ttl_seconds: 604800
+
+  # Semantic similarity matching (used for deterministic calls with temperature < 0.3)
+  enable_semantic_matching: true
+  similarity_threshold: 0.95
+  embedding_model: text-embedding-3-small
+
+  # Cache size limits (LRU eviction)
+  max_entries: 10000
+  max_size_mb: 1000
+
+  # Invalidate cached entries when model identifier/version changes
+  invalidate_on_model_change: true

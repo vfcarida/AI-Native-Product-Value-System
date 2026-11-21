@@ -29,7 +29,7 @@ def local_prompt_embedding(text: str, dim: int = _DIM) -> list[float]:
         return [0.0] * dim
 
     vec = np.zeros(dim, dtype=float)
-    words = _WORD_RE.findall(cleaned)
+    words = [w for w in _WORD_RE.findall(cleaned) if len(w) >= 2]
     word_counts = Counter(words)
     for word, count in word_counts.items():
         # Deterministic FNV-1a-style hash so results are stable across Python processes
@@ -45,7 +45,7 @@ def local_prompt_embedding(text: str, dim: int = _DIM) -> list[float]:
             h = _stable_hash(f"c:{tri}")
             idx = h % dim
             sign = 1.0 if ((h >> 16) & 1) == 0 else -1.0
-            vec[idx] += 0.35 * sign * (1.0 + math.log1p(count))
+            vec[idx] += 0.15 * sign * (1.0 + math.log1p(count))
 
     norm = float(np.linalg.norm(vec))
     if norm > 0.0:
