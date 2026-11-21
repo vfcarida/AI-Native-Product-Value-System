@@ -2,14 +2,50 @@
 Secret detection and redaction.
 """
 
+from __future__ import annotations
+
 import re
-from typing import Any
+from collections.abc import Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from product_value_system.security.hybrid_detector import (
+        HybridSecretDetector,
+        SecretFinding,
+    )
 
 
 class SecretDetector:
     """
-    Detects and redacts secrets in strings.
+    Detects and redacts secrets in strings (fast regex default with optional hybrid ML mode).
     """
+
+    def __init__(
+        self,
+        *,
+        use_ml: bool = False,
+        confidence_threshold: float = 0.7,
+        allowlist: Sequence[str] | None = None,
+        allowlist_path: Path | str | None = None,
+    ) -> None:
+        self.use_ml = use_ml
+        self.confidence_threshold = confidence_threshold
+        self._allowlist = list(allowlist) if allowlist else None
+        self._allowlist_path = allowlist_path
+        self._hybrid: HybridSecretDetector | None = None
+
+    def _get_hybrid(self) -> HybridSecretDetector:
+        if self._hybrid is None:
+            from product_value_system.security.hybrid_detector import HybridSecretDetector
+
+            self._hybrid = HybridSecretDetector(
+                use_ml=self.use_ml,
+                confidence_threshold=self.confidence_threshold,
+                allowlist=self._allowlist,
+                allowlist_path=self._allowlist_path,
+            )
+        return self._hybrid
 
     PATTERNS: list[tuple[str, str]] = [
         # Anthropic keys (specific prefix first)
@@ -44,10 +80,16 @@ class SecretDetector:
         Returns:
             True if secrets detected
         """
+        if self.use_ml:
+            return len(self.detect_findings(text)) > 0
         for pattern, _ in self.PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
                 return True
         return False
+
+    def detect_findings(self, text: str) -> list[SecretFinding]:
+        """Return structured ``SecretFinding`` objects via ``HybridSecretDetector``."""
+        return self._get_hybrid().detect(text)
 
     def find_secrets(self, text: str) -> list[tuple[str, str]]:
         """
@@ -56,6 +98,9 @@ class SecretDetector:
         Returns:
             List of (secret_value, secret_type) tuples
         """
+        if self.use_ml:
+            return [(f.snippet, f.type) for f in self.detect_findings(text)]
+
         secrets: list[tuple[str, str]] = []
 
         for pattern, secret_type in self.PATTERNS:
@@ -77,6 +122,9 @@ class SecretDetector:
         Returns:
             Text with secrets redacted
         """
+        if self.use_ml:
+            return self._get_hybrid().redact(text, placeholder=placeholder)
+
         redacted = text
 
         for pattern, secret_type in self.PATTERNS:

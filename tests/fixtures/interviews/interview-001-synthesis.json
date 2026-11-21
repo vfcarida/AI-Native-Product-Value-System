@@ -1,0 +1,31 @@
+{
+  "interview_id": "INT-001",
+  "date": "2026-11-15T14:30:00+00:00",
+  "pain_points": [
+    {
+      "description": "Biometric verification is a must-have feature for fast transfers",
+      "severity": "high",
+      "quotes": ["Biometric confirmation would make transfers feel effortless"],
+      "confidence": 0.85
+    },
+    {
+      "description": "Transfers are too slow and take 10-15 seconds waiting",
+      "severity": "high",
+      "quotes": ["It takes forever! Sometimes 10-15 seconds just waiting."],
+      "confidence": 0.9
+    }
+  ],
+  "jobs_to_be_done": [
+    {
+      "job": "Complete daily PIX transfers rapidly with minimal friction",
+      "situation": "Sending recurring family payments",
+      "motivation": "Save time and avoid timeouts",
+      "expected_outcome": "Sub-2-second settlement",
+      "current_solution": "Manual PIN entry after waiting",
+      "quotes": ["I just want it to be instant"]
+    }
+  ],
+  "quotes": [],
+  "themes": ["Biometrics", "Speed"],
+  "summary": "Interviewee desires faster transfers and biometric confirmation."
+}

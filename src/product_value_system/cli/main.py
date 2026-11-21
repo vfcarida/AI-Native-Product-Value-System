@@ -11,6 +11,7 @@ from product_value_system.cli.commands import (
     adr_command,
     drift_command,
     eval_command,
+    evidence_command,
     experiment_command,
     flags_command,
     init_command,
@@ -1026,6 +1027,95 @@ def create_parser() -> argparse.ArgumentParser:
         help="Dashboard output format (default: markdown)",
     )
 
+    # pvs evidence (EVO-023: Multi-Source Evidence Synthesis)
+    evidence_parser = subparsers.add_parser(
+        "evidence",
+        help="Multi-source evidence synthesis, contradiction detection & network graph (EVO-023)",
+    )
+    evidence_sub = evidence_parser.add_subparsers(
+        dest="evidence_action",
+        help="Evidence synthesis operations",
+    )
+
+    ev_synth = evidence_sub.add_parser(
+        "synthesize",
+        help="Synthesize multi-source evidence (interviews, tickets, analytics, research, URLs)",
+    )
+    ev_synth.add_argument("topic", help="Research or product decision topic")
+    ev_synth.add_argument(
+        "--interviews",
+        nargs="+",
+        default=None,
+        help="Interview synthesis JSON files, directories, or glob patterns",
+    )
+    ev_synth.add_argument(
+        "--tickets",
+        type=Path,
+        default=None,
+        help="Support tickets export file (JSON or CSV)",
+    )
+    ev_synth.add_argument(
+        "--analytics",
+        type=Path,
+        default=None,
+        help="Analytics metrics JSON file",
+    )
+    ev_synth.add_argument(
+        "--research",
+        nargs="+",
+        default=None,
+        help="Competitor research Markdown/text files or glob patterns",
+    )
+    ev_synth.add_argument(
+        "--urls",
+        nargs="+",
+        default=None,
+        help="External URL references",
+    )
+    ev_synth.add_argument(
+        "--threshold",
+        type=float,
+        default=0.7,
+        help="Semantic similarity threshold for contradiction detection (default: 0.7)",
+    )
+    ev_synth.add_argument(
+        "--format",
+        choices=["markdown", "json"],
+        default=None,
+        help="Report format (inferred from --output extension when omitted)",
+    )
+    ev_synth.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output path for Markdown or JSON synthesis report",
+    )
+    ev_synth.add_argument(
+        "--network-html",
+        dest="network_html",
+        type=Path,
+        default=None,
+        help="Optional output path for interactive HTML evidence network graph",
+    )
+
+    ev_vis = evidence_sub.add_parser(
+        "visualize",
+        help="Visualize claim-to-source evidence network from a synthesis JSON report",
+    )
+    ev_vis.add_argument("synthesis_file", type=Path, help="Path to synthesis JSON report")
+    ev_vis.add_argument(
+        "--format",
+        choices=["html", "mermaid"],
+        default="html",
+        help="Visualization format (default: html)",
+    )
+    ev_vis.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output file path (default: evidence-network.html for html)",
+    )
+
     # pvs validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -1080,6 +1170,8 @@ def main(argv: list[str] | None = None) -> int:
             return spec_command(args)
         if args.command == "interview":
             return interview_command(args)
+        if args.command == "evidence":
+            return evidence_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

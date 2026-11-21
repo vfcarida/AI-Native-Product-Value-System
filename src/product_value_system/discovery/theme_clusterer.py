@@ -103,7 +103,10 @@ _SEMANTIC_CONCEPTS: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "Pricing & Fees",
-        re.compile(r"\b(fee\w*|price\w*|cost\w*|expensive|charge\w*|rate\w*)\b", re.I),
+        re.compile(
+            r"\b(fee\w*|price\w*|cost\w*|expensive|charge\w*|interest\s+rate|exchange\s+rate)\b",
+            re.I,
+        ),
     ),
     (
         "Notifications & Status",
@@ -147,10 +150,10 @@ def default_semantic_embeddings(texts: list[str]) -> list[list[float]]:
             tfidf_vec = tfidf_vec / t_norm
 
         if c_norm > 0 and t_norm > 0:
-            # Weight semantic concept subspace (0.88) vs lexical TF-IDF (0.47) so
-            # paraphrases sharing a concept achieve >=0.77 cosine similarity while
-            # distinct concepts remain well-separated (<0.15) even with shared nouns.
-            combined = np.concatenate([0.88 * concept_vec, 0.47 * tfidf_vec])
+            # Weight semantic concept subspace (0.90) vs lexical TF-IDF (0.435) so
+            # paraphrases sharing a concept achieve >=0.81 cosine similarity while
+            # distinct concepts remain well-separated (<0.10) even with shared nouns.
+            combined = np.concatenate([0.90 * concept_vec, 0.435 * tfidf_vec])
         elif c_norm > 0:
             combined = np.concatenate([concept_vec, tfidf_vec])
         else:

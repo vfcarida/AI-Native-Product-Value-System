@@ -2162,3 +2162,144 @@ def interview_command(args: argparse.Namespace) -> int:
 
     print_error(f"Unknown interview action: {action}")
     return 1
+
+
+def _expand_file_args(raw_items: list[str] | None) -> list[Path]:
+    """Expand explicit file paths, directories, or glob patterns."""
+    import glob
+
+    if not raw_items:
+        return []
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for raw in raw_items:
+        p = Path(raw)
+        if p.is_dir():
+            candidates = sorted(f for f in p.iterdir() if f.is_file())
+        elif p.is_file():
+            candidates = [p]
+        else:
+            candidates = sorted(Path(m) for m in glob.glob(raw) if Path(m).is_file())
+        for item in candidates:
+            abs_item = item.resolve()
+            if abs_item not in seen:
+                seen.add(abs_item)
+                resolved.append(item)
+    return resolved
+
+
+def evidence_command(args: argparse.Namespace) -> int:
+    """Synthesize multi-source evidence and visualize claim-to-source networks (EVO-023)."""
+    from product_value_system.evidence import (
+        EvidenceSynthesisAgent,
+        SynthesisReport,
+        render_evidence_network_html,
+        render_evidence_network_mermaid,
+        render_synthesis_json,
+        render_synthesis_markdown,
+    )
+
+    action = getattr(args, "evidence_action", None)
+
+    if action == "synthesize":
+        interview_files = _expand_file_args(getattr(args, "interviews", None))
+        research_files = _expand_file_args(getattr(args, "research", None))
+        tickets_arg = getattr(args, "tickets", None)
+        analytics_arg = getattr(args, "analytics", None)
+        urls_arg = list(getattr(args, "urls", None) or [])
+
+        if tickets_arg is not None and not Path(tickets_arg).exists():
+            print_error(f"Support tickets file not found: {tickets_arg}")
+            return 1
+        if analytics_arg is not None and not Path(analytics_arg).exists():
+            print_error(f"Analytics file not found: {analytics_arg}")
+            return 1
+
+        agent = EvidenceSynthesisAgent()
+        report = asyncio.run(
+            agent.synthesize_sources(
+                topic=args.topic,
+                interview_files=interview_files,
+                ticket_file=tickets_arg,
+                analytics=analytics_arg,
+                research_docs=research_files,
+                urls=urls_arg,
+                similarity_threshold=float(getattr(args, "threshold", 0.7)),
+            )
+        )
+
+        print(f"\nEvidence Synthesis: {report.topic}")
+        print("=" * 60)
+        print(f"Claims ({len(report.claims)}):")
+        for idx, claim in enumerate(report.claims, start=1):
+            print(f"  {idx}. {claim.statement}")
+            print(
+                f"     Confidence: {claim.overall_confidence:.2f} | "
+                f"Agreement: {claim.agreement_score:.0%}"
+            )
+            print(f"     Provenance: {claim.provenance}")
+
+        if report.contradictions:
+            print(f"\nContradictions ({len(report.contradictions)}):")
+            for c in report.contradictions:
+                flag = " [HUMAN REVIEW]" if c.get("requires_human_review") else ""
+                print(
+                    f"  - Severity {float(c.get('severity', 0.0)):.2f}{flag}: "
+                    f"{c.get('explanation', '')}"
+                )
+
+        if report.evidence_gaps:
+            print("\nEvidence Gaps:")
+            for gap in report.evidence_gaps:
+                print(f"  - {gap}")
+
+        if report.recommendations:
+            print("\nRecommendations:")
+            for rec in report.recommendations:
+                print(f"  - {rec}")
+
+        output_path = getattr(args, "output", None)
+        if output_path is not None:
+            fmt = getattr(args, "format", None)
+            saved = agent.save_report(report, output_path, fmt=fmt)
+            print_success(f"Synthesis report saved to: {saved}")
+        elif getattr(args, "format", None) == "json":
+            print(render_synthesis_json(report))
+        elif getattr(args, "format", None) == "markdown":
+            print(render_synthesis_markdown(report))
+
+        network_html = getattr(args, "network_html", None)
+        if network_html is not None:
+            saved_html = agent.save_network_html(report, network_html)
+            print_success(f"Evidence network HTML saved to: {saved_html}")
+
+        return 0
+
+    if action == "visualize":
+        src = Path(args.synthesis_file)
+        if not src.exists():
+            print_error(f"Synthesis JSON file not found: {src}")
+            return 1
+
+        report = SynthesisReport.from_dict(json.loads(src.read_text(encoding="utf-8")))
+        fmt = getattr(args, "format", "html")
+        out_path = getattr(args, "output", None)
+
+        if fmt == "mermaid":
+            rendered = render_evidence_network_mermaid(report)
+            if out_path is not None:
+                Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(out_path).write_text(rendered, encoding="utf-8")
+                print_success(f"Mermaid network diagram saved to: {out_path}")
+            else:
+                print(rendered)
+            return 0
+
+        target = Path(out_path) if out_path is not None else Path("evidence-network.html")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(render_evidence_network_html(report), encoding="utf-8")
+        print_success(f"Interactive evidence network saved to: {target}")
+        return 0
+
+    print_error(f"Unknown evidence action: {action}")
+    return 1

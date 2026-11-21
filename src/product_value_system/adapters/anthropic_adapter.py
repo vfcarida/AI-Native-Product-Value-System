@@ -8,7 +8,7 @@ import logging
 import os
 import random
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -26,6 +26,9 @@ from product_value_system.adapters.model_adapter import (
     ToolCall,
 )
 from product_value_system.security.secret_detection import SecretDetector
+
+if TYPE_CHECKING:
+    from product_value_system.caching.prompt_cache import PromptCache
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,8 @@ class AnthropicAdapter:
         max_retries: int = 3,
         transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
         client: httpx.AsyncClient | None = None,
+        cache: "PromptCache | None" = None,
+        cache_max_temperature: float = 0.3,
     ) -> None:
         """
         Initialize Anthropic adapter.

@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -25,6 +25,9 @@ from product_value_system.adapters.model_adapter import (
     Usage,
 )
 from product_value_system.security.secret_detection import SecretDetector
+
+if TYPE_CHECKING:
+    from product_value_system.caching.prompt_cache import PromptCache
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,8 @@ class OpenAIModelAdapter:
         max_retries: int = 3,
         transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
         client: httpx.AsyncClient | None = None,
+        cache: "PromptCache | None" = None,
+        cache_max_temperature: float = 0.3,
     ) -> None:
         """
         Initialize OpenAI adapter.
@@ -80,6 +85,8 @@ class OpenAIModelAdapter:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.cache = cache
+        self.cache_max_temperature = float(cache_max_temperature)
         self._secret_detector = SecretDetector()
 
         if client is not None:
@@ -110,7 +117,23 @@ class OpenAIModelAdapter:
         max_tokens: int | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
-        """Invoke OpenAI chat completion API."""
+        """Invoke OpenAI chat completion API (with optional deterministic token cache)."""
+        model_name = str(kwargs.get("model") or self.model)
+        should_cache = self.cache is not None and temperature < self.cache_max_temperature
+        if should_cache and self.cache is not None:
+            from product_value_system.caching.prompt_cache import deserialize_model_response
+
+            cached = await self.cache.get(
+                messages=messages,
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+            )
+            if cached is not None:
+                logger.info("PromptCache hit for OpenAI model %s", model_name)
+                return deserialize_model_response(cached)
+
         payload = self._build_payload(messages, tools, temperature, max_tokens, **kwargs)
 
         for attempt in range(self.max_retries):
@@ -129,7 +152,19 @@ class OpenAIModelAdapter:
                     raise ModelError(f"API error: {response.status_code} {safe_text}")
 
                 data: dict[str, Any] = response.json()
-                return self._parse_response(data)
+                model_response = self._parse_response(data)
+                if should_cache and self.cache is not None:
+                    from product_value_system.caching.prompt_cache import serialize_model_response
+
+                    await self.cache.set(
+                        messages=messages,
+                        model=model_name,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        response=serialize_model_response(model_response),
+                        tools=tools,
+                    )
+                return model_response
 
             except httpx.RequestError as e:
                 if attempt < self.max_retries - 1:

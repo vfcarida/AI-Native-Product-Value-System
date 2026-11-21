@@ -1,0 +1,14 @@
+# Pre-commit hooks for AI-Native Product Value System (EVO-017 / EVO-024)
+repos:
+  - repo: local
+    hooks:
+      - id: secret-scan-regex
+        name: Secret Detection (Regex - Fast)
+        entry: python -m product_value_system.security.detect_secrets --regex-only
+        language: python
+        pass_filenames: true
+      - id: drift-check
+        name: Spec/Code Drift Detection
+        entry: python scripts/pre-commit-drift-check.py
+        language: python
+        pass_filenames: false

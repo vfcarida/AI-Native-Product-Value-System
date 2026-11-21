@@ -1,0 +1,30 @@
+[
+  {
+    "id": "T-101",
+    "issue_type": "biometric_failures",
+    "platform": "Android",
+    "date": "2026-11-18T10:00:00+00:00",
+    "description": "Fingerprint verification fails repeatedly during transfer checkout on Android"
+  },
+  {
+    "id": "T-102",
+    "issue_type": "biometric_failures",
+    "platform": "Android",
+    "date": "2026-11-19T09:30:00+00:00",
+    "description": "Biometric authentication crashes and forces fallback to password"
+  },
+  {
+    "id": "T-103",
+    "issue_type": "biometric_failures",
+    "platform": "Android",
+    "date": "2026-11-20T15:15:00+00:00",
+    "description": "Biometric prompt freezes after OS update"
+  },
+  {
+    "id": "T-104",
+    "issue_type": "slow_transfer_latency",
+    "platform": "iOS",
+    "date": "2026-11-20T16:45:00+00:00",
+    "description": "Transfer spinner waits over 12 seconds before completing"
+  }
+]

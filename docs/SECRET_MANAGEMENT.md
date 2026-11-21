@@ -28,27 +28,67 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 Create a local `.env` file (already excluded in `.gitignore`) and never commit it to Git.
 
-## Secret Detection
+## Secret Detection (Hybrid ML + Regex — EVO-024)
 
-### Pre-Commit Hook
+The Product Value System uses a **3-stage hybrid ML + regex** secret detection pipeline (`HybridSecretDetector` + `MLSecretDetector`) to stop sensitive credentials before they reach LLM contexts or Git history:
 
-Automatically scans staged files for secrets:
+1. **Regex Fast Path (`<10ms` / 10K tokens)**: Catches known provider patterns (OpenAI, Anthropic, GitHub, AWS, Slack, private keys, Bearer/JWT tokens, passwords, payment cards).
+2. **ML Contextual Validation (`MLSecretDetector`)**: Uses **Microsoft Presidio** (`presidio-analyzer` + custom `PatternRecognizer`s + optional `presidio-anonymizer`) when installed, with an automatic built-in SecretsML-style feature classifier fallback (Shannon entropy, character-class diversity, Luhn validation, Base64/hex payload inspection, and test/example context discounting).
+3. **High-Entropy & Base64 Novel Secret Scan**: Detects obfuscated or novel secret formats missed by static regexes, cached via `lru_cache` for `<100ms` latency on 10K-token contexts.
+
+### Configuration & Allowlist
+
+- Main config: [`config/secret_detection.yaml`](../config/secret_detection.yaml)
+- False-positive allowlist: [`config/secret_detection_allowlist.yaml`](../config/secret_detection_allowlist.yaml)
+- Optional Presidio install:
 
 ```bash
-# Install hook
+pip install -e ".[security-ml]"
+python -m spacy download en_core_web_lg
+```
+
+### Pre-Commit Hook (Fast Regex)
+
+Automatically scans staged files for secrets in `<10ms`:
+
+```bash
+# Install Git hook
 ./scripts/install-git-hooks.sh
+
+# Or via pre-commit (.pre-commit-config.yaml)
+pip install pre-commit && pre-commit install
 
 # Run manually
 python scripts/pre-commit-secret-scan.py
+python -m product_value_system.security.detect_secrets --regex-only src/
 ```
 
-### CI/CD Scanning
+### CI/CD Scanning (Hybrid ML + Regex)
 
-GitHub Actions scans every push and pull request in `.github/workflows/secret-scan.yml`.
+GitHub Actions scans every push and pull request in `.github/workflows/secret-scan.yml`:
+
+```bash
+python -m product_value_system.security.detect_secrets \
+  --hybrid \
+  --threshold 0.7 \
+  --allowlist config/secret_detection_allowlist.yaml \
+  --output secrets-report.json src/ config/
+```
+
+### Adding Custom Secret Patterns
+
+```python
+from product_value_system.security import HybridSecretDetector
+
+patterns = HybridSecretDetector._default_patterns()
+patterns["MY_SERVICE_KEY"] = r"myservice_[a-zA-Z0-9]{32}"
+detector = HybridSecretDetector(regex_patterns=patterns, confidence_threshold=0.7)
+findings = detector.detect(payload)
+```
 
 ### Exemptions
 
-If you have a synthetic test fixture or false positive, add its path to `.secretignore` with an inline justification comment.
+If you have a synthetic test fixture or false positive, add its path to `.secretignore` with an inline justification comment or add a scoped entry to `config/secret_detection_allowlist.yaml`.
 
 ## Secret Rotation
 
