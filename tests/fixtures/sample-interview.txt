@@ -1,0 +1,8 @@
+[00:00:15] Interviewer: Thanks for joining today. Can you tell me how you typically send transfers?
+[00:00:25] Participant: Sure, I want to send money quickly to family members every week, and split bills with friends after dinner.
+[00:01:30] Interviewer: What is your biggest frustration with transfers right now?
+[00:01:35] Participant: It takes forever! Sometimes 10-15 seconds just waiting for the confirmation screen.
+[00:02:10] Interviewer: Do you encounter any issues when a transfer fails?
+[00:02:18] Participant: Yes, I never know what went wrong, it just shows an unclear error message without telling me what to do next.
+[00:03:05] Interviewer: How about the confirmation flow itself?
+[00:03:12] Participant: Why do I need to confirm 3 times? I just want it to be instant and simple.

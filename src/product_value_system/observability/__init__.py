@@ -1,5 +1,6 @@
 """
-OpenTelemetry observability, GenAI semantic conventions, cost tracking, and PII sanitization.
+OpenTelemetry observability, GenAI v1.28+ semantic conventions, metrics, cost tracking,
+PII sanitization, and legacy attribute migration (EVO-021).
 """
 
 from product_value_system.observability.cost_tracker import (
@@ -13,7 +14,23 @@ from product_value_system.observability.exporters import (
 )
 from product_value_system.observability.genai_conventions import (
     GenAIAttributes,
+    GenAIEvents,
+    GenAIOperation,
+    infer_genai_system,
     instrument_model_call,
+)
+from product_value_system.observability.genai_metrics import GenAIMetrics
+from product_value_system.observability.genai_tracer import (
+    ChatCompletionSpan,
+    EmbeddingSpan,
+    GenAITracer,
+    RerankSpan,
+    TextCompletionSpan,
+)
+from product_value_system.observability.migration_shim import (
+    ATTRIBUTE_MIGRATION_MAP,
+    CompatibilityTracer,
+    migrate_attributes,
 )
 from product_value_system.observability.sanitization import (
     sanitize_attributes,
@@ -33,17 +50,29 @@ from product_value_system.observability.tracing import (
 )
 
 __all__ = [
+    "ATTRIBUTE_MIGRATION_MAP",
     "CURRENT_RUN_ID",
-    "MODEL_PRICING",
+    "ChatCompletionSpan",
+    "CompatibilityTracer",
     "CostBreakdown",
     "CostTracker",
+    "EmbeddingSpan",
     "GenAIAttributes",
+    "GenAIEvents",
+    "GenAIMetrics",
+    "GenAIOperation",
+    "GenAITracer",
+    "MODEL_PRICING",
+    "RerankSpan",
     "SanitizingSpanProcessor",
+    "TextCompletionSpan",
     "clear_run_context",
     "configure_tracing",
     "create_console_exporter",
     "create_otlp_exporter",
+    "infer_genai_system",
     "instrument_model_call",
+    "migrate_attributes",
     "sanitize_attributes",
     "sanitize_string",
     "set_run_context",

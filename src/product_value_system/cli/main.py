@@ -14,6 +14,7 @@ from product_value_system.cli.commands import (
     experiment_command,
     flags_command,
     init_command,
+    interview_command,
     list_command,
     measure_outcome_command,
     review_command,
@@ -891,6 +892,140 @@ def create_parser() -> argparse.ArgumentParser:
         help="Output Markdown catalog path",
     )
 
+    # pvs interview (EVO-022: Customer Interview Synthesis)
+    interview_parser = subparsers.add_parser(
+        "interview",
+        help="Customer interview synthesis, theme clustering, and export (EVO-022)",
+    )
+    interview_sub = interview_parser.add_subparsers(
+        dest="interview_action",
+        help="Interview synthesis operations",
+    )
+
+    iv_synth = interview_sub.add_parser(
+        "synthesize",
+        help="Synthesize insights from a single interview transcript (VTT, SRT, plain text)",
+    )
+    iv_synth.add_argument("transcript", type=Path, help="Path to interview transcript file")
+    iv_synth.add_argument(
+        "--interview-id",
+        dest="interview_id",
+        default=None,
+        help="Optional explicit interview ID (defaults to file stem)",
+    )
+    iv_synth.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output file path for exported synthesis",
+    )
+    iv_synth.add_argument(
+        "--format",
+        choices=["json", "markdown", "notion"],
+        default="json",
+        help="Output export format (default: json)",
+    )
+
+    iv_batch = interview_sub.add_parser(
+        "synthesize-batch",
+        help="Batch-synthesize all transcripts in a directory",
+    )
+    iv_batch.add_argument("directory", type=Path, help="Directory of interview transcripts")
+    iv_batch.add_argument(
+        "--output",
+        type=Path,
+        default=Path("analysis"),
+        help="Output directory for synthesized files (default: analysis/)",
+    )
+    iv_batch.add_argument(
+        "--format",
+        choices=["json", "markdown", "notion"],
+        default="json",
+        help="Output format for each synthesized file (default: json)",
+    )
+
+    iv_cluster = interview_sub.add_parser(
+        "cluster-themes",
+        help="Cluster semantically similar pain points across multiple synthesis JSON files",
+    )
+    iv_cluster.add_argument(
+        "files",
+        nargs="+",
+        help="Synthesis JSON files, directories, or glob patterns",
+    )
+    iv_cluster.add_argument(
+        "--threshold",
+        type=float,
+        default=0.7,
+        help="Cosine similarity threshold for DBSCAN clustering (default: 0.7)",
+    )
+    iv_cluster.add_argument(
+        "--min-samples",
+        dest="min_samples",
+        type=int,
+        default=2,
+        help="Minimum pain points required to form a cluster (default: 2)",
+    )
+    iv_cluster.add_argument(
+        "--include-unclustered",
+        action="store_true",
+        default=False,
+        help="Include singleton pain points as individual themes",
+    )
+    iv_cluster.add_argument(
+        "--format",
+        choices=["markdown", "json", "notion"],
+        default="markdown",
+        help="Report format (default: markdown)",
+    )
+    iv_cluster.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output path for clustered theme report",
+    )
+    iv_cluster.add_argument(
+        "--opportunity-map",
+        dest="opportunity_map",
+        type=Path,
+        default=None,
+        help="Optional JSON path to save populated Opportunity Map (EVO-005 integration)",
+    )
+
+    iv_export = interview_sub.add_parser(
+        "export",
+        help="Export a synthesized interview JSON file to JSON, Markdown, or Notion format",
+    )
+    iv_export.add_argument("synthesis_file", type=Path, help="Path to synthesis JSON file")
+    iv_export.add_argument(
+        "--format",
+        choices=["json", "markdown", "notion"],
+        default="markdown",
+        help="Target export format (default: markdown)",
+    )
+    iv_export.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output file path (prints to stdout if omitted)",
+    )
+
+    iv_dash = interview_sub.add_parser(
+        "dashboard",
+        help="Aggregate insights over time and trending themes across synthesis JSON files",
+    )
+    iv_dash.add_argument(
+        "targets",
+        nargs="+",
+        help="Synthesis JSON files, directories, or glob patterns",
+    )
+    iv_dash.add_argument(
+        "--format",
+        choices=["markdown", "json"],
+        default="markdown",
+        help="Dashboard output format (default: markdown)",
+    )
+
     # pvs validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -943,6 +1078,8 @@ def main(argv: list[str] | None = None) -> int:
             return adr_command(args)
         if args.command == "spec":
             return spec_command(args)
+        if args.command == "interview":
+            return interview_command(args)
         if args.command == "status":
             return status_command(args)
         if args.command == "list":

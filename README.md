@@ -34,13 +34,14 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Docker Sandbox Isolation**: Isolated container execution (`pvs/agent-sandbox:latest`) running as non-root (`UID 1000`), with dropped Linux capabilities, memory/CPU/PID limits, and network isolation
 - ✅ **Policy-Based Authorization**: Cedar policy schema (`policies/schema.cedarschema`) and rules (`policies/agent_authorization.cedar`) with a deterministic Python fallback evaluator
 - ✅ **Security Controls**: Input/schema validation, path traversal prevention, command sanitization, regex secret detection (`pre-commit` hook + CI), and OWASP LLM Top 10 threat model
-- ✅ **OpenTelemetry Observability, Production Monitoring & SLOs**: GenAI semantic-convention distributed tracing, 12 OpenTelemetry/Prometheus metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, error-budget policies, automated rollback (`ProductionMonitor`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 4 Grafana dashboards (`docker-compose.monitoring.yml`)
+- ✅ **OpenTelemetry Observability, GenAI Conventions (v1.28+), Monitoring & SLOs**: Standard `GenAITracer` (`chat`, `completion`, `embedding`, `rerank`, `gen_ai.content.*` / `gen_ai.tool.*` events), `GenAIMetrics`, legacy `llm.*` migration shim (`CompatibilityTracer`), OTEL Collector pipeline (`monitoring/otel-collector-config.yml`), 12 production metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, automated rollback (`ProductionMonitor`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 5 Grafana dashboards including `genai_overview.json` (`docker-compose.monitoring.yml`)
 - ✅ **Progressive Delivery & Feature Flags**: Schema-validated YAML feature flags (`flags.yaml`), consistent SHA-256 user bucketing, targeting rules (`user_id`, `environment`, `attribute`, `percentage`), 6-stage `RolloutController` (`dark` → `canary` → `staged_5/25/50` → `full`) with SLO quality gates & automatic rollback, FastAPI Admin UI (`/admin/flags`), orchestrator gating, and `pvs flags` CLI
 - ✅ **Experiment Design & A/B Testing**: `ExperimentDesignAgent` turning outcome hypotheses into schema-validated `ExperimentDesign` blueprints, `PowerAnalyzer` (`scipy.stats` sample size & duration), privacy-safe `ABTest` framework with consistent SHA-256 assignment, Welch's t-test / chi-square / Bayesian posterior analysis, guardrail monitoring, early stopping, and `pvs experiment` CLI
 - ✅ **Automated Baseline Validation**: Pre-experiment `BaselineCollector` (traces, logs, JSON/YAML), `StatisticalValidator` (sample size, CV, Z-score outliers, Shapiro-Wilk/KS normality), non-central `t` `PowerAnalyzer`, Mann-Whitney U `StabilityChecker` (drift, incidents, deploys), 0–100 quality score `ValidationGate`, `ValidatedExperimentRunner`, and `pvs experiment validate-baseline` CLI
 - ✅ **Automated Drift Detection**: AST-based `CodeScanner` (functions + FastAPI routes), Markdown/OpenAPI/SLA `SpecScanner`, OpenTelemetry `TraceScanner`, structural + LLM semantic `DriftComparator`, JSON/Markdown/weekly `DriftReporter`, brownfield baseline diffing, pre-commit hook (`scripts/pre-commit-drift-check.py`), and `pvs drift` CLI
 - ✅ **Architecture Decision Records (ADR) Management**: Git-backed `ADRManager` with auto-numbering (`ADR-0001`), YAML metadata, lifecycle transitions (`proposed` → `accepted` → `deprecated`/`superseded`), keyword search, Mermaid supersession graphs, onboarding decision logs, `# See ADR-XXXX` code scanning, `DecisionAgentADRIntegration`, and `pvs adr` CLI
 - ✅ **Spec-Kit Structured Specification Patterns**: 5 reusable Spec-Kit templates (`user-story`, `scenario` Gherkin, `api-contract`, `nfr`, `decision`) with custom template overrides, 0–100 `SpecValidator`, `TraceabilityLinker` (code & test coverage), `DiscoverySpecGenerator` (insights → user stories), VS Code snippets (`.vscode/spec-kit.code-snippets`), and `pvs spec` CLI
+- ✅ **Customer Interview Synthesis**: Automated WebVTT/SRT/plain-text `TranscriptProcessor`, multi-layer `PIIRedactor` (emails, phones, CPFs, cards, addresses, names), LLM + offline `InsightExtractor` (severity-rated pain points, JTBD, traceable quotes, human review workflow), cosine-DBSCAN `ThemeClusterer`, `OpportunityMap` integration, JSON/Markdown/Notion exports, `SynthesisDashboard`, and `pvs interview` CLI
 
 ### Model Support & Streaming
 - ✅ **OpenAI Adapter**: GPT-4, GPT-4 Turbo, GPT-4o, GPT-3.5 Turbo with real SSE streaming, retries, tool calling, and USD cost calculation
@@ -61,7 +62,7 @@ This project is in active alpha development (`v0.1.0`). Known limitations:
 
 ### Discovery & Evidence
 - **Synthetic simulation disclaimer**: TinyTroupe customer simulation (`src/product_value_system/simulation/`) provides synthetic persona feedback (with a built-in local fallback when `tinytroupe` is not installed), NOT real human user research.
-- **Single-source evidence**: `DiscoveryAgent` analyzes a single structured `problem.yaml` input and does not yet synthesize multi-source customer interviews or telemetry (planned in EVO-022 / EVO-023).
+- **Multi-source evidence roadmap**: Customer interview synthesis (`src/product_value_system/discovery/`, EVO-022) extracts pain points, JTBD, quotes, clustered themes, and Opportunity Maps from VTT/SRT/plain transcripts; broader multi-source telemetry synthesis is planned in EVO-023.
 
 ### Lifecycle Stages
 - **External analytics required for live Learn stage**: Post-release outcome measurement (`src/product_value_system/learning/`) supports SQLite, PostgreSQL/MySQL (SQLAlchemy), Prometheus, and Mock adapters; live measurement requires an external metrics database or Prometheus instance.
@@ -212,12 +213,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
 - **[Golden Dataset Curation Guide](golden_datasets/README.md)** — 180 HELM-structured golden samples, schema, curation CLI, and regression evaluation gates
 - **[Multi-Agent Review Guide](docs/review-guide.md)** — Elephant-Goldfish 4-perspective review, conflict resolution, and `pvs review` CLI
-- **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
+- **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [OpenTelemetry GenAI Conventions](docs/otel-genai-conventions.md), [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
 - **[Progressive Delivery & Feature Flags](docs/progressive-delivery.md)** — Dark launches, canary/staged rollouts, [Flag Management](docs/flag-management.md), and [Developer Flag Integration](docs/developer/flag-integration.md)
 - **[Experiment Design & A/B Testing](docs/experiment-design.md)** — Power analysis, guardrails, stopping criteria, [A/B Testing Best Practices](docs/ab-testing.md), and [Baseline Validation](docs/baseline-validation.md)
 - **[Automated Drift Detection](docs/drift-detection.md)** — Code/spec AST diffing, OpenAPI & OpenTelemetry trace checks, pre-commit gating, and `pvs drift` CLI
 - **[Architecture Decision Records (ADR)](docs/adr-guide.md)** — ADR lifecycle, [ADR Index](docs/adr/README.md), decision graphs, onboarding logs, and `pvs adr` CLI
 - **[Spec-Kit Patterns Guide](docs/spec-kit-guide.md)** — User story, Gherkin scenario, API contract, NFR & decision templates, validation scoring, traceability, and `pvs spec` CLI
+- **[Customer Interview Synthesis Guide](docs/interview-synthesis.md)** — VTT/SRT/plain transcript parsing, PII redaction, JTBD & pain point extraction, theme clustering, Opportunity Map, Notion export, and `pvs interview` CLI
 - **[Threat Model](docs/THREAT_MODEL.md)** — Security analysis (OWASP LLM Top 10)
 - **[Security Testing Guide](docs/SECURITY_TESTING.md)** — Adversarial prompt injection & security tests
 - **[Policy Synchronization](docs/POLICY_SYNC.md)** — Cedar policy vs. Python fallback sync validation
@@ -268,7 +270,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 ### v0.3 — Simulation & Multi-Source Evidence
 - ✅ TinyTroupe customer simulation (EVO-009)
 - ✅ Automated baseline validation & statistical power gating (EVO-019)
-- 📋 Customer interview & multi-source evidence synthesis (EVO-022, EVO-023)
+- ✅ Customer interview synthesis, PII redaction, theme clustering & Opportunity Map (EVO-022)
+- 📋 Multi-source telemetry & feedback synthesis (EVO-023)
 
 ### v0.4 — Lifecycle Completion
 - ✅ Learn stage & outcome measurement agent (EVO-010)
@@ -283,6 +286,7 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ Automated code, specification & OpenTelemetry trace drift detection (EVO-017)
 - ✅ Architecture Decision Records (ADR) management & decision agent integration (EVO-018)
 - ✅ Spec-Kit structured templates, completeness validator & traceability (EVO-020)
+- ✅ OpenTelemetry GenAI semantic conventions (v1.28+), metrics & migration shim (EVO-021)
 
 ### v1.0 — Production Grade
 - 📋 Token caching & cost optimization (EVO-025, EVO-026)

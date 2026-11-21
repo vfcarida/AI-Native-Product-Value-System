@@ -233,38 +233,73 @@ class Harness:
             )
             raise
 
-        try:
-            response = await self.model_adapter.invoke(
-                messages=normalized,
-                tools=tools,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
-        except Exception as exc:
-            metrics.record_request(
-                agent=self.context.agent_name,
-                status="error",
-                latency_seconds=time.perf_counter() - step_start,
-                error_type=type(exc).__name__,
-            )
-            raise
+        from product_value_system.observability.genai_tracer import GenAITracer
 
-        actual_cost = 0.0
-        actual_tokens = 0
-        if response.usage is not None:
-            actual_tokens = response.usage.total_tokens
-            if hasattr(self.model_adapter, "calculate_cost"):
-                actual_cost = float(
-                    self.model_adapter.calculate_cost(
-                        response.usage,
-                        response.model,
-                    )
+        adapter_model = str(getattr(self.model_adapter, "model", "unknown"))
+        msg_dicts = [{"role": m.role.value, "content": m.content} for m in normalized]
+        genai_tracer = GenAITracer(trace.get_tracer(__name__), sanitize_content=True)
+
+        with genai_tracer.trace_chat_completion(
+            operation_name=f"harness.invoke_model.{self.context.agent_name}",
+            model=adapter_model,
+            messages=msg_dicts,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tool_call_count=len(tools) if tools else None,
+        ) as genai_span:
+            try:
+                response = await self.model_adapter.invoke(
+                    messages=normalized,
+                    tools=tools,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
                 )
-            self.budget.spend(Decimal(str(actual_cost)), tokens=actual_tokens)
-            within_budget, error = self.budget.check_all()
-            if not within_budget:
-                raise BudgetExceededError(error)
+            except Exception as exc:
+                metrics.record_request(
+                    agent=self.context.agent_name,
+                    status="error",
+                    latency_seconds=time.perf_counter() - step_start,
+                    error_type=type(exc).__name__,
+                )
+                raise
+
+            actual_cost = 0.0
+            actual_tokens = 0
+            prompt_tokens = 0
+            completion_tokens = 0
+            if response.usage is not None:
+                actual_tokens = response.usage.total_tokens
+                prompt_tokens = response.usage.prompt_tokens
+                completion_tokens = response.usage.completion_tokens
+                if hasattr(self.model_adapter, "calculate_cost"):
+                    actual_cost = float(
+                        self.model_adapter.calculate_cost(
+                            response.usage,
+                            response.model,
+                        )
+                    )
+                self.budget.spend(Decimal(str(actual_cost)), tokens=actual_tokens)
+                within_budget, error = self.budget.check_all()
+                if not within_budget:
+                    raise BudgetExceededError(error)
+
+            if response.tool_calls:
+                import json as _json
+
+                for tc in response.tool_calls:
+                    genai_span.record_tool_call(tc.name, _json.dumps(tc.arguments))
+
+            genai_span.record_completion(
+                response_id=str(getattr(response, "id", None) or f"resp-{self.context.run_id}"),
+                completion=response.content,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                finish_reason=response.finish_reason or "stop",
+                response_model=response.model or adapter_model,
+                cost_usd=actual_cost,
+                tool_call_count=len(response.tool_calls) if response.tool_calls else None,
+            )
 
         elapsed_sec = time.perf_counter() - step_start
         metrics.record_request(

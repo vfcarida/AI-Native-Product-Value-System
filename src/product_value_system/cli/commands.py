@@ -1978,3 +1978,187 @@ def spec_command(args: argparse.Namespace) -> int:
 
     print_error(f"Unknown spec action: {action}")
     return 1
+
+
+def _resolve_synthesis_json_files(targets: list[str]) -> list[Path]:
+    """Resolve file paths, directories, or glob patterns to synthesis JSON files."""
+    import glob
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for raw in targets:
+        candidate = Path(raw)
+        matches: list[Path] = []
+        if candidate.is_dir():
+            matches = sorted(candidate.glob("*.json"))
+        elif candidate.is_file():
+            matches = [candidate]
+        else:
+            matches = sorted(Path(p) for p in glob.glob(raw) if Path(p).is_file())
+        for path in matches:
+            abs_p = path.resolve()
+            if abs_p not in seen:
+                seen.add(abs_p)
+                resolved.append(path)
+    return resolved
+
+
+def interview_command(args: argparse.Namespace) -> int:
+    """Synthesize customer interviews, cluster themes, export reports & dashboard (EVO-022)."""
+    from product_value_system.discovery import (
+        InterviewInsights,
+        InterviewSynthesizer,
+        OpportunityMap,
+        SynthesisDashboard,
+        export_clustered_themes,
+        export_insights,
+    )
+
+    action = getattr(args, "interview_action", None)
+    synthesizer = InterviewSynthesizer()
+
+    if action == "synthesize":
+        transcript_path = Path(args.transcript)
+        if not transcript_path.exists():
+            print_error(f"Transcript file not found: {transcript_path}")
+            return 1
+
+        insights = asyncio.run(
+            synthesizer.synthesize(
+                transcript_path,
+                interview_id=getattr(args, "interview_id", None),
+            )
+        )
+
+        print(f"\nInterview Synthesis: {insights.interview_id}")
+        print("=" * 60)
+        print(f"Pain Points ({len(insights.pain_points)}):")
+        for idx, pp in enumerate(insights.pain_points, start=1):
+            print(f"  {idx}. [{pp.severity.value.upper()}] {pp.description} ({pp.confidence:.0%})")
+            if pp.quotes:
+                print(f'     "{pp.quotes[0]}"')
+
+        print(f"\nJobs-to-be-Done ({len(insights.jobs_to_be_done)}):")
+        for idx, jtbd in enumerate(insights.jobs_to_be_done, start=1):
+            print(f"  {idx}. {jtbd.job}")
+            print(f"     Current solution: {jtbd.current_solution}")
+
+        print(f"\nKey Quotes ({len(insights.quotes)}):")
+        for q in insights.quotes:
+            print(f'  - "{q.text}" ({q.timestamp}, {q.speaker})')
+
+        print(f"\nThemes: {', '.join(insights.themes)}")
+        redacted_total = sum(insights.redaction_counts.values())
+        if redacted_total > 0:
+            print(f"PII Redacted: {redacted_total} item(s) ({insights.redaction_counts})")
+
+        fmt = getattr(args, "format", "json")
+        rendered = export_insights(insights, fmt=fmt)
+        out_path = getattr(args, "output", None)
+        if out_path is not None:
+            out_file = Path(out_path)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(rendered, encoding="utf-8")
+            print_success(f"Synthesis saved to: {out_file}")
+        return 0
+
+    if action == "synthesize-batch":
+        directory = Path(args.directory)
+        if not directory.is_dir():
+            print_error(f"Transcript directory not found: {directory}")
+            return 1
+
+        output_dir = getattr(args, "output", None) or Path("analysis")
+        fmt = getattr(args, "format", "json")
+        batch = asyncio.run(
+            synthesizer.synthesize_batch(directory, output_dir=output_dir, export_format=fmt)
+        )
+        print_success(
+            f"Synthesized {len(batch)} interview(s) from {directory} -> {output_dir}"
+        )
+        return 0
+
+    if action == "cluster-themes":
+        files = _resolve_synthesis_json_files(list(args.files))
+        if not files:
+            print_error("No synthesis JSON files found matching inputs.")
+            return 1
+
+        insights_list = [
+            InterviewInsights.from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in files
+        ]
+        threshold = float(getattr(args, "threshold", 0.7))
+        min_samples = int(getattr(args, "min_samples", 2))
+        themes = asyncio.run(
+            synthesizer.cluster_themes(
+                insights_list,
+                similarity_threshold=threshold,
+                min_samples=min_samples,
+                include_unclustered=bool(getattr(args, "include_unclustered", False)),
+            )
+        )
+
+        fmt = getattr(args, "format", "markdown")
+        rendered = export_clustered_themes(
+            themes,
+            total_interviews=len(insights_list),
+            fmt=fmt,
+        )
+        print(rendered)
+
+        out_path = getattr(args, "output", None)
+        if out_path is not None:
+            out_file = Path(out_path)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(rendered, encoding="utf-8")
+            print_success(f"Clustered themes saved to: {out_file}")
+
+        opp_path = getattr(args, "opportunity_map", None)
+        if opp_path is not None:
+            omap = OpportunityMap()
+            omap.populate_from_themes(themes)
+            omap.save(opp_path)
+            print_success(
+                f"Populated Opportunity Map with {len(omap.opportunities)} opportunity(ies): "
+                f"{opp_path}"
+            )
+        return 0
+
+    if action == "export":
+        src = Path(args.synthesis_file)
+        if not src.exists():
+            print_error(f"Synthesis JSON file not found: {src}")
+            return 1
+
+        insights = InterviewInsights.from_dict(json.loads(src.read_text(encoding="utf-8")))
+        fmt = getattr(args, "format", "markdown")
+        rendered = export_insights(insights, fmt=fmt)
+
+        out_path = getattr(args, "output", None)
+        if out_path is not None:
+            out_file = Path(out_path)
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            out_file.write_text(rendered, encoding="utf-8")
+            print_success(f"Exported {fmt} synthesis report to: {out_file}")
+        else:
+            print(rendered)
+        return 0
+
+    if action == "dashboard":
+        files = _resolve_synthesis_json_files(list(args.targets))
+        if not files:
+            print_error("No synthesis JSON files found.")
+            return 1
+
+        insights_list = [
+            InterviewInsights.from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in files
+        ]
+        snapshot = SynthesisDashboard().build_snapshot(insights_list)
+        if getattr(args, "format", "markdown") == "json":
+            print(json.dumps(snapshot.to_dict(), indent=2))
+        else:
+            print(snapshot.to_markdown())
+        return 0
+
+    print_error(f"Unknown interview action: {action}")
+    return 1
