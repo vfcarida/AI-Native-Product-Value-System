@@ -13,6 +13,16 @@ from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.guardrails import Guardrails, GuardrailViolation
 from product_value_system.harness.harness import Harness, HarnessResult
 from product_value_system.harness.memory import Memory, Message
+from product_value_system.harness.resilience import (
+    CircuitBreaker,
+    CircuitBreakerStats,
+    CircuitOpenError,
+    CircuitState,
+    RetryTokenBucket,
+    execute_with_resilience,
+    full_jitter_delay,
+    is_transient_error,
+)
 from product_value_system.harness.tools import Tool, ToolCall, ToolRegistry
 
 __all__ = [
@@ -21,6 +31,10 @@ __all__ = [
     "BudgetExhausted",
     "Checkpoint",
     "CheckpointManager",
+    "CircuitBreaker",
+    "CircuitBreakerStats",
+    "CircuitOpenError",
+    "CircuitState",
     "EmergencyStopTriggered",
     "ExecutionContext",
     "GuardrailViolation",
@@ -29,7 +43,11 @@ __all__ = [
     "HarnessResult",
     "Memory",
     "Message",
+    "RetryTokenBucket",
     "Tool",
     "ToolCall",
     "ToolRegistry",
+    "execute_with_resilience",
+    "full_jitter_delay",
+    "is_transient_error",
 ]

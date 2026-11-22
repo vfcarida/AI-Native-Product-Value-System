@@ -508,8 +508,12 @@ class NetworkFilter:
             if self.fallback_on_error:
                 try:
                     self.iptables.delete_chain(chain_name)
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    logger.debug(
+                        "Best-effort chain cleanup failed for %s: %s",
+                        chain_name,
+                        cleanup_exc,
+                    )
                 return NetworkFilterStatus(
                     container_id=container_id,
                     applied=False,

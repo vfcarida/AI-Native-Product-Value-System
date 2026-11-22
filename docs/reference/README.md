@@ -1,62 +1,99 @@
 # Reference Documentation
 
-This is the **reference documentation** for the AI-native Product Value System. Use this for looking up API signatures, configuration options, schemas, and CLI commands.
+This is the **Diátaxis Reference** quadrant for the AI-Native Product Value System. It provides objective, accurate lookup tables for public Python packages, configuration contracts, JSON schemas, and CLI commands.
 
-**For learning**: See [How-To Guides](../howto/) and [Architecture](../architecture/DIAGRAMS.md).
-
----
-
-## API Reference
-
-Complete API documentation for all public interfaces.
-
-- [Agents API](api/agents.md) — Agent protocol and implementations (`DiscoveryAgent`, `SpecificationAgent`, `ArchitectureReviewAgent`, `SecurityReviewAgent`, `BuildAgent`)
-- [Harness API](api/harness.md) — Harness system components (`Harness`, `ExecutionContext`, `Budget`, `Guardrails`, `Memory`, `ToolRegistry`, `CheckpointManager`)
-- [Policy API](api/policy.md) — Policy engine and Cedar integration (`PolicyEngine`, `AuthorizationDecision`, `Agent`, `AgentRole`, `Tool`, `AuthorizationContext`)
-- [Evaluation API](api/evaluation.md) — Judges and evaluation pipeline (`Judge`, `EvaluationPipeline`, `SchemaValidationJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, `GoldenDatasetLoader`)
-- [Orchestrator API](api/orchestrator.md) — Value stream orchestration (`ValueStreamOrchestrator`, `ValueStreamStateMachine`, `ValueStreamRun`, `CheckpointManager`)
-- [Observability API](api/observability.md) — Tracing, GenAI conventions, cost tracking, and sanitization (`configure_tracing`, `traced`, `CostTracker`, `instrument_model_call`, `SanitizingSpanProcessor`)
-- [Simulation API](api/simulation.md) — Synthetic customer simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`)
-- [Learning & Outcome Measurement API](api/learning.md) — Learn stage analytics adapters, statistical outcome tracking, cost attribution, and Discovery feedback loops (`OutcomeTracker`, `MeasurementAgent`, `CostAttributor`, `FeedbackLoop`, `SQLAnalyticsAdapter`, `PrometheusAnalyticsAdapter`)
+**Other Diátaxis quadrants**:
+- **Tutorials & Examples**: [`examples/`](../../examples/)
+- **How-To Guides**: [`docs/howto/`](../howto/README.md)
+- **Architecture & Explanation**: [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md), [`docs/architecture/DIAGRAMS.md`](../architecture/DIAGRAMS.md), [`docs/BENCHMARKS.md`](../BENCHMARKS.md)
 
 ---
 
-## Configuration Reference
+## Core Python Package Surface (31 Public Packages)
 
-Configuration options for agents, policies, and system settings.
+Top-level lazy imports are exposed directly on `product_value_system` (PEP 562 `__getattr__`), e.g. `from product_value_system import ValueStreamOrchestrator, Harness, PolicyEngine, PromptCache, ModelRouter, DevXTracker`.
 
-- [Agent Configurations](configuration/agent-configs.md) — Agent YAML configs (`config/agents/*.yaml`)
-- [Policies](configuration/policies.md) — Cedar policy syntax and schema (`policies/`)
-- [Environment Variables](configuration/environment-variables.md) — System environment variables
+### Control Plane, Agents & Orchestration
+- [`product_value_system.agents`](api/agents.md) — `Agent`, `DiscoveryAgent`, `SpecificationAgent`, `ArchitectureReviewAgent`, `SecurityReviewAgent`, `BuildAgent`, `BrownfieldAgent`, `MeasurementAgent`, `ExperimentDesignAgent`
+- [`product_value_system.orchestrator`](api/orchestrator.md) — `ValueStreamOrchestrator`, `DependencyGraph`, `ParallelExecutor`, `ResourceManager`, `ConflictResolver`, `CheckpointManager` ([Parallel Execution Guide](../parallel-execution.md))
+- [`product_value_system.harness`](api/harness.md) — `Harness`, `ExecutionContext`, `Budget`, `Guardrails`, `CircuitBreaker`, `RetryTokenBucket`, `execute_with_resilience`
+- [`product_value_system.review`](../architecture/DIAGRAMS.md) — `MultiAgentReviewOrchestrator` (parallel Architecture, Security, Performance, Maintainability review synthesis)
+- [`product_value_system.adapters`](api/agents.md) — `ModelAdapter`, `OpenAIAdapter`, `AnthropicAdapter`, `MockAdapter`, `SQLAnalyticsAdapter`, `PrometheusAnalyticsAdapter`
+- `product_value_system.persistence` — WAL-tuned SQLite `Database` & `ValueStreamRepository`
+
+### Governance, Security & Sandboxing
+- [`product_value_system.policy`](api/policy.md) — mtime-cached Cedar `PolicyEngine`, `AuthorizationDecision`, `Agent`, `AgentRole`, `Tool`
+- `product_value_system.security` — `HybridSecretDetector` (regex + Presidio/ML + entropy), `InputValidator`, `PromptInjectionDetector`
+- `product_value_system.sandbox` / `product_value_system.runtime` — `DockerSandboxProvider`, `NetworkFilter`, `IptablesManager` ([Network Egress Filtering](../network-filtering.md))
+- `product_value_system.contracts` — `SchemaValidator`, `StrictConfigModel`, `validate_all_configs`, `expand_env_vars`, `read_secret_from_file`
+
+### FinOps & Performance Optimization
+- `product_value_system.caching` — `PromptCache`, `MemoryCacheBackend`, `SQLiteCacheBackend` (WAL), `RedisCacheBackend`, `TieredCacheBackend`, `SimilarityMatcher` ([Token Caching Guide](../token-caching.md))
+- `product_value_system.routing` — `ModelRouter`, `ComplexityClassifier`, `RoutingPolicy`, `QualityValidator`, `FallbackHandler` ([Model Routing Guide](../model-routing.md))
+- [`product_value_system.evaluation`](api/evaluation.md) — `EvaluationPipeline`, `BatchEvaluationRunner`, `OpenAIBatchAdapter`, `AnthropicBatchAdapter`, `RegressionEvaluator`, `TrajectoryEvaluator` ([Batch Evaluations Guide](../batch-evaluations.md))
+
+### Discovery, Evidence, Simulation & Learning
+- [`product_value_system.simulation`](api/simulation.md) — `TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`
+- `product_value_system.discovery` — AI-assisted `InterviewSynthesizer` & customer insight extraction
+- `product_value_system.evidence` — `EvidenceSynthesisEngine`, `ContradictionDetector`, `QualityScorer`
+- `product_value_system.experiments` / `product_value_system.validation` — `PowerAnalyzer`, `ExperimentDesigner`, `HypothesisValidator`
+- [`product_value_system.learning`](api/learning.md) — `OutcomeTracker`, `CostAttributor`, `FeedbackLoop`
+
+### Brownfield Modernization & Engineering Governance
+- `product_value_system.brownfield` — `GitAnalyzer`, `HotspotDetector`, `CouplingAnalyzer`, `AgeAnalyzer`, `OwnershipAnalyzer`, `BoundaryAnalyzer` (Clauset-Newman-Moore + $Q$), `ACLGenerator` (shadow parity mode), `RoutingStrategyPlanner`, `StranglerPlanner` ([Git History Analysis](../git-history-analysis.md), [Strangler Fig Modernization](../strangler-fig-modernization.md))
+- `product_value_system.drift` — Spec/code drift detection engine
+- `product_value_system.adr` — Architecture Decision Record lifecycle manager
+- `product_value_system.spec_kit` — Specification templates, traceability linker, and validator
+- `product_value_system.feature_flags` — `FeatureFlagService`, `RolloutController`, FastAPI Admin UI
+
+### Observability, Monitoring & DevX
+- [`product_value_system.observability`](api/observability.md) — OpenTelemetry GenAI v1.28+ tracing (`GenAITracer`, `SanitizingSpanProcessor`), `StructuredJsonFormatter`, `SecretRedactingFilter`, `configure_logging`, `run_system_diagnostics`
+- `product_value_system.monitoring` / `product_value_system.api` — `PVSMetrics`, `SLOEvaluator`, `ProductionMonitor`, FastAPI `/health/live`, `/health/ready`, `/slos`, `/metrics`, `/devx`
+- `product_value_system.metrics` — `DevXTracker`, `CycleTimeTracker`, `SPACECalculator`, `SatisfactionSurvey` ([DevX Metrics Guide](../devx-metrics.md))
+- [`product_value_system.cli`](cli/commands.md) — Modular `pvs` CLI (21 subcommands)
 
 ---
 
-## Schema Reference
+## Configuration Reference (12 Strict YAML Contracts)
 
-JSON Schema 2020-12 definitions for all artifacts.
+All 12 top-level files in `config/` are validated fail-fast by Pydantic v2 `StrictConfigModel` (`extra="forbid"`, `frozen=True`) via `validate_all_configs()` or `pvs doctor`:
 
-- [Problem](schemas/problem.md) — Problem statement schema (`schemas/problem.schema.json`)
-- [Outcome](schemas/outcome.md) — Outcome hypothesis schema (`schemas/outcome.schema.json`)
-- [Specification](schemas/specification.md) — Specification schema (`schemas/specification.schema.json`)
-- [Evidence](schemas/evidence.md) — Evidence artifact schema (`schemas/evidence.schema.json`)
-- [Agent Definition](schemas/agent-definition.md) — Agent config schema (`schemas/agent_definition.schema.json`)
+| File | Schema Model | Purpose |
+|---|---|---|
+| `config/orchestrator.yaml` | `OrchestratorConfigFile` | Parallel execution concurrency, resource limits, conflict resolution |
+| `config/caching.yaml` | `CachingConfigFile` | L1/L2 prompt cache backend, TTL, semantic similarity threshold |
+| `config/routing.yaml` | `RoutingConfigFile` | Complexity tiers, provider pricing, fallback chains, shadow mode |
+| `config/evaluation.yaml` | `EvaluationConfigFile` | OpenAI/Anthropic batch API size, polling, realtime fallback |
+| `config/sandbox.yaml` | `SandboxConfigFile` | Zero-trust egress allowlist, DNS TTL, iptables fallback |
+| `config/brownfield.yaml` | `BrownfieldConfigFile` | Git history lookback, hotspot weights, Strangler Fig rollout stages |
+| `config/metrics.yaml` | `MetricsConfigFile` | SPACE dimensions, DORA tracking, privacy (`aggregate_only: true`) |
+| `config/budget_limits.yaml` | `BudgetLimitsConfigFile` | Per-run / daily / monthly USD limits & `EMERGENCY_STOP` switch |
+| `config/secret_detection.yaml` | `SecretDetectionConfigFile` | Hybrid ML confidence & Shannon entropy thresholds |
+| `config/secret_detection_allowlist.yaml` | `SecretDetectionAllowlistConfigFile` | Audited synthetic placeholder allowlist |
+| `config/model_adapters.yaml` | `ModelAdaptersConfigFile` | OpenAI / Anthropic / Mock adapter defaults & `${VAR}` bindings |
+| `config/analytics_adapters.yaml` | `AnalyticsAdaptersConfigFile` | SQL / Prometheus / Mock post-launch analytics measurement |
+
+Additional configuration guides:
+- [Agent Configurations](configuration/agent-configs.md) (`config/agents/*.yaml`)
+- [Cedar Policies](configuration/policies.md) (`policies/agent_authorization.cedar`, `policies/schema.cedarschema`)
+- [Environment Variables](configuration/environment-variables.md) (`${VAR:-default}` & OWASP `*_FILE` secret mounts)
+
+---
+
+## Schema Reference (JSON Schema 2020-12)
+
+- [Problem](schemas/problem.md) (`schemas/problem.schema.json`)
+- [Outcome](schemas/outcome.md) (`schemas/outcome.schema.json`)
+- [Specification](schemas/specification.md) (`schemas/specification.schema.json`)
+- [Evidence](schemas/evidence.md) (`schemas/evidence.schema.json`)
+- [Agent Definition](schemas/agent-definition.md) (`schemas/agent_definition.schema.json`)
 
 ---
 
 ## CLI Reference
 
-Command-line interface documentation.
-
-- [Commands](cli/commands.md) — All `pvs` CLI commands and options
+- [All 21 `pvs` Commands & Semantic Exit Codes](cli/commands.md)
 
 ---
 
-## Version History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 0.1.0 | 2026-11-18 | Initial release (MVP) |
-
----
-
-**Last Updated**: 2026-11-18
+**Last Updated**: 2026-11-22

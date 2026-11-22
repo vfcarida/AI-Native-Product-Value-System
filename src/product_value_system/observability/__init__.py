@@ -40,6 +40,12 @@ from product_value_system.observability.sanitized_tracing import (
     SanitizingSpanProcessor,
     setup_sanitized_tracing,
 )
+from product_value_system.observability.structured_logging import (
+    SecretRedactingFilter,
+    StructuredJsonFormatter,
+    configure_logging,
+    run_system_diagnostics,
+)
 from product_value_system.observability.tracing import (
     CURRENT_RUN_ID,
     clear_run_context,
@@ -65,14 +71,18 @@ __all__ = [
     "MODEL_PRICING",
     "RerankSpan",
     "SanitizingSpanProcessor",
+    "SecretRedactingFilter",
+    "StructuredJsonFormatter",
     "TextCompletionSpan",
     "clear_run_context",
+    "configure_logging",
     "configure_tracing",
     "create_console_exporter",
     "create_otlp_exporter",
     "infer_genai_system",
     "instrument_model_call",
     "migrate_attributes",
+    "run_system_diagnostics",
     "sanitize_attributes",
     "sanitize_string",
     "set_run_context",

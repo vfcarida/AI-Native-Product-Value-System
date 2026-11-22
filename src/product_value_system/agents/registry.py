@@ -2,10 +2,13 @@
 Agent registry for management and discovery.
 """
 
+import logging
 from pathlib import Path
 
 from product_value_system.agents.agent import Agent
 from product_value_system.agents.config_loader import AgentConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AgentRegistry:
@@ -86,6 +89,6 @@ class AgentRegistry:
                 self.configs[config.name] = config
                 count += 1
             except Exception as e:
-                print(f"Warning: Failed to load {path}: {e}")
+                logger.warning("Failed to load agent config %s: %s", path, e)
 
         return count

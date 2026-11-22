@@ -128,7 +128,10 @@ _CODE_EXPR_RE = re.compile(
 _FILESYSTEM_PATH_RE = re.compile(
     r"^(?:\.{0,2}/)?[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_.-]*){2,}$"
 )
-_PYTHON_KWARG_CONST_RE = re.compile(r"^([a-z][a-z0-9_]*)=(_?[A-Z][A-Z0-9_]{2,})$")
+_PASCAL_CASE_IDENT_RE = re.compile(r"^[A-Z]{1,4}[a-z]{2,}(?:[A-Z]{1,4}[a-z]{2,}){2,}$")
+_PYTHON_KWARG_CONST_RE = re.compile(
+    r"^([a-z][a-z0-9_]*)=(_?[A-Z][A-Z0-9_]{2,}|[A-Z]{1,4}[a-z]{2,}(?:[A-Z]{1,4}[a-z]{2,})+)$"
+)
 _ENV_CONFIG_ASSIGN_RE = re.compile(r"^([A-Z][A-Z0-9_]{2,})=([a-z0-9_.-]{1,16})$")
 _SECRET_LHS_WORDS = ("secret", "token", "key", "pass", "pwd", "auth", "cred")
 
@@ -441,8 +444,16 @@ class MLSecretDetector:
                 reasons=["filesystem_path"],
             )
 
-        # 0c. Reject non-secret Python kwargs (a=CONST) and non-secret env config (FOO=bar)
+        # 0c. Reject pure PascalCase code identifiers, non-secret Python kwargs, and env config
         if entity_type == "UNKNOWN_SECRET":
+            if _PASCAL_CASE_IDENT_RE.fullmatch(payload):
+                return MLAnalysisResult(
+                    entity_type=entity_type,
+                    confidence=0.1,
+                    is_real_secret=False,
+                    backend="ml_classifier",
+                    reasons=["pascal_case_identifier"],
+                )
             kw_match = _PYTHON_KWARG_CONST_RE.fullmatch(payload)
             if kw_match and not any(w in kw_match.group(1) for w in _SECRET_LHS_WORDS):
                 return MLAnalysisResult(

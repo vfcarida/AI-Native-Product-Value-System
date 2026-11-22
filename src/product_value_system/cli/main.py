@@ -26,6 +26,13 @@ from product_value_system.cli.commands import (
     status_command,
     validate_command,
 )
+from product_value_system.cli.commands_p2 import (
+    brownfield_command,
+    devx_command,
+    doctor_command,
+    register_p2_subparsers,
+    route_command,
+)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -1133,6 +1140,9 @@ def create_parser() -> argparse.ArgumentParser:
         help="Artifact type",
     )
 
+    # Register modular Phase-2 & diagnostics subcommands (doctor, route, brownfield, devx)
+    register_p2_subparsers(subparsers)
+
     return parser
 
 
@@ -1145,42 +1155,34 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    try:
-        if args.command == "init":
-            return init_command(args)
-        if args.command == "run":
-            return run_command(args)
-        if args.command == "run-simulation":
-            return run_simulation_command(args)
-        if args.command == "measure-outcome":
-            return measure_outcome_command(args)
-        if args.command == "eval":
-            return eval_command(args)
-        if args.command == "review":
-            return review_command(args)
-        if args.command == "flags":
-            return flags_command(args)
-        if args.command == "experiment":
-            return experiment_command(args)
-        if args.command == "drift":
-            return drift_command(args)
-        if args.command == "adr":
-            return adr_command(args)
-        if args.command == "spec":
-            return spec_command(args)
-        if args.command == "interview":
-            return interview_command(args)
-        if args.command == "evidence":
-            return evidence_command(args)
-        if args.command == "status":
-            return status_command(args)
-        if args.command == "list":
-            return list_command(args)
-        if args.command == "show":
-            return show_command(args)
-        if args.command == "validate":
-            return validate_command(args)
+    command_handlers = {
+        "init": init_command,
+        "run": run_command,
+        "run-simulation": run_simulation_command,
+        "measure-outcome": measure_outcome_command,
+        "eval": eval_command,
+        "review": review_command,
+        "flags": flags_command,
+        "experiment": experiment_command,
+        "drift": drift_command,
+        "adr": adr_command,
+        "spec": spec_command,
+        "interview": interview_command,
+        "evidence": evidence_command,
+        "status": status_command,
+        "list": list_command,
+        "show": show_command,
+        "validate": validate_command,
+        "doctor": doctor_command,
+        "route": route_command,
+        "brownfield": brownfield_command,
+        "devx": devx_command,
+    }
 
+    try:
+        handler = command_handlers.get(args.command)
+        if handler is not None:
+            return handler(args)
         parser.print_help()
         return 1
 

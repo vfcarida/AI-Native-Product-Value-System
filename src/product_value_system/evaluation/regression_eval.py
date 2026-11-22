@@ -182,216 +182,9 @@ class RubricComplianceJudge(Judge):
         expected: dict[str, Any],
     ) -> float:
         """Dispatch deterministic scoring for known rubric criteria with safe fallback."""
-        key = criterion_name.lower()
-
-        # Discovery criteria
-        if key == "hypothesis_measurable":
-            sc = artifact.get("success_criteria", {})
-            pm = sc.get("primary_metric", {}) if isinstance(sc, dict) else {}
-            checks = [
-                bool(pm.get("name")),
-                bool(pm.get("unit")),
-                sc.get("baseline") is not None if isinstance(sc, dict) else False,
-                sc.get("target") is not None if isinstance(sc, dict) else False,
-            ]
-            return sum(checks) / len(checks)
-
-        if key == "measurement_feasible":
-            sc = artifact.get("success_criteria", {})
-            pm = sc.get("primary_metric", {}) if isinstance(sc, dict) else {}
-            method = str(pm.get("measurement_method", ""))
-            return 1.0 if len(method.strip()) >= 5 else 0.0
-
-        if key == "guardrails_present":
-            sc = artifact.get("success_criteria", {})
-            guardrails = sc.get("guardrails", []) if isinstance(sc, dict) else []
-            if not isinstance(guardrails, list) or not guardrails:
-                return 0.0
-            valid = all(
-                isinstance(g, dict) and "metric" in g and "threshold" in g for g in guardrails
-            )
-            return 1.0 if valid else 0.5
-
-        if key == "evidence_adequate":
-            ev = artifact.get("evidence_requirements")
-            if isinstance(ev, list) and len(ev) >= 1:
-                return 1.0
-            if isinstance(ev, dict) and (ev.get("discovery") or ev.get("validation")):
-                return 1.0
-            return 0.0
-
-        if key == "outcome_focused":
-            hyp = str(artifact.get("hypothesis", ""))
-            return 1.0 if len(hyp.strip()) >= 50 else (0.5 if len(hyp.strip()) >= 20 else 0.0)
-
-        # Specification criteria
-        if key == "requirements_testable":
-            frs = artifact.get("functional_requirements", [])
-            min_fr = int(expected.get("min_functional_requirements", 1))
-            if not isinstance(frs, list) or len(frs) < min_fr:
-                return 0.5 if isinstance(frs, list) and len(frs) >= 1 else 0.0
-            has_ac = all(
-                isinstance(fr, dict)
-                and bool(fr.get("id"))
-                and bool(fr.get("acceptance_criteria"))
-                for fr in frs
-            )
-            return 1.0 if has_ac else 0.5
-
-        if key == "architecture_justified":
-            ads = artifact.get("architecture_decisions", [])
-            if not isinstance(ads, list) or not ads:
-                return 0.0
-            valid = all(
-                isinstance(ad, dict) and bool(ad.get("decision")) and bool(ad.get("rationale"))
-                for ad in ads
-            )
-            return 1.0 if valid else 0.5
-
-        if key == "quality_attributes_complete":
-            qa = artifact.get("quality_attributes", {})
-            if not isinstance(qa, dict) or not qa:
-                return 0.0
-            req_attrs = expected.get(
-                "required_quality_attributes",
-                ["performance", "security", "scalability", "reliability"],
-            )
-            present = sum(1 for attr in req_attrs if attr in qa and bool(qa[attr]))
-            return present / len(req_attrs) if req_attrs else 1.0
-
-        if key == "testability_defined":
-            tc = artifact.get("testability_criteria", {})
-            if not isinstance(tc, dict) or not tc:
-                return 0.0
-            keys = ("unit_tests", "integration_tests", "acceptance_tests")
-            present = sum(1 for k in keys if tc.get(k))
-            return present / 3.0
-
-        if key == "constraints_respected":
-            cons = artifact.get("constraints", {})
-            return 1.0 if isinstance(cons, dict) and len(cons) >= 1 else 0.0
-
-        # Build criteria
-        if key == "syntax_valid":
-            code = artifact.get("code")
-            if isinstance(code, str) and code.strip():
-                try:
-                    compile(code, "<build>", "exec")
-                    return 1.0
-                except SyntaxError:
-                    return 0.0
-            build_results = artifact.get("build_results")
-            if isinstance(build_results, list) and build_results:
-                checked = 0
-                for item in build_results:
-                    if not isinstance(item, dict):
-                        continue
-                    for code_key in ("implementation_code", "test_code"):
-                        snippet = item.get(code_key)
-                        if isinstance(snippet, str) and snippet.strip():
-                            checked += 1
-                            try:
-                                compile(snippet, f"<{code_key}>", "exec")
-                            except SyntaxError:
-                                return 0.0
-                if checked > 0:
-                    return 1.0
-            return (
-                1.0
-                if artifact.get("verdict") == "pass" or artifact.get("status") == "success"
-                else 0.0
-            )
-
-        if key == "requirements_implemented":
-            impl = artifact.get("requirements_implemented") or artifact.get("build_results") or []
-            if isinstance(impl, list) and len(impl) >= 1:
-                return 1.0
-            if isinstance(impl, int) and impl >= 1:
-                return 1.0
-            ok = artifact.get("status") == "success" or artifact.get("verdict") == "pass"
-            return 1.0 if ok else 0.0
-
-        if key == "tests_passing":
-            test_res = artifact.get("test_results") or artifact.get("final_test_result") or {}
-            if isinstance(test_res, dict) and (
-                test_res.get("passed") is True or test_res.get("exit_code") == 0
-            ):
-                return 1.0
-            ok = artifact.get("verdict") == "pass" or artifact.get("status") == "success"
-            return 1.0 if ok else 0.0
-
-        if key == "code_quality_and_security":
-            blob = json.dumps(artifact, default=str).lower()
-            unsafe = any(tok in blob for tok in ("rm -rf", "eval(", "shell=true", "/etc/passwd"))
-            return 0.0 if unsafe else 1.0
-
-        # Review criteria
-        if key == "verdict_accuracy":
-            exp_verdict = expected.get("expected_verdict")
-            actual_verdict = str(artifact.get("verdict", "")).lower()
-            valid_verdicts = {"approve", "approve_with_concerns", "reject", "pass", "fail"}
-            if not exp_verdict:
-                return 1.0 if actual_verdict in valid_verdicts else 0.0
-            if actual_verdict == str(exp_verdict).lower():
-                return 1.0
-            # Partial credit when rejecting vs approve_with_concerns on flawed spec
-            if exp_verdict != "approve" and actual_verdict in {"reject", "approve_with_concerns"}:
-                return 0.75
-            return 0.0
-
-        if key == "findings_actionable":
-            findings = artifact.get("findings", [])
-            min_findings = int(expected.get("min_findings", 0))
-            if not isinstance(findings, list):
-                return 0.0
-            if len(findings) < min_findings:
-                return 0.0
-            if not findings:
-                return 1.0
-            valid = all(
-                isinstance(f, dict)
-                and bool(f.get("severity"))
-                and bool(f.get("recommendation"))
-                for f in findings
-            )
-            return 1.0 if valid else 0.5
-
-        if key == "evidence_schema_valid":
-            req_fields = ("id", "version", "created", "type", "verdict")
-            present = sum(1 for f in req_fields if f in artifact and artifact[f] is not None)
-            return present / len(req_fields)
-
-        if key == "specificity":
-            summary = str(artifact.get("summary", ""))
-            rationale = str(artifact.get("rationale", ""))
-            text = f"{summary} {rationale}".strip()
-            return 1.0 if len(text) >= 15 else 0.5
-
-        # Brownfield criteria
-        bf_keys = (
-            "behavior_preservation",
-            "drift_detection",
-            "characterization_tests",
-            "migration_readiness",
-        )
-        if key in bf_keys:
-            blob = json.dumps(artifact, default=str).lower()
-            if key == "behavior_preservation":
-                has_beh = "hypothesis" in artifact or "preserve" in blob or "legacy" in blob
-                return 1.0 if has_beh else 0.5
-            if key == "drift_detection":
-                has_drift = (
-                    "drift" in blob
-                    or "undocumented" in blob
-                    or "discrepanc" in blob
-                    or "evidence_requirements" in artifact
-                )
-                return 1.0 if has_drift else 0.5
-            if key == "characterization_tests":
-                has_tests = "characterization" in blob or "coverage" in blob or "test" in blob
-                return 1.0 if has_tests else 0.5
-            return 1.0 if ("success_criteria" in artifact or "guardrail" in blob) else 0.5
-
+        scorer = _CRITERION_SCORERS.get(criterion_name.lower())
+        if scorer is not None:
+            return scorer(artifact, expected)
         return self._evaluate_generic_overlap(artifact, expected)
 
     def _evaluate_generic_overlap(
@@ -406,6 +199,245 @@ class RubricComplianceJudge(Judge):
             return 1.0
         matched = sum(1 for k in expected if k in artifact and artifact[k] is not None)
         return matched / len(expected) if matched > 0 else (1.0 if len(artifact) > 0 else 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Modular Rubric Criterion Scorers (McCabe cx <= 9 each, O(1) dispatch table)
+# ---------------------------------------------------------------------------
+
+
+def _score_hypothesis_measurable(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    sc = artifact.get("success_criteria", {})
+    pm = sc.get("primary_metric", {}) if isinstance(sc, dict) else {}
+    checks = [
+        bool(pm.get("name")),
+        bool(pm.get("unit")),
+        sc.get("baseline") is not None if isinstance(sc, dict) else False,
+        sc.get("target") is not None if isinstance(sc, dict) else False,
+    ]
+    return sum(checks) / len(checks)
+
+
+def _score_measurement_feasible(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    sc = artifact.get("success_criteria", {})
+    pm = sc.get("primary_metric", {}) if isinstance(sc, dict) else {}
+    method = str(pm.get("measurement_method", ""))
+    return 1.0 if len(method.strip()) >= 5 else 0.0
+
+
+def _score_guardrails_present(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    sc = artifact.get("success_criteria", {})
+    guardrails = sc.get("guardrails", []) if isinstance(sc, dict) else []
+    if not isinstance(guardrails, list) or not guardrails:
+        return 0.0
+    valid = all(isinstance(g, dict) and "metric" in g and "threshold" in g for g in guardrails)
+    return 1.0 if valid else 0.5
+
+
+def _score_evidence_adequate(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    ev = artifact.get("evidence_requirements")
+    if isinstance(ev, list) and len(ev) >= 1:
+        return 1.0
+    if isinstance(ev, dict) and (ev.get("discovery") or ev.get("validation")):
+        return 1.0
+    return 0.0
+
+
+def _score_outcome_focused(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    hyp = str(artifact.get("hypothesis", "")).strip()
+    if len(hyp) >= 50:
+        return 1.0
+    return 0.5 if len(hyp) >= 20 else 0.0
+
+
+def _score_requirements_testable(artifact: dict[str, Any], expected: dict[str, Any]) -> float:
+    frs = artifact.get("functional_requirements", [])
+    min_fr = int(expected.get("min_functional_requirements", 1))
+    if not isinstance(frs, list) or len(frs) < min_fr:
+        return 0.5 if isinstance(frs, list) and len(frs) >= 1 else 0.0
+    has_ac = all(
+        isinstance(fr, dict) and bool(fr.get("id")) and bool(fr.get("acceptance_criteria"))
+        for fr in frs
+    )
+    return 1.0 if has_ac else 0.5
+
+
+def _score_architecture_justified(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    ads = artifact.get("architecture_decisions", [])
+    if not isinstance(ads, list) or not ads:
+        return 0.0
+    valid = all(
+        isinstance(ad, dict) and bool(ad.get("decision")) and bool(ad.get("rationale"))
+        for ad in ads
+    )
+    return 1.0 if valid else 0.5
+
+
+def _score_quality_attributes_complete(
+    artifact: dict[str, Any], expected: dict[str, Any]
+) -> float:
+    qa = artifact.get("quality_attributes", {})
+    if not isinstance(qa, dict) or not qa:
+        return 0.0
+    req_attrs = expected.get(
+        "required_quality_attributes",
+        ["performance", "security", "scalability", "reliability"],
+    )
+    present = sum(1 for attr in req_attrs if attr in qa and bool(qa[attr]))
+    return present / len(req_attrs) if req_attrs else 1.0
+
+
+def _score_testability_defined(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    tc = artifact.get("testability_criteria", {})
+    if not isinstance(tc, dict) or not tc:
+        return 0.0
+    keys = ("unit_tests", "integration_tests", "acceptance_tests")
+    return sum(1 for k in keys if tc.get(k)) / 3.0
+
+
+def _score_constraints_respected(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    cons = artifact.get("constraints", {})
+    return 1.0 if isinstance(cons, dict) and len(cons) >= 1 else 0.0
+
+
+def _compile_code_snippet(snippet: str, label: str) -> bool:
+    try:
+        compile(snippet, label, "exec")
+        return True
+    except SyntaxError:
+        return False
+
+
+def _score_syntax_valid(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    code = artifact.get("code")
+    if isinstance(code, str) and code.strip():
+        return 1.0 if _compile_code_snippet(code, "<build>") else 0.0
+
+    build_results = artifact.get("build_results")
+    if isinstance(build_results, list) and build_results:
+        checked = 0
+        for item in build_results:
+            if not isinstance(item, dict):
+                continue
+            for code_key in ("implementation_code", "test_code"):
+                snippet = item.get(code_key)
+                if isinstance(snippet, str) and snippet.strip():
+                    checked += 1
+                    if not _compile_code_snippet(snippet, f"<{code_key}>"):
+                        return 0.0
+        if checked > 0:
+            return 1.0
+
+    ok = artifact.get("verdict") == "pass" or artifact.get("status") == "success"
+    return 1.0 if ok else 0.0
+
+
+def _score_requirements_implemented(
+    artifact: dict[str, Any], _expected: dict[str, Any]
+) -> float:
+    impl = artifact.get("requirements_implemented") or artifact.get("build_results") or []
+    if isinstance(impl, list) and len(impl) >= 1:
+        return 1.0
+    if isinstance(impl, int) and impl >= 1:
+        return 1.0
+    ok = artifact.get("status") == "success" or artifact.get("verdict") == "pass"
+    return 1.0 if ok else 0.0
+
+
+def _score_tests_passing(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    test_res = artifact.get("test_results") or artifact.get("final_test_result") or {}
+    if isinstance(test_res, dict) and (
+        test_res.get("passed") is True or test_res.get("exit_code") == 0
+    ):
+        return 1.0
+    ok = artifact.get("verdict") == "pass" or artifact.get("status") == "success"
+    return 1.0 if ok else 0.0
+
+
+def _score_code_quality_and_security(
+    artifact: dict[str, Any], _expected: dict[str, Any]
+) -> float:
+    blob = json.dumps(artifact, default=str).lower()
+    unsafe = any(tok in blob for tok in ("rm -rf", "eval(", "shell=true", "/etc/passwd"))
+    return 0.0 if unsafe else 1.0
+
+
+def _score_verdict_accuracy(artifact: dict[str, Any], expected: dict[str, Any]) -> float:
+    exp_verdict = expected.get("expected_verdict")
+    actual_verdict = str(artifact.get("verdict", "")).lower()
+    valid_verdicts = {"approve", "approve_with_concerns", "reject", "pass", "fail"}
+    if not exp_verdict:
+        return 1.0 if actual_verdict in valid_verdicts else 0.0
+    if actual_verdict == str(exp_verdict).lower():
+        return 1.0
+    if exp_verdict != "approve" and actual_verdict in {"reject", "approve_with_concerns"}:
+        return 0.75
+    return 0.0
+
+
+def _score_findings_actionable(artifact: dict[str, Any], expected: dict[str, Any]) -> float:
+    findings = artifact.get("findings", [])
+    min_findings = int(expected.get("min_findings", 0))
+    if not isinstance(findings, list) or len(findings) < min_findings:
+        return 0.0
+    if not findings:
+        return 1.0
+    valid = all(
+        isinstance(f, dict) and bool(f.get("severity")) and bool(f.get("recommendation"))
+        for f in findings
+    )
+    return 1.0 if valid else 0.5
+
+
+def _score_evidence_schema_valid(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    req_fields = ("id", "version", "created", "type", "verdict")
+    present = sum(1 for f in req_fields if f in artifact and artifact[f] is not None)
+    return present / len(req_fields)
+
+
+def _score_specificity(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+    text = f"{artifact.get('summary', '')} {artifact.get('rationale', '')}".strip()
+    return 1.0 if len(text) >= 15 else 0.5
+
+
+def _make_brownfield_scorer(
+    artifact_keys: tuple[str, ...], blob_tokens: tuple[str, ...]
+) -> Callable[[dict[str, Any], dict[str, Any]], float]:
+    def _scorer(artifact: dict[str, Any], _expected: dict[str, Any]) -> float:
+        if any(k in artifact for k in artifact_keys):
+            return 1.0
+        blob = json.dumps(artifact, default=str).lower()
+        return 1.0 if any(tok in blob for tok in blob_tokens) else 0.5
+
+    return _scorer
+
+
+_CRITERION_SCORERS: dict[str, Callable[[dict[str, Any], dict[str, Any]], float]] = {
+    "hypothesis_measurable": _score_hypothesis_measurable,
+    "measurement_feasible": _score_measurement_feasible,
+    "guardrails_present": _score_guardrails_present,
+    "evidence_adequate": _score_evidence_adequate,
+    "outcome_focused": _score_outcome_focused,
+    "requirements_testable": _score_requirements_testable,
+    "architecture_justified": _score_architecture_justified,
+    "quality_attributes_complete": _score_quality_attributes_complete,
+    "testability_defined": _score_testability_defined,
+    "constraints_respected": _score_constraints_respected,
+    "syntax_valid": _score_syntax_valid,
+    "requirements_implemented": _score_requirements_implemented,
+    "tests_passing": _score_tests_passing,
+    "code_quality_and_security": _score_code_quality_and_security,
+    "verdict_accuracy": _score_verdict_accuracy,
+    "findings_actionable": _score_findings_actionable,
+    "evidence_schema_valid": _score_evidence_schema_valid,
+    "specificity": _score_specificity,
+    "behavior_preservation": _make_brownfield_scorer(("hypothesis",), ("preserve", "legacy")),
+    "drift_detection": _make_brownfield_scorer(
+        ("evidence_requirements",), ("drift", "undocumented", "discrepanc")
+    ),
+    "characterization_tests": _make_brownfield_scorer((), ("characterization", "coverage", "test")),
+    "migration_readiness": _make_brownfield_scorer(("success_criteria",), ("guardrail",)),
+}
 
 
 @dataclass

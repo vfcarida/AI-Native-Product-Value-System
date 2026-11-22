@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Any
 from product_value_system.spec_kit.templates import TemplateLibrary, TemplateType
 from product_value_system.spec_kit.traceability import TraceabilityLinker, TraceLink
 from product_value_system.spec_kit.validator import SpecValidator, ValidationResult
+
+logger = logging.getLogger(__name__)
 
 
 def _slugify(value: str) -> str:
@@ -224,7 +227,7 @@ class DiscoverySpecGenerator:
                     for key in ("TITLE", "USER_ROLE", "GOAL", "BENEFIT"):
                         if parsed.get(key):
                             default_vars[key] = str(parsed[key])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("LLM user-story variable enrichment fallback to defaults: %s", exc)
 
         return self.library.render_template(TemplateType.USER_STORY, default_vars)

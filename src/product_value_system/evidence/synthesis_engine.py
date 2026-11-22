@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -24,6 +25,8 @@ from product_value_system.evidence.models import (
     SynthesisReport,
 )
 from product_value_system.evidence.quality_scorer import QualityScorer
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_json_list(raw: str) -> list[str]:
@@ -325,8 +328,8 @@ class SynthesisEngine:
                 parsed = _parse_json_list(response)
                 if parsed:
                     return parsed
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("LLM evidence gap synthesis fallback to deterministic rules: %s", exc)
 
         # Deterministic coverage gap detection
         present_types = {e.type for e in evidence_list}

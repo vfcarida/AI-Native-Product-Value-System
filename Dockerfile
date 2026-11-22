@@ -1,31 +1,48 @@
-# Dockerfile for development environment
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+# Multi-stage hardened Docker image for AI-Native Product Value System (Round 14)
 
-# Security: Run as non-root
-RUN useradd -m -u 1000 -s /bin/bash pvs
+# ==========================================
+# Stage 1: Builder (isolated virtualenv)
+# ==========================================
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir ".[dev,monitoring,routing,caching,devx]"
+
+# ==========================================
+# Stage 2: Runtime (non-root hardened)
+# ==========================================
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Install minimal runtime tools (git for brownfield analysis, make for CLI workflows)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        git \
-        make \
-        && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends git make && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --system --gid 10001 pvs && \
+    useradd --system --uid 10001 --gid pvs --create-home --shell /bin/bash pvs
 
-# Copy dependency files
-COPY pyproject.toml ./
-COPY README.md ./
+WORKDIR /app
 
-# Copy source code so editable install succeeds
+COPY --chown=pvs:pvs --from=builder /opt/venv /opt/venv
 COPY --chown=pvs:pvs . .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
-
-# Switch to non-root user
 USER pvs
 
-# Default command
-CMD ["bash"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ["pvs", "doctor", "--repo-root", "/app", "--json"]
+
+CMD ["pvs", "doctor", "--repo-root", "/app"]

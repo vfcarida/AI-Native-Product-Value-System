@@ -295,11 +295,19 @@ class BoundaryAnalyzer:
         code_structure: dict[str, Any],
         import_graph: nx.DiGraph[str],
     ) -> dict[str, list[str]]:
+        """Partition import graph via Clauset-Newman-Moore greedy modularity communities."""
         undirected = import_graph.to_undirected()
-        components = sorted(
-            (sorted(comp) for comp in nx.connected_components(undirected)),
-            key=lambda c: (-len(c), c[0]),
-        )
+        if undirected.number_of_edges() > 0 and undirected.number_of_nodes() >= 3:
+            raw_comms = nx.community.greedy_modularity_communities(undirected)
+            components = sorted(
+                (sorted(str(node) for node in comm) for comm in raw_comms),
+                key=lambda c: (-len(c), c[0]),
+            )
+        else:
+            components = sorted(
+                (sorted(comp) for comp in nx.connected_components(undirected)),
+                key=lambda c: (-len(c), c[0]),
+            )
         groups: dict[str, list[str]] = {}
         used_names: dict[str, int] = defaultdict(int)
         for comp in components:
@@ -317,3 +325,23 @@ class BoundaryAnalyzer:
             )
             groups[final_name] = list(comp)
         return groups
+
+    @staticmethod
+    def compute_modularity(
+        modules: list[Module],
+        import_graph: nx.DiGraph[str],
+    ) -> float:
+        """Compute Newman-Girvan Structural Modularity Q in [-0.5, 1.0] for ``modules``."""
+        undirected = import_graph.to_undirected()
+        if undirected.number_of_edges() == 0 or not modules:
+            return 0.0
+        communities: list[set[str]] = [
+            {fp for fp in mod.file_paths if fp in undirected}
+            for mod in modules
+        ]
+        covered = set().union(*communities) if communities else set()
+        for node in undirected.nodes:
+            if node not in covered:
+                communities.append({str(node)})
+        non_empty = [c for c in communities if c]
+        return round(float(nx.community.modularity(undirected, non_empty)), 4)

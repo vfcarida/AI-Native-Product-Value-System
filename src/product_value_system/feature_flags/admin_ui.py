@@ -15,8 +15,10 @@ Endpoints:
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
+from collections.abc import Awaitable, Callable
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -85,7 +87,9 @@ def _check_admin_auth(request: Request, required_key: str | None) -> JSONRespons
     provided = request.headers.get("x-api-key") or ""
     auth_header = request.headers.get("authorization") or ""
     bearer = auth_header.removeprefix("Bearer ").strip()
-    if provided != required_key and bearer != required_key:
+    valid_header = hmac.compare_digest(provided, required_key)
+    valid_bearer = hmac.compare_digest(bearer, required_key)
+    if not (valid_header or valid_bearer):
         return JSONResponse(
             status_code=401,
             content={"error": "Unauthorized admin request"},
@@ -125,6 +129,23 @@ def create_admin_app(
         title="AI-Native Product Value System — Feature Flags Admin UI",
         version=__version__,
     )
+
+    @app.middleware("http")
+    async def add_security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+        )
+        return response
 
     @app.get("/health")
     async def health() -> dict[str, str]:

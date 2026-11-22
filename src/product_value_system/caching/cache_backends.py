@@ -10,6 +10,8 @@ import json
 import sqlite3
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -239,11 +241,24 @@ class SQLiteCacheBackend(CacheBackend):
         self._initialized = False
         self._lock = asyncio.Lock()
 
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """Open a WAL-tuned SQLite connection and guarantee deterministic close on exit."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA busy_timeout = 5000")
+            conn.execute("PRAGMA temp_store = MEMORY")
+            yield conn
+        finally:
+            conn.close()
+
     def _init_sync(self) -> None:
         if self._initialized:
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS llm_cache (
@@ -286,7 +301,7 @@ class SQLiteCacheBackend(CacheBackend):
 
     def _get_sync(self, key: str) -> CachedResponse | None:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 """
                 SELECT cache_key, response, prompt_hash, model, temperature,
@@ -307,7 +322,7 @@ class SQLiteCacheBackend(CacheBackend):
     def _set_sync(self, key: str, value: CachedResponse) -> None:
         self._init_sync()
         now_iso = datetime.now(UTC).isoformat()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO llm_cache (
@@ -347,19 +362,19 @@ class SQLiteCacheBackend(CacheBackend):
 
     def _delete_sync(self, key: str) -> None:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("DELETE FROM llm_cache WHERE cache_key = ?", (key,))
             conn.commit()
 
     def _clear_sync(self) -> None:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.execute("DELETE FROM llm_cache")
             conn.commit()
 
     def _list_sync(self, model: str | None) -> list[CachedResponse]:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             if model is not None:
                 rows = conn.execute(
                     """
@@ -381,14 +396,14 @@ class SQLiteCacheBackend(CacheBackend):
 
     def _delete_by_model_sync(self, model: str) -> int:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cur = conn.execute("DELETE FROM llm_cache WHERE model = ?", (model,))
             conn.commit()
             return int(cur.rowcount)
 
     def _size_sync(self) -> int:
         self._init_sync()
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM llm_cache").fetchone()[0])
 
     async def get(self, key: str) -> CachedResponse | None:

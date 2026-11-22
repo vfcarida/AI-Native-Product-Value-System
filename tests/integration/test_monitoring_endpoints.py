@@ -261,3 +261,41 @@ async def test_production_monitor_does_not_rollback_when_disabled() -> None:
     assert statuses["availability"].budget_remaining == pytest.approx(0.0)
     assert monitor.rollback_triggered is False
     assert monitor.current_version == "0.2.0"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_metrics_and_devx_endpoints_expose_unified_telemetry() -> None:
+    """GET /metrics merges PVSMetrics + DevXTracker, and GET /devx serves SPACE + DORA."""
+    from prometheus_client import CollectorRegistry
+
+    import product_value_system as pvs
+
+    reg = CollectorRegistry()
+    tracker = pvs.DevXTracker({"enabled": True}, registry=reg)
+    tracker.start_task("t-api-1", stage="build", agent="build-agent")
+    tracker.complete_task("t-api-1", stage="build", success=True)
+    tracker.record_ai_usage("build-agent", accepted=True)
+    tracker.record_satisfaction("tool_satisfaction", 4.5)
+
+    metrics = PVSMetrics(register_global_prometheus=False)
+    metrics.record_request(agent="build", status="success", latency_seconds=0.4)
+    app = create_app(metrics=metrics, metrics_api_key="", devx_tracker=tracker)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        live = await client.get("/health/live")
+        scrape = await client.get("/metrics")
+        devx = await client.get("/devx")
+
+    assert live.status_code == 200
+    assert scrape.status_code == 200
+    assert "pvs_requests_total" in scrape.text
+    assert "devx_tasks_completed_total" in scrape.text
+    assert "devx_ai_usage_total" in scrape.text
+
+    assert devx.status_code == 200
+    data = devx.json()
+    assert data["aggregate_only"] is True
+    assert data["space_scores"]["satisfaction"] == pytest.approx(0.9)
+    assert data["ai_effectiveness"]["acceptance_rate"] == pytest.approx(1.0)
+    assert "performance_tier" in data["dora_metrics"]

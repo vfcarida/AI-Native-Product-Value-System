@@ -27,4 +27,7 @@ Each ADR follows a consistent structure:
 | [ADR-0001](ADR-0001-use-cedar-for-policy-engine.md) | accepted | 2026-11-20 | Use Cedar for Policy Engine |
 | [ADR-0002](ADR-0002-elephant-goldfish-multi-agent-review.md) | accepted | 2026-11-20 | Elephant-Goldfish Multi-Agent Independent Review |
 | [ADR-0003](ADR-0003-progressive-delivery-and-feature-flags.md) | accepted | 2026-11-20 | Consistent SHA-256 Feature Flags and Progressive Delivery |
+| [ADR-0004](ADR-0004-finops-caching-routing-and-batch-optimization.md) | accepted | 2026-11-22 | FinOps Caching, Model Routing, Batching, and Resilience Stack |
+| [ADR-0005](ADR-0005-zero-trust-sandbox-egress-and-hybrid-secret-detection.md) | accepted | 2026-11-22 | Zero-Trust Sandbox Egress and Hybrid ML Secret Detection |
+| [ADR-0006](ADR-0006-brownfield-modularity-and-non-punitive-devx-governance.md) | accepted | 2026-11-22 | Brownfield Modularity Detection and Non-Punitive SPACE/DORA Governance |
 <!-- ADR-INDEX-END -->

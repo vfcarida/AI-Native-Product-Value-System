@@ -8,6 +8,7 @@ them into LOW, MEDIUM, or HIGH complexity tiers.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from enum import Enum
 from typing import Any
 
 from product_value_system.adapters.model_adapter import Message
+
+logger = logging.getLogger(__name__)
 
 
 class ComplexityLevel(str, Enum):
@@ -62,8 +65,8 @@ def _count_tokens(text: str, tokenizer: Any | None) -> int:
     if tokenizer is not None:
         try:
             return len(tokenizer.encode(text))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Tokenizer encode fallback to char heuristic: %s", exc)
     return max(1, len(text) // 4)
 
 

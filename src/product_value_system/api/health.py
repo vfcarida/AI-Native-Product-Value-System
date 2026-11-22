@@ -8,15 +8,19 @@ Endpoints:
 - ``GET /slos``: Current SLI compliance and error budget remaining across all SLOs
 """
 
+import hmac
 import inspect
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from prometheus_client import generate_latest
 
 from product_value_system.__version__ import __version__
+from product_value_system.metrics.devx_tracker import DevXTracker
+from product_value_system.metrics.space_calculator import SPACECalculator
 from product_value_system.monitoring.metrics import PVSMetrics, get_metrics
 from product_value_system.monitoring.slo import DEFAULT_SLOS, SLO
 from product_value_system.monitoring.slo_evaluator import SLOEvaluator
@@ -50,6 +54,7 @@ def create_app(
     sandbox_check: CheckCallable | None = None,
     llm_check: CheckCallable | None = None,
     metrics_api_key: str | None = None,
+    devx_tracker: DevXTracker | None = None,
 ) -> FastAPI:
     """
     Build the FastAPI monitoring/health application for production deployments.
@@ -75,12 +80,29 @@ def create_app(
         version=__version__,
     )
 
+    @app.middleware("http")
+    async def add_security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault(
+            "Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'"
+        )
+        return response
+
     @app.get("/health")
+    @app.get("/health/live")
     async def health() -> dict[str, str]:
         """Liveness probe returning 200 OK when the service process is alive."""
         return {"status": "healthy", "version": __version__}
 
     @app.get("/ready")
+    @app.get("/health/ready")
     async def ready() -> Response:
         """Readiness probe verifying database, sandbox, and LLM dependencies."""
         checks = {
@@ -117,7 +139,9 @@ def create_app(
                 provided = request.headers.get("x-api-key") or ""
                 auth_header = request.headers.get("authorization") or ""
                 bearer = auth_header.removeprefix("Bearer ").strip()
-                if provided != required_key and bearer != required_key:
+                valid_header = hmac.compare_digest(provided, required_key)
+                valid_bearer = hmac.compare_digest(bearer, required_key)
+                if not (valid_header or valid_bearer):
                     return Response(
                         content=json.dumps({"error": "Unauthorized metrics scrape"}),
                         status_code=401,
@@ -125,7 +149,24 @@ def create_app(
                     )
 
             body, content_type = active_metrics.render_prometheus_metrics()
+            if devx_tracker is not None and devx_tracker.enabled:
+                devx_bytes = generate_latest(devx_tracker.registry)
+                body = body.rstrip() + b"\n" + devx_bytes
             return Response(content=body, status_code=200, media_type=content_type)
+
+    if devx_tracker is not None:
+        space_calculator = SPACECalculator(tracker=devx_tracker)
+
+        @app.get("/devx")
+        async def get_devx_summary() -> dict[str, Any]:
+            """Return aggregate-only SPACE, DORA, and AI effectiveness metrics (zero PII)."""
+            return {
+                "enabled": devx_tracker.enabled,
+                "aggregate_only": devx_tracker.aggregate_only,
+                "space_scores": await space_calculator.compute_space_scores(),
+                "dora_metrics": devx_tracker.get_dora_metrics().to_dict(),
+                "ai_effectiveness": devx_tracker.get_ai_effectiveness(),
+            }
 
     return app
 

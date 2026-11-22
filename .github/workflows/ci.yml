@@ -9,8 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
+    name: Lint, Typecheck & Makefile Hygiene
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
@@ -19,6 +24,8 @@ jobs:
         uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: make install
@@ -29,7 +36,8 @@ jobs:
       - name: Verify Makefile clean idempotence
         run: make clean && make clean
 
-  test:
+  security-and-governance:
+    name: Config Contracts, Policy Parity & Security Gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
@@ -38,6 +46,36 @@ jobs:
         uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run pvs doctor (12 YAML configs, Cedar policies, JSON schemas)
+        run: python -m product_value_system.cli.main doctor --repo-root .
+
+      - name: Verify Cedar / Python policy sync (100% parity)
+        run: python scripts/validate-policy-sync.py
+
+      - name: Run Hybrid ML secret scan on src/ and config/
+        run: python -m product_value_system.security.detect_secrets src/ config/
+
+      - name: Run OWASP & AST security posture audit suite
+        run: pytest tests/security/ -v
+
+  test:
+    name: Full Non-Live Test Suite & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: make install
@@ -46,6 +84,7 @@ jobs:
         run: make test-coverage
 
   build:
+    name: Hardened Multi-Stage Docker Build & Smoke Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
@@ -56,7 +95,8 @@ jobs:
       - name: Build Docker image
         run: docker build -t pvs:test .
 
-      - name: Test Docker image
+      - name: Verify non-root container & diagnostics
         run: |
           docker run --rm pvs:test id
-          docker run --rm pvs:test pytest tests/unit/ -v
+          docker run --rm pvs:test pvs doctor --repo-root /app
+          docker run --rm pvs:test pytest tests/unit/test_config_schemas.py -v

@@ -1,3 +1,19 @@
+# Release Notes: Evolution P0–P2 & Production Hardening (`v0.9.0-beta` / Unreleased)
+
+**Date**: 2026-11-22  
+**Status**: Beta Reference Implementation (Production-Hardened Architecture, Verified Zero-Cost Local & CI Suite)
+
+## Highlights Since v0.1.0
+
+1. **Complete Evolution Stack (`EVO-001`–`EVO-033`)**: Full multi-provider streaming (`OpenAI`, `Anthropic`, `Mock`), FinOps optimization (tiered semantic `PromptCache`, 6-feature `ModelRouter`, discounted `BatchEvaluationRunner`), `ParallelExecutor` DAG orchestration, zero-trust `iptables` sandbox egress allowlists, Hybrid ML secret detection, Git history forensics & Clauset-Newman-Moore Strangler Fig modernization, and non-punitive SPACE/DORA DevX telemetry.
+2. **20-Round Continuous Architectural Hardening**:
+   - **Contracts & Resilience**: 100% (`12/12`) strict Pydantic v2 validation for `config/*.yaml`, OWASP `*_FILE` secret expansion, AWS Builders' Library `CircuitBreaker` + `RetryTokenBucket` + full-jitter retries.
+   - **Performance**: `14.6x` warm Cedar policy init via `(path, mtime_ns)` memoization; WAL-tuned SQLite persistence & cache backends with leak-free context-managed closing; reproducible benchmark harness (`docs/BENCHMARKS.md`).
+   - **Security**: Constant-time `hmac.compare_digest` authentication, OWASP HTTP security headers middleware, handler-attached secret-redacting JSON logs, and repo-wide AST security audits (`0` `shell=True`/`yaml.load`/`eval`/`pickle`).
+   - **Developer Experience**: New `pvs doctor`, `pvs route`, `pvs brownfield --strangler`, and `pvs devx` CLI commands with `--json`, 3 zero-cost runnable showcase demos (`examples/showcases/`), hardened multi-stage non-root `Dockerfile`, and expanded 6-hook pre-commit + CI security gates.
+
+---
+
 # Release Notes: v0.1.0
 
 **Release Date**: 2026-11-18  

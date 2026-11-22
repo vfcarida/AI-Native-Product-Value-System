@@ -27,10 +27,17 @@ class Database:
         self._connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
-        """Connect to database."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(str(self.db_path))
+        """Connect to database with production SQLite WAL and concurrency PRAGMAs."""
+        is_memory = str(self.db_path) == ":memory:"
+        if not is_memory:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._connection = sqlite3.connect(str(self.db_path), timeout=30.0)
         self._connection.execute("PRAGMA foreign_keys = ON")
+        self._connection.execute("PRAGMA busy_timeout = 5000")
+        self._connection.execute("PRAGMA temp_store = MEMORY")
+        if not is_memory:
+            self._connection.execute("PRAGMA journal_mode = WAL")
+            self._connection.execute("PRAGMA synchronous = NORMAL")
         self._connection.row_factory = sqlite3.Row
 
     def close(self) -> None:

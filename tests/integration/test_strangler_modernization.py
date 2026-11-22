@@ -183,6 +183,81 @@ def test_generated_acl_code_compiles_and_executes_canary_cutover(tmp_path: Path)
     with pytest.raises(PermissionError, match="ACL security boundary denied"):
         guarded_acl.refund("tx-blocked")
 
+    # 5. Declarative field mapping + GitHub Scientist shadow parity mode
+    class _RenamedModern:
+        def charge(self, account_id: str, amount: float) -> dict[str, Any]:
+            return {"svc": "legacy", "account_id": account_id, "amount": amount}
+
+    shadow_acl = acl_cls(
+        _LegacyPayments(),
+        _RenamedModern(),
+        flag,
+        field_mapping={"user_id": "account_id"},
+        response_field_mapping={"svc": "engine", "account_id": "user_id"},
+        shadow_mode=True,
+    )
+    shadow_out = shadow_acl.charge("u1", 50.0)
+    assert shadow_out["engine"] == "legacy"
+    assert shadow_acl.parity_checks == 1
+    assert shadow_acl.parity_mismatches == []
+
+    # Shadow parity mismatch is recorded without breaking legacy response
+    mismatch_acl = acl_cls(
+        _LegacyPayments(),
+        _ModernPayments(should_fail=False),
+        flag,
+        shadow_mode=True,
+    )
+    assert mismatch_acl.charge("u1", 50.0)["engine"] == "legacy"
+    assert mismatch_acl.parity_checks == 1
+    assert len(mismatch_acl.parity_mismatches) == 1
+
+
+def test_modularity_community_detection_splits_bridged_monolith(tmp_path: Path) -> None:
+    """Greedy modularity splits 2 dense sub-domains even when linked by a bridge import."""
+    from product_value_system.brownfield import BoundaryAnalyzer
+
+    for pkg, files in (
+        (
+            "payments",
+            {
+                "p1.py": "from payments.p2 import b\nfrom payments.p3 import c\n",
+                "p2.py": "from payments.p3 import c\n",
+                "p3.py": "from billing.b1 import x\n",  # Single bridge edge
+            },
+        ),
+        (
+            "billing",
+            {
+                "b1.py": "from billing.b2 import y\nfrom billing.b3 import z\n",
+                "b2.py": "from billing.b3 import z\n",
+                "b3.py": "X = 1\n",
+            },
+        ),
+    ):
+        (tmp_path / "src" / pkg).mkdir(parents=True)
+        for fname, src in files.items():
+            (tmp_path / "src" / pkg / fname).write_text(src, encoding="utf-8")
+
+    pkg_files = (
+        ("payments", ("p1.py", "p2.py", "p3.py")),
+        ("billing", ("b1.py", "b2.py", "b3.py")),
+    )
+    structure = {
+        f"src/{pkg}/{fname}": {"lines_of_code": 200, "cyclomatic_complexity": 5}
+        for pkg, names in pkg_files
+        for fname in names
+    }
+    analyzer = BoundaryAnalyzer(
+        {"boundary_detection": {"method": "dependency_graph", "min_module_size_lines": 0}}
+    )
+    graph = analyzer.build_import_graph(structure, repo_path=tmp_path)
+    modules = analyzer.identify_modules(structure, repo_path=tmp_path)
+    q = analyzer.compute_modularity(modules, graph)
+
+    assert {m.name for m in modules} == {"payments", "billing"}
+    assert q > 0.25
+
 
 async def test_brownfield_agent_integrates_git_history_and_strangler_plans(
     tmp_path: Path,

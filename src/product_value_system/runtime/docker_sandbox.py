@@ -168,8 +168,12 @@ class DockerSandboxProvider:
                 )
                 try:
                     await loop.run_in_executor(None, lambda: container.remove(force=True))
-                except Exception:
-                    pass
+                except Exception as remove_exc:
+                    logger.debug(
+                        "Failed to remove container %s during egress cleanup: %s",
+                        container_id,
+                        remove_exc,
+                    )
                 raise SandboxError(f"Failed to apply network egress filter: {exc}") from exc
 
         logger.info("Created sandbox: %s", container_id)
@@ -342,5 +346,5 @@ class DockerSandboxProvider:
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, container.kill)
-        except DockerException:
-            pass
+        except DockerException as exc:
+            logger.debug("Ignoring DockerException while force-killing container: %s", exc)

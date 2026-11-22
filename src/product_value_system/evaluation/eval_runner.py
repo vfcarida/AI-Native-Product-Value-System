@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -47,8 +48,12 @@ def _extract_score_and_pass(result: BatchResult, passing_threshold: float) -> tu
             score = max(0.0, min(1.0, float(parsed.get("score", 0.0))))
             passed = bool(parsed.get("passed", score >= passing_threshold))
             return score, passed
-    except Exception:
-        pass
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        logging.getLogger(__name__).debug(
+            "Judge output for %s was non-JSON (%s); falling back to numeric extraction.",
+            result.custom_id,
+            exc,
+        )
     # Fallback numeric extraction
     m = re.search(r"\b(0(?:\.\d+)?|1(?:\.0+)?)\b", text)
     score = float(m.group(1)) if m else (1.0 if text else 0.0)

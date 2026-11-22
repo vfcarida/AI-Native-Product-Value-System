@@ -5,6 +5,7 @@ Cedar policy engine integration.
 import json
 import logging
 import subprocess
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -48,8 +49,19 @@ class PolicyEngine:
     Cedar policy engine for agent authorization.
 
     Evaluates authorization requests against Cedar policies,
-    logs all decisions for audit trail.
+    logs all decisions for audit trail. Uses thread-safe ``(path, mtime_ns)``
+    caching to avoid redundant disk reads and ``cedar validate`` subprocess
+    spawns across repeated stage instantiations.
     """
+
+    _POLICY_CACHE_LOCK = threading.Lock()
+    _POLICY_CACHE: dict[tuple[str, int, str, int], tuple[str, str]] = {}
+
+    @classmethod
+    def clear_policy_cache(cls) -> None:
+        """Clear the in-process mtime-keyed Cedar policy cache."""
+        with cls._POLICY_CACHE_LOCK:
+            cls._POLICY_CACHE.clear()
 
     def __init__(
         self,
@@ -80,16 +92,32 @@ class PolicyEngine:
         if not self.policies_file.exists():
             raise FileNotFoundError(f"Policies not found: {self.policies_file}")
 
+        self._cache_hit: bool = False
         self._load_policies()
 
     def _load_policies(self) -> None:
-        """Load and validate policies."""
+        """Load and validate policies with automatic mtime-based memoization."""
+        policy_resolved = str(self.policies_file.resolve())
+        policy_mtime = self.policies_file.stat().st_mtime_ns
+        schema_exists = self.schema_file.exists()
+        schema_resolved = str(self.schema_file.resolve()) if schema_exists else ""
+        schema_mtime = self.schema_file.stat().st_mtime_ns if schema_exists else 0
+        cache_key = (policy_resolved, policy_mtime, schema_resolved, schema_mtime)
+
+        with self._POLICY_CACHE_LOCK:
+            cached = self._POLICY_CACHE.get(cache_key)
+        if cached is not None:
+            self._policies_text, self._schema_text = cached
+            self._cache_hit = True
+            return
+
         logger.info("Loading Cedar policies from %s", self.policies_file)
 
         with open(self.policies_file, encoding="utf-8") as f:
             self._policies_text = f.read()
 
-        if self.schema_file.exists():
+        self._schema_text = ""
+        if schema_exists:
             with open(self.schema_file, encoding="utf-8") as sf:
                 self._schema_text = sf.read()
             try:
@@ -111,6 +139,10 @@ class PolicyEngine:
                     logger.warning("Policy validation warnings: %s", result.stderr)
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 logger.debug("Cedar CLI not available, using internal schema and policy validation")
+
+        with self._POLICY_CACHE_LOCK:
+            self._POLICY_CACHE[cache_key] = (self._policies_text, self._schema_text)
+        self._cache_hit = False
 
     def authorize(
         self,
