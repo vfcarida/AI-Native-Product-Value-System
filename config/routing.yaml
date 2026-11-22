@@ -3,7 +3,9 @@ routing:
   enabled: true
   shadow_mode: false
   force_tier: null  # Set to "high" for safe rollback
-  preferred_provider: null  # Optional: "openai" or "anthropic"
+  preferred_provider: null  # Optional: "openai", "anthropic", "gemini", "azure_openai", or "ollama"
+  # For the full 5-provider catalog (OpenAI, Anthropic, Gemini, Azure OpenAI, Ollama),
+  # use `config/routing_multiprovider.yaml`.
 
   models:
     low_complexity:

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: product-value-system
+description: Production-hardened Helm chart for the AI-Native Product Value System control plane
+type: application
+version: 1.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.26.0-0"
+home: https://github.com/vfcarida/ai-native-product-value-system
+sources:
+  - https://github.com/vfcarida/ai-native-product-value-system
+keywords:
+  - ai-agents
+  - product-value-system
+  - finops
+  - cedar-policy
+  - opentelemetry
+  - governance
+maintainers:
+  - name: AI-Native Product Value System Maintainers
+annotations:
+  category: AI/ML
+  licenses: Apache-2.0

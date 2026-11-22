@@ -10,6 +10,11 @@ from product_value_system.persistence.models import (
     RunRecord,
     StageRecord,
 )
+from product_value_system.persistence.postgres import (
+    PostgresDatabase,
+    PostgresValueStreamRepository,
+    create_database,
+)
 from product_value_system.persistence.repository import ValueStreamRepository
 
 __all__ = [
@@ -17,7 +22,10 @@ __all__ = [
     "Database",
     "EvaluationRecord",
     "PolicyDecisionRecord",
+    "PostgresDatabase",
+    "PostgresValueStreamRepository",
     "RunRecord",
     "StageRecord",
     "ValueStreamRepository",
+    "create_database",
 ]

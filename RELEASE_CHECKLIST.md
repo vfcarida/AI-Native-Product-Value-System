@@ -1,7 +1,7 @@
-# Release Checklist: v0.1.0
+# Release Checklist: v1.0.0
 
-**Date**: 2026-11-18  
-**Version**: 0.1.0 (Initial Release)
+**Date**: 2026-11-22  
+**Version**: 1.0.0 (Production Reference Release)
 
 ## Pre-Release Verification
 
@@ -29,8 +29,8 @@ mypy src/
 - [x] No hardcoded secrets in source code
 - [x] Pre-commit hooks installed and tested
 - [x] CI secret scanning enabled (`.github/workflows/secret-scan.yml`)
-- [x] Dependency versions pinned (`requirements.txt`, `pyproject.toml`)
-- [x] Dockerfile uses non-root user (`pvs`, UID 1000)
+- [x] Dependency versions locked (`requirements.lock`, `requirements.txt`, `pyproject.toml`)
+- [x] Dockerfile uses non-root user (`pvs`, UID `10001`) with `HEALTHCHECK`
 - [x] Container security best practices followed
 
 **Verification**:
@@ -114,8 +114,8 @@ grep "Apache" LICENSE
 
 ### Version Bump
 
-- [x] Version updated in `pyproject.toml` (`0.1.0`)
-- [x] Version updated in `src/product_value_system/__version__.py` (`0.1.0`)
+- [x] Version updated in `pyproject.toml` (`1.0.0`)
+- [x] Version updated in `src/product_value_system/__version__.py` (`1.0.0`)
 - [x] Changelog updated ([CHANGELOG.md](CHANGELOG.md))
 
 **Files verified**:

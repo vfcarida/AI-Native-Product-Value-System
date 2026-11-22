@@ -153,7 +153,13 @@ class SimulationValidator:
         t_pval = float(t_pval_raw)
         t_passed = t_pval >= t_thresh
 
-        ks_result = stats.ks_2samp(simulated_scores, real_scores)
+        combined_scores = list(simulated_scores) + list(real_scores)
+        has_ties = len(set(combined_scores)) < len(combined_scores)
+        ks_result = stats.ks_2samp(
+            simulated_scores,
+            real_scores,
+            method="asymp" if has_ties else "auto",
+        )
         ks_stat = float(ks_result.statistic)
         ks_pval = float(ks_result.pvalue)
         ks_passed = ks_pval >= ks_thresh

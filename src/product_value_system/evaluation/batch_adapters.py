@@ -383,3 +383,311 @@ class AnthropicBatchAdapter(BatchAdapter):
     async def cancel_batch(self, batch_id: str) -> dict[str, Any]:
         resp = await self._request_with_retry("POST", f"/messages/batches/{batch_id}/cancel")
         return dict(resp.json())
+
+
+class GeminiBatchAdapter(BatchAdapter):
+    """Google Gemini Batch API adapter (50% discount, up to 50,000 requests/batch, 24h SLA)."""
+
+    discount_rate = 0.50
+    max_requests_per_batch = 50000
+
+    _STATE_MAP: dict[str, str] = {
+        "BATCH_STATE_PENDING": "pending",
+        "BATCH_STATE_RUNNING": "in_progress",
+        "BATCH_STATE_SUCCEEDED": "completed",
+        "BATCH_STATE_FAILED": "failed",
+        "BATCH_STATE_CANCELLED": "cancelled",
+        "BATCH_STATE_EXPIRED": "expired",
+    }
+
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        model: str = "gemini-2.5-flash",
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+        timeout: float = 60.0,
+        max_retries: int = 3,
+        transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        if not api_key and client is None:
+            raise ValueError("Gemini API key is required for GeminiBatchAdapter.")
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max(1, int(max_retries))
+        self._transport = transport
+        self._injected_client = client
+        self._secret_detector = SecretDetector()
+
+    def _make_client(self) -> httpx.AsyncClient:
+        if self._injected_client is not None:
+            return self._injected_client
+        kwargs: dict[str, Any] = {
+            "base_url": self.base_url,
+            "headers": {
+                "x-goog-api-key": self.api_key,
+                "Content-Type": "application/json",
+            },
+            "timeout": httpx.Timeout(self.timeout),
+        }
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+        return httpx.AsyncClient(**kwargs)
+
+    async def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        client = self._make_client()
+        owns_client = self._injected_client is None
+        try:
+            for attempt in range(self.max_retries):
+                try:
+                    resp = await client.request(method, url, **kwargs)
+                    if resp.status_code == 429 and attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(resp.headers.get("Retry-After", 2**attempt)))
+                        continue
+                    if resp.status_code >= 500 and attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(2**attempt))
+                        continue
+                    if resp.status_code >= 400:
+                        safe_err = self._secret_detector.redact_secrets(resp.text)
+                        raise RuntimeError(f"Gemini Batch API error {resp.status_code}: {safe_err}")
+                    return resp
+                except httpx.RequestError as exc:
+                    if attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(2**attempt))
+                        continue
+                    raise RuntimeError(f"Gemini Batch API network error: {exc}") from exc
+            raise RuntimeError("Gemini Batch API retry limit exhausted.")
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def submit_batch(self, batch_file: Path) -> BatchJob:
+        """Submit JSONL judge requests to Gemini ``:batchGenerateContent``."""
+        inlined_requests: list[dict[str, Any]] = []
+        resolved_model = self.model
+        for raw_line in batch_file.read_text(encoding="utf-8").splitlines():
+            if not raw_line.strip():
+                continue
+            item = json.loads(raw_line)
+            body = item.get("body", {})
+            if body.get("model"):
+                resolved_model = str(body["model"])
+            contents: list[dict[str, Any]] = []
+            system_parts: list[str] = []
+            for msg in body.get("messages", []):
+                role = str(msg.get("role", "user"))
+                text = str(msg.get("content", ""))
+                if role == "system":
+                    system_parts.append(text)
+                else:
+                    gemini_role = "model" if role == "assistant" else "user"
+                    contents.append({"role": gemini_role, "parts": [{"text": text}]})
+            req_obj: dict[str, Any] = {
+                "contents": contents,
+                "generationConfig": {"temperature": float(body.get("temperature", 0.0))},
+            }
+            if system_parts:
+                req_obj["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+            inlined_requests.append(
+                {
+                    "request": req_obj,
+                    "metadata": {"key": str(item["custom_id"])},
+                }
+            )
+
+        payload = {
+            "batch": {
+                "displayName": batch_file.stem,
+                "inputConfig": {"requests": {"requests": inlined_requests}},
+            }
+        }
+        resp = await self._request_with_retry(
+            "POST", f"/models/{resolved_model}:batchGenerateContent", json=payload
+        )
+        data = resp.json()
+        raw_state = str(
+            (data.get("metadata") or {}).get("state") or data.get("state") or "BATCH_STATE_PENDING"
+        )
+        normalized = self._STATE_MAP.get(raw_state, "in_progress")
+        batch_id = str(data.get("name") or f"batches/{batch_file.stem}")
+        output_ref = (
+            (data.get("response") or {}).get("responsesFile")
+            or (data.get("metadata") or {}).get("output", {}).get("responsesFile")
+            or f"/{batch_id}:results"
+        )
+        return BatchJob(
+            batch_id=batch_id,
+            provider="gemini",
+            num_requests=len(inlined_requests),
+            status=normalized,
+            created_at=str(data.get("createTime") or datetime.now(UTC).isoformat()),
+            result_file_id=str(output_ref) if normalized == "completed" else None,
+        )
+
+    async def get_batch_status(self, batch_id: str) -> dict[str, Any]:
+        path = batch_id if batch_id.startswith("/") else f"/{batch_id}"
+        resp = await self._request_with_retry("GET", path)
+        data = resp.json()
+        raw_state = str(
+            (data.get("metadata") or {}).get("state") or data.get("state") or "BATCH_STATE_RUNNING"
+        )
+        normalized = self._STATE_MAP.get(raw_state, "in_progress")
+        if data.get("done") is True and normalized not in {"failed", "cancelled", "expired"}:
+            normalized = "completed"
+        output_file = (
+            (data.get("response") or {}).get("responsesFile")
+            or (data.get("metadata") or {}).get("output", {}).get("responsesFile")
+            or f"{path}:results"
+        )
+        return {
+            "batch_id": data.get("name", batch_id),
+            "status": normalized,
+            "output_file_id": output_file,
+            "completed_at": data.get("updateTime"),
+            "error": data.get("error"),
+        }
+
+    async def download_result_file(self, file_id: str) -> str:
+        path = file_id if file_id.startswith("/") else f"/{file_id}"
+        resp = await self._request_with_retry("GET", path)
+        return resp.text
+
+    async def cancel_batch(self, batch_id: str) -> dict[str, Any]:
+        path = batch_id if batch_id.startswith("/") else f"/{batch_id}"
+        resp = await self._request_with_retry("POST", f"{path}:cancel")
+        return dict(resp.json()) if resp.text.strip() else {"status": "cancelled"}
+
+
+class AzureOpenAIBatchAdapter(BatchAdapter):
+    """Azure OpenAI Global Batch adapter (50% discount, ``/openai/files`` + ``/openai/batches``)."""
+
+    discount_rate = 0.50
+    max_requests_per_batch = 50000
+
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str = "",
+        *,
+        azure_ad_token: str | None = None,
+        api_version: str = "2024-10-21",
+        timeout: float = 60.0,
+        max_retries: int = 3,
+        transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        if not endpoint and client is None:
+            raise ValueError("Azure OpenAI endpoint is required for AzureOpenAIBatchAdapter.")
+        if not api_key and not azure_ad_token and client is None:
+            raise ValueError("Azure OpenAI api_key or azure_ad_token is required.")
+        self.endpoint = endpoint.rstrip("/")
+        self.api_key = api_key
+        self.azure_ad_token = azure_ad_token
+        self.api_version = api_version
+        self.timeout = timeout
+        self.max_retries = max(1, int(max_retries))
+        self._transport = transport
+        self._injected_client = client
+        self._secret_detector = SecretDetector()
+
+    def _make_client(self) -> httpx.AsyncClient:
+        if self._injected_client is not None:
+            return self._injected_client
+        headers: dict[str, str] = {}
+        if self.azure_ad_token:
+            headers["Authorization"] = f"Bearer {self.azure_ad_token}"
+        else:
+            headers["api-key"] = self.api_key
+        kwargs: dict[str, Any] = {
+            "base_url": self.endpoint,
+            "headers": headers,
+            "timeout": httpx.Timeout(self.timeout),
+        }
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+        return httpx.AsyncClient(**kwargs)
+
+    async def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        client = self._make_client()
+        owns_client = self._injected_client is None
+        params = dict(kwargs.pop("params", None) or {})
+        params.setdefault("api-version", self.api_version)
+        try:
+            for attempt in range(self.max_retries):
+                try:
+                    resp = await client.request(method, url, params=params, **kwargs)
+                    if resp.status_code == 429 and attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(resp.headers.get("Retry-After", 2**attempt)))
+                        continue
+                    if resp.status_code >= 500 and attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(2**attempt))
+                        continue
+                    if resp.status_code >= 400:
+                        safe_err = self._secret_detector.redact_secrets(resp.text)
+                        raise RuntimeError(
+                            f"Azure OpenAI Batch API error {resp.status_code}: {safe_err}"
+                        )
+                    return resp
+                except httpx.RequestError as exc:
+                    if attempt < self.max_retries - 1:
+                        await asyncio.sleep(float(2**attempt))
+                        continue
+                    raise RuntimeError(f"Azure OpenAI Batch API network error: {exc}") from exc
+            raise RuntimeError("Azure OpenAI Batch API retry limit exhausted.")
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def submit_batch(self, batch_file: Path) -> BatchJob:
+        raw_bytes = batch_file.read_bytes()
+        num_requests = sum(
+            1 for line in raw_bytes.decode("utf-8").splitlines() if line.strip()
+        )
+        upload_resp = await self._request_with_retry(
+            "POST",
+            "/openai/files",
+            data={"purpose": "batch"},
+            files={"file": (batch_file.name, raw_bytes, "application/jsonl")},
+        )
+        file_id = str(upload_resp.json()["id"])
+
+        batch_resp = await self._request_with_retry(
+            "POST",
+            "/openai/batches",
+            json={
+                "input_file_id": file_id,
+                "endpoint": "/chat/completions",
+                "completion_window": "24h",
+            },
+        )
+        data = batch_resp.json()
+        return BatchJob(
+            batch_id=str(data["id"]),
+            provider="azure_openai",
+            num_requests=num_requests,
+            status=str(data.get("status", "in_progress")),
+            created_at=datetime.now(UTC).isoformat(),
+            result_file_id=data.get("output_file_id"),
+        )
+
+    async def get_batch_status(self, batch_id: str) -> dict[str, Any]:
+        resp = await self._request_with_retry("GET", f"/openai/batches/{batch_id}")
+        data = resp.json()
+        return {
+            "batch_id": data.get("id", batch_id),
+            "status": data.get("status", "in_progress"),
+            "output_file_id": data.get("output_file_id"),
+            "completed_at": data.get("completed_at"),
+            "error": data.get("errors"),
+        }
+
+    async def download_result_file(self, file_id: str) -> str:
+        resp = await self._request_with_retry("GET", f"/openai/files/{file_id}/content")
+        return resp.text
+
+    async def cancel_batch(self, batch_id: str) -> dict[str, Any]:
+        resp = await self._request_with_retry("POST", f"/openai/batches/{batch_id}/cancel")
+        return dict(resp.json())

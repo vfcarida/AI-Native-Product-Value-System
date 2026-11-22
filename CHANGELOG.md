@@ -5,10 +5,17 @@ All notable changes to the **AI-Native Product Value System** are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-11-22
+## [1.0.0] - 2026-11-22
 
 ### Added
 
+- **v1.0 Multi-Provider Adapters, Polyglot Drift, Rust Cedar, Async PostgreSQL & Kubernetes Stack**:
+  - Added native `GeminiModelAdapter` (`x-goog-api-key`, `systemInstruction`, tool calling, SSE streaming), `AzureOpenAIModelAdapter` (deployment URL, `api-key` + Entra ID bearer auth, SSE streaming), `OllamaModelAdapter` (`/api/chat`, NDJSON streaming, tool calling, `$0` local cost), unified `create_adapter()` factory, CLI `--provider`/`--model` support on `pvs run`/`eval`/`review`, and multi-provider entries in `config/routing.yaml`.
+  - Added `GeminiBatchAdapter` and `AzureOpenAIBatchAdapter` (`50%` batch discount) to `BatchEvalRunner` with JSONL parsing for Gemini `candidates`/`usageMetadata`.
+  - Added linear-time structural `TypeScriptScanner` and `GoScanner` (`src/product_value_system/drift/multilang_scanner.py`) extracting TS/JS functions, arrows, class methods, Express/Fastify/NestJS routes, and Go functions (including grouped param types & receivers), `net/http` (Go 1.22+ method prefixes), Gin, Echo, and Chi routes — integrated seamlessly into `CodeScanner`, `SpecScanner`, and `scan_drift()`.
+  - Added in-process Rust `cedarpy` PyO3 binding support to `PolicyEngine` (precedence: `cedarpy_rust` -> `cedar_cli` -> `python_fallback`), async PostgreSQL persistence (`PostgresDatabase`, `PostgresValueStreamRepository`, `create_database()`, `migrations/postgres/001_initial_schema.sql`), deterministic lockfile tooling (`scripts/generate-lockfile.py`, `requirements.lock`), and CI `helm-and-supply-chain` job (`helm lint`, `kubeconform`, `pip-audit`).
+  - Added production-hardened Kubernetes Helm v3 chart (`deploy/helm/product-value-system/`) with JSON Schema 2020-12 `values.schema.json`, Restricted PSS non-root UID 10001 security context, `/health/live` & `/health/ready` probes, zero-trust egress `NetworkPolicy`, `HorizontalPodAutoscaler`, `PodDisruptionBudget`, Prometheus `ServiceMonitor`, optional companion OpenTelemetry Collector (`otel-collector.yaml`), and Grafana dashboard ConfigMap (`grafana-dashboards-configmap.yaml`).
+  - Eliminated SciPy `ks_2samp` tie `RuntimeWarning` in `SimulationValidator` (0 warnings across the full test suite).
 - **Evolution Package P0–P2 (`EVO-001`–`EVO-033`)**:
   - Anthropic Claude adapter & real SSE streaming (`EVO-001`, `EVO-002`), live integration test tier & cost guards (`EVO-003`, `EVO-007`, `EVO-008`), Cedar/Python 100% policy parity validator (`EVO-005`), adversarial prompt injection suite (`EVO-006`).
   - TinyTroupe synthetic customer simulation (`EVO-009`), post-launch Learn stage & outcome feedback loops (`EVO-010`), 180-sample golden datasets + trajectory evaluations (`EVO-011`, `EVO-012`), 4-perspective multi-agent review (`EVO-013`), SLOs & Prometheus/Grafana monitoring (`EVO-014`), progressive feature flags & Admin UI (`EVO-015`), A/B experiment design & baseline validation (`EVO-016`, `EVO-019`).

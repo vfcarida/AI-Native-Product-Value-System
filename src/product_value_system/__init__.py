@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING, Any
 from product_value_system.__version__ import __version__
 
 if TYPE_CHECKING:
+    from product_value_system.adapters import (
+        AzureOpenAIModelAdapter,
+        GeminiModelAdapter,
+        OllamaModelAdapter,
+        create_adapter,
+    )
     from product_value_system.agents.brownfield_agent import BrownfieldAgent
     from product_value_system.brownfield.git_analyzer import GitAnalyzer
     from product_value_system.brownfield.strangler_planner import StranglerPlanner
@@ -27,17 +33,26 @@ if TYPE_CHECKING:
     from product_value_system.observability.structured_logging import run_system_diagnostics
     from product_value_system.orchestrator.controller import ValueStreamOrchestrator
     from product_value_system.orchestrator.parallel_executor import ParallelExecutor
+    from product_value_system.persistence.postgres import PostgresDatabase, create_database
     from product_value_system.policy.engine import PolicyEngine
     from product_value_system.routing.model_router import ModelRouter
     from product_value_system.sandbox.network_filter import NetworkFilter
     from product_value_system.security.hybrid_detector import HybridSecretDetector
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "AzureOpenAIModelAdapter": (
+        "product_value_system.adapters.azure_openai_adapter",
+        "AzureOpenAIModelAdapter",
+    ),
     "BatchEvalRunner": ("product_value_system.evaluation.batch_runner", "BatchEvalRunner"),
     "BrownfieldAgent": ("product_value_system.agents.brownfield_agent", "BrownfieldAgent"),
     "CircuitBreaker": ("product_value_system.harness.resilience", "CircuitBreaker"),
     "DevXTracker": ("product_value_system.metrics.devx_tracker", "DevXTracker"),
     "EvalRunner": ("product_value_system.evaluation.eval_runner", "EvalRunner"),
+    "GeminiModelAdapter": (
+        "product_value_system.adapters.gemini_adapter",
+        "GeminiModelAdapter",
+    ),
     "GitAnalyzer": ("product_value_system.brownfield.git_analyzer", "GitAnalyzer"),
     "Harness": ("product_value_system.harness.harness", "Harness"),
     "HybridSecretDetector": (
@@ -46,11 +61,16 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     ),
     "ModelRouter": ("product_value_system.routing.model_router", "ModelRouter"),
     "NetworkFilter": ("product_value_system.sandbox.network_filter", "NetworkFilter"),
+    "OllamaModelAdapter": (
+        "product_value_system.adapters.ollama_adapter",
+        "OllamaModelAdapter",
+    ),
     "ParallelExecutor": (
         "product_value_system.orchestrator.parallel_executor",
         "ParallelExecutor",
     ),
     "PolicyEngine": ("product_value_system.policy.engine", "PolicyEngine"),
+    "PostgresDatabase": ("product_value_system.persistence.postgres", "PostgresDatabase"),
     "PromptCache": ("product_value_system.caching.prompt_cache", "PromptCache"),
     "SPACECalculator": ("product_value_system.metrics.space_calculator", "SPACECalculator"),
     "StranglerPlanner": (
@@ -61,6 +81,8 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "product_value_system.orchestrator.controller",
         "ValueStreamOrchestrator",
     ),
+    "create_adapter": ("product_value_system.adapters", "create_adapter"),
+    "create_database": ("product_value_system.persistence.postgres", "create_database"),
     "run_system_diagnostics": (
         "product_value_system.observability.structured_logging",
         "run_system_diagnostics",
@@ -81,23 +103,29 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "AzureOpenAIModelAdapter",
     "BatchEvalRunner",
     "BrownfieldAgent",
     "CircuitBreaker",
     "DevXTracker",
     "EvalRunner",
+    "GeminiModelAdapter",
     "GitAnalyzer",
     "Harness",
     "HybridSecretDetector",
     "ModelRouter",
     "NetworkFilter",
+    "OllamaModelAdapter",
     "ParallelExecutor",
     "PolicyEngine",
+    "PostgresDatabase",
     "PromptCache",
     "SPACECalculator",
     "StranglerPlanner",
     "ValueStreamOrchestrator",
     "__version__",
+    "create_adapter",
+    "create_database",
     "run_system_diagnostics",
     "validate_all_configs",
 ]

@@ -1,0 +1,38 @@
+{{- if .Values.grafanaDashboards.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pvs.fullname" . }}-grafana-dashboards
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    {{ .Values.grafanaDashboards.label }}: {{ .Values.grafanaDashboards.labelValue | quote }}
+data:
+  pvs-overview.json: |
+    {
+      "title": "AI-Native Product Value System — SLO, FinOps & DevX",
+      "uid": "pvs-control-plane-overview",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "SPACE Overall Score (Aggregate Only)",
+          "targets": [{"expr": "devx_space_score{dimension=\"overall\"}"}]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Value Stream Stage Latency (p95)",
+          "targets": [{"expr": "histogram_quantile(0.95, sum(rate(devx_cycle_time_seconds_bucket[5m])) by (le, stage))"}]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "LLM Token Usage Rate",
+          "targets": [{"expr": "sum(rate(gen_ai_client_token_usage_sum[5m])) by (gen_ai_system)"}]
+        }
+      ]
+    }
+{{- end }}

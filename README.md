@@ -4,7 +4,7 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2F855A?style=for-the-badge)](LICENSE)
-[![Status: Beta Reference](https://img.shields.io/badge/status-Beta%20Reference-DD6B20?style=for-the-badge)](#roadmap)
+[![Status: v1.0 Reference](https://img.shields.io/badge/status-v1.0%20Reference-2F855A?style=for-the-badge)](#roadmap)
 [![Cedar Policy Sync](https://img.shields.io/badge/Cedar%20Policy%20Sync-100%25%20(25%2F25)-6B46C1?style=for-the-badge)](docs/POLICY_SYNC.md)
 [![Test Suite](https://img.shields.io/badge/tests-900%2B%204--Tier%20Suite-009688?style=for-the-badge)](tests/README.md)
 
@@ -23,7 +23,7 @@ Most AI coding tools accelerate *code generation* while leaving architecture, go
 > `Problem → Discovery & Evidence → Specification → Parallel Multi-Agent Review → Sandboxed Build → Progressive Release → Post-Launch Outcome Learning`
 
 ### Why Teams Adopt This Architecture
-- **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity), **12 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
+- **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity, optional in-process Rust `cedarpy` PyO3 backend), **13 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
 - **Measured FinOps & Latency Efficiency**: Combines **tiered exact + semantic prompt caching** (`9.6 µs` L1 memory / `0.28 ms` L2 SQLite WAL hits), **6-feature complexity model routing** (**90.8% cost reduction** vs. always-flagship), **30%–50% discounted batch evaluations**, **AWS Builders' Library circuit breakers & full-jitter retries**, and **NetworkX DAG parallel execution** (**2.0x** speedup on concurrent review layers).
 - **Zero-Trust Defense-in-Depth**: Enforces **default-deny Docker `iptables` egress allowlists**, **hybrid regex + ML/entropy secret detection** (`2.59 ms` p50 on 17K-token documents, 0 FP), **constant-time `hmac.compare_digest` auth**, OWASP security headers, and **handler-attached secret-redacting OpenTelemetry JSON logs**.
 - **Enterprise Brownfield Modernization**: Prioritizes legacy refactoring via read-only **Git temporal forensics** (hotspots, temporal coupling, age, anonymized bus factor), partitions bridged monoliths using **Clauset-Newman-Moore greedy modularity** ($Q = 0.7336$), and generates **shadow-mode Anti-Corruption Layers** with sticky SHA-256 progressive Strangler Fig traffic cutovers (`1% → 100%`).
@@ -39,16 +39,16 @@ flowchart TB
 
     subgraph Control["Deterministic Control Plane"]
         Orch["ValueStreamOrchestrator + ParallelExecutor (DAG)"]
-        Contracts["12 Strict Pydantic YAML Contracts + 8 JSON Schemas"]
+        Contracts["13 Strict Pydantic YAML Contracts + 8 JSON Schemas"]
         Harness["Harness: Hard Budget + Guardrails + CircuitBreaker"]
-        Policy["mtime-Cached Cedar PolicyEngine (100% Sync)"]
-        DB["WAL SQLite Persistence & Checkpoints"]
+        Policy["mtime-Cached Cedar PolicyEngine (cedarpy / CLI / Python)"]
+        DB["WAL SQLite / Async PostgreSQL Persistence & Checkpoints"]
     end
 
     subgraph FinOps["FinOps & Resilience Layer"]
         Router["Complexity ModelRouter (LOW / MED / HIGH)"]
         Cache["PromptCache (L1 Memory / L2 SQLite WAL / Redis)"]
-        Batch["BatchEvalRunner (OpenAI 50% / Anthropic 30%)"]
+        Batch["BatchEvalRunner (OpenAI/Gemini/Azure 50% / Anthropic 30%)"]
     end
 
     subgraph Agents["Governed Agent & Modernization Plane"]
@@ -120,7 +120,7 @@ git clone https://github.com/vfcarida/AI-Native-Product-Value-System.git
 cd AI-Native-Product-Value-System
 pip install -e ".[dev]"
 
-# Verify all 12 YAML configs, 8 JSON schemas, and Cedar policy engine
+# Verify all 13 YAML configs, 8 JSON schemas, and Cedar policy engine
 pvs doctor --json
 
 # Inspect FinOps model routing for any prompt
@@ -149,7 +149,7 @@ from product_value_system import (
     validate_all_configs,
 )
 
-# 1. Fail-fast startup validation across all 12 config/*.yaml contracts
+# 1. Fail-fast startup validation across all 13 config/*.yaml contracts
 report = validate_all_configs("config", expand_env=True)
 assert report.is_valid, report.errors
 
@@ -164,9 +164,9 @@ print(f"Routed -> {decision.provider}/{decision.model} (tier={decision.complexit
 
 Sample output from `pvs doctor`:
 ```text
-PVS Doctor v0.1.0 — HEALTHY
+PVS Doctor v1.0.0 — HEALTHY
   [OK] python_runtime: Python 3.12.10
-  [OK] yaml_config_contracts: 12 configs valid
+  [OK] yaml_config_contracts: 13 configs valid
   [OK] cedar_policy_engine: Loaded agent_authorization.cedar (cached=False)
   [OK] json_schemas: 8 schema file(s) in schemas
   [OK] llm_provider_credentials: No live API keys set (offline mock mode ready at $0 cost)
@@ -199,9 +199,9 @@ python scripts/run_benchmarks.py --markdown-out docs/BENCHMARKS.md
 ## Known Limitations & Non-Goals
 
 ### Known Limitations
-- **Optional Rust Cedar CLI**: When `cedar` is absent from `PATH`, `PolicyEngine` runs its 100%-parity deterministic Python fallback (`scripts/validate-policy-sync.py`: `25/25`). Install `cedar-policy-cli` to execute policies directly through the Rust binary.
+- **Optional Rust Cedar Engine**: `PolicyEngine` automatically uses in-process Rust `cedarpy` PyO3 bindings when installed (`pip install 'product-value-system[cedar]'`), falls back to the `cedar` CLI if on `PATH`, and otherwise runs its 100%-parity deterministic Python evaluator (`scripts/validate-policy-sync.py`: `25/25`).
 - **Docker & Linux `iptables` Sandbox**: Container execution and `iptables` network egress allowlists require a running Docker daemon (Linux `NET_ADMIN` inside the sandbox container); environments without Docker run all control-plane, evaluation, and mock workflows locally without container execution.
-- **Single-Node SQLite Persistence**: `Database` and `SQLiteCacheBackend` use WAL-mode SQLite optimized for single-node processes. Multi-node horizontal deployments should configure `RedisCacheBackend` and external database storage.
+- **Persistence Topology**: Local runs default to WAL-mode SQLite (`Database` / `SQLiteCacheBackend`). For multi-node Kubernetes deployments, configure a `postgresql://` DSN (`create_database()` / `PostgresDatabase`, `pip install 'product-value-system[postgres]'`) alongside `RedisCacheBackend`.
 - **Deterministic `$0` Suite vs. Live LLM Variance**: The default test and benchmark suites exercise schemas, policies, routing, caching, and statistical logic deterministically (`MockModelAdapter`). Real LLM outputs and token costs vary by model snapshot; opt in to live provider checks via `RUN_REAL_INTEGRATION_TESTS=1` (capped at `$0.05/test`, `$0.50/run`).
 - **Graceful Degradation for Heavy Optional Extras**: Microsoft Presidio/spaCy NER (`secret_detection`) and `TinyTroupe` (`simulation`) fall back to deterministic heuristic/entropy implementations when optional extras are not installed.
 
@@ -219,7 +219,7 @@ AI-Native-Product-Value-System/
 ├── src/product_value_system/   # 30 public packages (agents, orchestrator, harness, policy,
 │                               #   caching, routing, evaluation, sandbox, security, brownfield,
 │                               #   metrics, monitoring, observability, contracts, api, cli, ...)
-├── config/                     # 12 strictly validated YAML configs (StrictConfigModel)
+├── config/                     # 13 strictly validated YAML configs (StrictConfigModel)
 ├── schemas/                    # 8 JSON Schema 2020-12 artifact contracts
 ├── policies/                   # Declarative Cedar authorization schema & policies
 ├── examples/                   # Greenfield, brownfield, progressive delivery & $0 showcases
@@ -227,6 +227,7 @@ AI-Native-Product-Value-System/
 ├── docs/                       # Architecture, 6 ADRs, benchmarks, reference & 30+ guides
 ├── tests/                      # 4-tier test suite (unit + Hypothesis PBT, integration, eval, security)
 ├── scripts/                    # Benchmark harness, policy sync, secret scan & release audit
+├── deploy/helm/                # Production-hardened Kubernetes Helm v3 chart (Restricted PSS)
 ├── Dockerfile                  # Hardened multi-stage non-root container (UID 10001 + HEALTHCHECK)
 └── Makefile                    # 23+ self-documenting developer & CI workflow commands
 ```
@@ -242,7 +243,7 @@ AI-Native-Product-Value-System/
 | **FinOps & Orchestration** | [Token Caching](docs/token-caching.md) · [Model Routing](docs/model-routing.md) · [Batch Evaluations](docs/batch-evaluations.md) · [Parallel Execution](docs/parallel-execution.md) · [Cost Management](docs/COST_MANAGEMENT.md) |
 | **Security & Governance** | [Threat Model (OWASP LLM/Agentic)](docs/THREAT_MODEL.md) · [Network Egress Filtering](docs/network-filtering.md) · [Policy Sync](docs/POLICY_SYNC.md) · [Secret Management](docs/SECRET_MANAGEMENT.md) · [Security Testing](docs/SECURITY_TESTING.md) |
 | **Brownfield & Engineering** | [Git History Analysis](docs/git-history-analysis.md) · [Strangler Fig Modernization](docs/strangler-fig-modernization.md) · [Drift Detection](docs/drift-detection.md) · [Spec-Kit Patterns](docs/spec-kit-guide.md) |
-| **Observability, SLOs & DevX** | [OTel GenAI Conventions](docs/otel-genai-conventions.md) · [DevX SPACE/DORA Metrics](docs/devx-metrics.md) · [SLOs & Rollback](docs/slo-guide.md) · [Progressive Delivery](docs/progressive-delivery.md) · [Grafana Dashboards](docs/dashboards.md) |
+| **Observability, SLOs & DevX** | [OTel GenAI Conventions](docs/otel-genai-conventions.md) · [DevX SPACE/DORA Metrics](docs/devx-metrics.md) · [SLOs & Rollback](docs/slo-guide.md) · [Progressive Delivery](docs/progressive-delivery.md) · [Grafana Dashboards](docs/dashboards.md) · [Kubernetes Helm Chart](deploy/helm/product-value-system/README.md) |
 | **Discovery & Validation** | [Evidence Synthesis](docs/evidence-synthesis.md) · [Interview Synthesis](docs/interview-synthesis.md) · [Experiment Design](docs/experiment-design.md) · [Baseline Validation](docs/baseline-validation.md) · [Golden Datasets](golden_datasets/README.md) |
 
 ---
@@ -265,7 +266,7 @@ See [tests/README.md](tests/README.md) for test tiers, live integration opt-in (
 
 - ✅ **v0.1 – v0.5 (Core, Simulation, Evaluation, Governance & Observability)**: Multi-provider adapters (`OpenAI`, `Anthropic`, `Mock`) with SSE streaming, Cedar policy engine, Docker sandboxes, TinyTroupe simulation, Learn-stage outcome measurement, 180-sample golden datasets + trajectory evals, 4-perspective multi-agent review, SLOs & feature flags, A/B power & baseline validation, spec/code drift detection, ADR manager, Spec-Kit, OTel GenAI v1.28+, interview & evidence synthesis.
 - ✅ **v0.9 / Evolution P2 (EVO-024 – EVO-033 & 20-Round Production Hardening)**: Hybrid ML secret detection, L1/L2 WAL prompt caching, complexity model routing, discounted batch evaluations, DAG parallel execution, zero-trust `iptables` egress filtering, Git history forensics, Clauset-Newman-Moore Strangler Fig modernization + shadow ACL, SPACE/DORA DevX telemetry, strict Pydantic v2 config contracts (`12/12`), AWS resilience circuit breakers, constant-time auth & OWASP headers, structured secret-redacting logs, `pvs doctor`/`route`/`brownfield`/`devx` CLI, and reproducible benchmarks.
-- 📋 **v1.0 Planned**: Google Gemini, Azure OpenAI, and local Ollama/vLLM model adapters; multi-language (TypeScript/Go) AST drift detection; Kubernetes Helm chart deployment manifests.
+- ✅ **v1.0 Multi-Provider, Polyglot Drift & Kubernetes Readiness**: Native Google Gemini (`GeminiModelAdapter`), Azure OpenAI (`AzureOpenAIModelAdapter`), and local Ollama (`OllamaModelAdapter`) adapters with unified `create_adapter()` factory & CLI `--provider`/`--model` flags; multi-language TypeScript/JavaScript & Go structural AST drift scanning (`TypeScriptScanner`, `GoScanner`) integrated end-to-end into `CodeScanner`/`SpecScanner`/`scan_drift()`; Gemini & Azure OpenAI batch evaluation adapters (`50%` discount); optional in-process Rust `cedarpy` PyO3 bindings; async PostgreSQL persistence (`PostgresDatabase`, `create_database()`); deterministic `requirements.lock` + CI `helm lint`/`kubeconform`/`pip-audit`; and production-hardened Kubernetes Helm v3 chart (`deploy/helm/product-value-system/`) with Restricted PSS, `NetworkPolicy`, HPA, PDB, `ServiceMonitor`, optional companion OTel Collector, and Grafana dashboard ConfigMap.
 
 ---
 

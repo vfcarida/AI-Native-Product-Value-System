@@ -19,9 +19,11 @@ from typing import Any
 
 from product_value_system.evaluation.batch_adapters import (
     AnthropicBatchAdapter,
+    AzureOpenAIBatchAdapter,
     BatchAdapter,
     BatchJob,
     BatchResult,
+    GeminiBatchAdapter,
     OpenAIBatchAdapter,
 )
 from product_value_system.evaluation.batch_poller import BatchPoller
@@ -41,11 +43,16 @@ MODEL_REALTIME_PRICING: dict[str, tuple[float, float]] = {
     "claude-3-5-sonnet-20241022": (3.00, 15.00),
     "claude-3-opus-20240229": (15.00, 75.00),
     "claude-3-haiku-20240307": (0.25, 1.25),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash": (0.15, 0.60),
+    "gemini-2.0-flash": (0.10, 0.40),
 }
 
 PROVIDER_BATCH_DISCOUNT: dict[str, float] = {
     "openai": 0.50,  # 50% off via OpenAI Batch API
     "anthropic": 0.30,  # 30% off via Anthropic Message Batches API
+    "gemini": 0.50,  # 50% off via Google Gemini Batch API
+    "azure_openai": 0.50,  # 50% off via Azure OpenAI Global Batch API
 }
 
 
@@ -125,7 +132,12 @@ class BatchEvalReport:
 
 def _parse_single_result_line(result_json: dict[str, Any]) -> BatchResult:
     """Parse either an OpenAI Batch JSONL record or an Anthropic Message Batch JSONL record."""
-    custom_id = str(result_json.get("custom_id", ""))
+    custom_id = str(
+        result_json.get("custom_id")
+        or result_json.get("key")
+        or (result_json.get("metadata") or {}).get("key")
+        or ""
+    )
     error_obj = result_json.get("error")
     error_str = json.dumps(error_obj) if isinstance(error_obj, dict) else (
         str(error_obj) if error_obj else None
@@ -136,11 +148,22 @@ def _parse_single_result_line(result_json: dict[str, Any]) -> BatchResult:
     output_tokens = 0
     response_payload: dict[str, Any] = {}
 
-    # OpenAI Batch format: {"custom_id": ..., "response": {"status_code": 200, "body": {...}}}
+    # OpenAI / Azure OpenAI or Gemini Batch response format
     if "response" in result_json and isinstance(result_json["response"], dict):
         response_payload = result_json["response"]
         body = response_payload.get("body", response_payload)
-        if isinstance(body, dict):
+        if isinstance(body, dict) and "candidates" in body:
+            # Gemini Batch JSONL format: {"key": ..., "response": {"candidates": [...]}}
+            candidates = body.get("candidates") or []
+            if candidates and isinstance(candidates[0], dict):
+                parts = (candidates[0].get("content") or {}).get("parts") or []
+                content = "".join(
+                    str(p.get("text", "")) for p in parts if isinstance(p, dict) and "text" in p
+                )
+            usage_meta = body.get("usageMetadata") or {}
+            input_tokens = int(usage_meta.get("promptTokenCount", 0) or 0)
+            output_tokens = int(usage_meta.get("candidatesTokenCount", 0) or 0)
+        elif isinstance(body, dict):
             choices = body.get("choices") or []
             if choices and isinstance(choices[0], dict):
                 msg = choices[0].get("message") or {}
@@ -211,6 +234,13 @@ class BatchEvalRunner:
         elif self.provider == "anthropic":
             key = api_key or os.getenv("ANTHROPIC_API_KEY") or ""
             self.adapter = AnthropicBatchAdapter(key)
+        elif self.provider == "gemini":
+            key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
+            self.adapter = GeminiBatchAdapter(key)
+        elif self.provider in {"azure_openai", "azure"}:
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or ""
+            key = api_key or os.getenv("AZURE_OPENAI_API_KEY") or ""
+            self.adapter = AzureOpenAIBatchAdapter(endpoint=endpoint, api_key=key)
         else:
             raise ValueError(f"Unsupported batch provider: {provider!r}")
 

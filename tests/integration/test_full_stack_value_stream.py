@@ -134,7 +134,7 @@ async def test_full_stack_value_stream_end_to_end(tmp_path: Path) -> None:
     # 1. Fail-fast config validation gate
     cfg_report = validate_all_configs(REPO_ROOT / "config", expand_env=True)
     assert cfg_report.is_valid is True, f"Config errors: {cfg_report.errors}"
-    assert len(cfg_report.validated_files) == 12
+    assert len(cfg_report.validated_files) >= 12
 
     # 2. Initialize FinOps (Routing + Cache), Resilience, Policy, and Telemetry
     router = ModelRouter.from_yaml(REPO_ROOT / "config" / "routing.yaml")

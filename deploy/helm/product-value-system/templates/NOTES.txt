@@ -1,0 +1,16 @@
+AI-Native Product Value System ({{ .Chart.AppVersion }}) deployed!
+
+1. Verify pod readiness:
+   kubectl --namespace {{ .Release.Namespace }} get pods -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+2. Port-forward and check health & telemetry endpoints:
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "pvs.fullname" . }} 8000:{{ .Values.service.port }}
+   curl http://127.0.0.1:8000/health/live
+   curl http://127.0.0.1:8000/health/ready
+   curl http://127.0.0.1:8000/metrics
+   curl http://127.0.0.1:8000/devx
+
+3. Security reminders:
+   - Pods run non-root (UID 10001) with readOnlyRootFilesystem=true and ALL Linux capabilities dropped.
+   - Inject provider API keys via an external Kubernetes Secret (`--set secrets.existingSecret=<name>`).
+   - Set `config.otelCaptureMessageContent="false"` (default) to avoid exporting raw prompts/PII to traces.

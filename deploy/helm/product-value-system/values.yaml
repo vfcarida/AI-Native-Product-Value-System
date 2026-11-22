@@ -1,0 +1,189 @@
+# Default production-hardened values for product-value-system.
+# Override per environment using `helm upgrade --install -f values-prod.yaml`.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/vfcarida/product-value-system
+  pullPolicy: IfNotPresent
+  tag: "" # Defaults to Chart.appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# Non-root hardened Pod security context matching Dockerfile UID/GID 10001
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Hardened container security context (OWASP / Kubernetes Restricted PSS)
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  capabilities:
+    drop:
+      - ALL
+
+# Command overrides default Dockerfile CMD (`pvs doctor`) to run the FastAPI health/metrics server
+command:
+  - uvicorn
+args:
+  - product_value_system.api.health:app
+  - --host
+  - "0.0.0.0"
+  - --port
+  - "8000"
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: http
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: pvs.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Health & telemetry probes aligned with product_value_system.api.health
+probes:
+  startup:
+    path: /health/live
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 12
+    timeoutSeconds: 3
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    failureThreshold: 3
+    timeoutSeconds: 3
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 3
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Non-sensitive runtime configuration rendered into ConfigMap
+config:
+  logLevel: INFO
+  logFormat: json
+  sandboxProvider: docker
+  devxAggregateOnly: "true"
+  devxAnonymize: "true"
+  otelServiceName: product-value-system
+  otelCaptureMessageContent: "false"
+  otelExporterOtlpEndpoint: ""
+  cacheBackend: redis
+  redisHost: ""
+  redisPort: "6379"
+  ollamaBaseUrl: ""
+  azureOpenaiEndpoint: ""
+  azureOpenaiDeployment: ""
+  azureOpenaiApiVersion: "2024-10-21"
+
+# Secret management: ALWAYS prefer `existingSecret` (External Secrets / Vault / SealedSecrets)
+secrets:
+  existingSecret: ""
+  create: false
+  # Only used when `secrets.create=true` and `secrets.existingSecret` is empty; pass via --set
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  geminiApiKey: ""
+  azureOpenaiApiKey: ""
+  pvsMetricsApiKey: ""
+  pvsAdminApiKey: ""
+
+# Zero-trust default-deny egress NetworkPolicy
+networkPolicy:
+  enabled: true
+  allowDns: true
+  allowHttpsEgress: true
+  allowedEgressCidrs: []
+  allowRedisPort: 6379
+  allowOtlpGrpcPort: 4317
+  allowOtlpHttpPort: 4318
+  ingressNamespaceSelector: {}
+
+# Prometheus Operator ServiceMonitor scraping `/metrics`
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  path: /metrics
+  labels: {}
+
+# Optional companion OpenTelemetry Collector (OTLP gRPC 4317 / HTTP 4318 -> Prometheus 8889)
+otelCollector:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.114.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
+# Optional Grafana sidecar dashboard ConfigMap (`grafana_dashboard: "1"`)
+grafanaDashboards:
+  enabled: false
+  label: grafana_dashboard
+  labelValue: "1"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway

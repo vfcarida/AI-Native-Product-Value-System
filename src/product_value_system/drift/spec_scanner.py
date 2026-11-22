@@ -20,6 +20,10 @@ from product_value_system.drift.code_scanner import CodeScanner
 logger = logging.getLogger(__name__)
 
 _PYTHON_BLOCK_RE = re.compile(r"```(?:python|py)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+_TS_BLOCK_RE = re.compile(
+    r"```(?:typescript|ts|javascript|js)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE
+)
+_GO_BLOCK_RE = re.compile(r"```(?:go|golang)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 _DEF_STUB_RE = re.compile(
     r"^(?:async\s+)?def\s+\w+\s*\([^)]*\)(?:\s*->\s*[^:]+)?:\s*$",
     re.MULTILINE,
@@ -113,6 +117,47 @@ class SpecScanner:
                             is_async=sig.is_async,
                         )
                     )
+
+        # Also extract TypeScript/JavaScript and Go function signature contracts
+        from product_value_system.drift.multilang_scanner import GoScanner, TypeScriptScanner
+
+        ts_scanner = TypeScriptScanner()
+        for match in _TS_BLOCK_RE.finditer(content):
+            block_code = match.group(1)
+            block_start_line = content[: match.start(1)].count("\n") + 1
+            for sig in ts_scanner.scan_source(block_code, module_path=str(spec_path)):
+                functions.append(
+                    SpecFunction(
+                        name=sig.name,
+                        description=sig.docstring
+                        or self._nearby_heading_description(content, match.start()),
+                        parameters=sig.parameters,
+                        returns=sig.return_type,
+                        examples=self._extract_examples(content, sig.name),
+                        source_file=str(spec_path),
+                        line_number=block_start_line + sig.line_number - 1,
+                        is_async=sig.is_async,
+                    )
+                )
+
+        go_scanner = GoScanner()
+        for match in _GO_BLOCK_RE.finditer(content):
+            block_code = match.group(1)
+            block_start_line = content[: match.start(1)].count("\n") + 1
+            for sig in go_scanner.scan_source(block_code, module_path=str(spec_path)):
+                functions.append(
+                    SpecFunction(
+                        name=sig.name,
+                        description=sig.docstring
+                        or self._nearby_heading_description(content, match.start()),
+                        parameters=sig.parameters,
+                        returns=sig.return_type,
+                        examples=self._extract_examples(content, sig.name),
+                        source_file=str(spec_path),
+                        line_number=block_start_line + sig.line_number - 1,
+                        is_async=False,
+                    )
+                )
 
         return functions
 

@@ -99,6 +99,9 @@ def infer_genai_system(model: str) -> str:
         return "voyage"
     if "cohere" in lower or "rerank" in lower or "command-r" in lower:
         return "cohere"
+    ollama_markers = ("ollama", "llama", "mistral", "qwen", "deepseek", "phi3", "phi-")
+    if any(tok in lower for tok in ollama_markers):
+        return "ollama"
     if "mock" in lower:
         return "mock"
     return "unknown"

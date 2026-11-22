@@ -23,6 +23,7 @@ class FunctionSignature:
     is_async: bool = False
     line_number: int = 1
     class_name: str | None = None
+    language: str = "python"
 
     @property
     def qualified_name(self) -> str:
@@ -32,7 +33,7 @@ class FunctionSignature:
 
 @dataclass
 class APIEndpoint:
-    """Extracted HTTP API endpoint from FastAPI/Starlette route decorators."""
+    """Extracted HTTP API endpoint from Python (FastAPI), TypeScript, or Go route handlers."""
 
     path: str
     method: str
@@ -41,10 +42,12 @@ class APIEndpoint:
     response_schema: dict[str, Any]
     module: str = ""
     line_number: int = 1
+    language: str = "python"
 
 
 _HTTP_METHODS = {"get", "post", "put", "delete", "patch", "options", "head"}
 _IGNORED_ENDPOINT_PARAMS = {"self", "cls", "request", "response", "background_tasks"}
+_IGNORED_SCAN_DIRS = {"__pycache__", "node_modules", "vendor", "dist", "build", ".git", ".venv"}
 
 
 class CodeScanner:
@@ -70,8 +73,18 @@ class CodeScanner:
         *,
         exclude_private: bool = False,
     ) -> list[FunctionSignature]:
-        """Parse a Python file and extract all function and method signatures."""
+        """Parse a Python, TypeScript/JavaScript, or Go file and extract function signatures."""
         path = Path(module_path)
+        suffix = path.suffix.lower()
+        if suffix in {".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs"}:
+            from product_value_system.drift.multilang_scanner import TypeScriptScanner
+
+            return TypeScriptScanner().scan_file(path, exclude_private=exclude_private)
+        if suffix == ".go":
+            from product_value_system.drift.multilang_scanner import GoScanner
+
+            return GoScanner().scan_file(path, exclude_private=exclude_private)
+
         tree = self._parse_file(path)
         signatures: list[FunctionSignature] = []
         self._collect_functions(
@@ -118,19 +131,22 @@ class CodeScanner:
         *,
         exclude_private: bool = False,
     ) -> list[FunctionSignature]:
-        """Recursively scan all ``.py`` files in a directory or single Python file."""
+        """Recursively scan Python, TypeScript/JavaScript, and Go files in a directory or file."""
         root = Path(directory)
         if root.is_file():
             return self.scan_module(root, exclude_private=exclude_private)
         if not root.exists():
             return []
 
+        supported = {".py", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".go"}
         signatures: list[FunctionSignature] = []
-        for py_file in sorted(root.rglob("*.py")):
-            if "__pycache__" in py_file.parts:
+        for src_file in sorted(root.rglob("*")):
+            if not src_file.is_file() or src_file.suffix.lower() not in supported:
+                continue
+            if any(part in _IGNORED_SCAN_DIRS for part in src_file.parts):
                 continue
             try:
-                signatures.extend(self.scan_module(py_file, exclude_private=exclude_private))
+                signatures.extend(self.scan_module(src_file, exclude_private=exclude_private))
             except SyntaxError:
                 continue
         return signatures
@@ -222,8 +238,18 @@ class CodeScanner:
         return "Any"
 
     def scan_fastapi_routes(self, app_path: str | Path) -> list[APIEndpoint]:
-        """Scan a Python module for FastAPI/APIRouter route handlers."""
+        """Scan a Python (FastAPI), TypeScript (Express/NestJS), or Go (net/http/Gin) file."""
         path = Path(app_path)
+        suffix = path.suffix.lower()
+        if suffix in {".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs"}:
+            from product_value_system.drift.multilang_scanner import TypeScriptScanner
+
+            return TypeScriptScanner().scan_endpoints_file(path)
+        if suffix == ".go":
+            from product_value_system.drift.multilang_scanner import GoScanner
+
+            return GoScanner().scan_endpoints_file(path)
+
         tree = self._parse_file(path)
         endpoints: list[APIEndpoint] = []
 
@@ -235,19 +261,22 @@ class CodeScanner:
         return endpoints
 
     def scan_fastapi_directory(self, directory: str | Path) -> list[APIEndpoint]:
-        """Recursively scan a directory or file for FastAPI route definitions."""
+        """Recursively scan Python, TypeScript/JS, and Go files for HTTP route definitions."""
         root = Path(directory)
         if root.is_file():
             return self.scan_fastapi_routes(root)
         if not root.exists():
             return []
 
+        supported = {".py", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".go"}
         endpoints: list[APIEndpoint] = []
-        for py_file in sorted(root.rglob("*.py")):
-            if "__pycache__" in py_file.parts:
+        for src_file in sorted(root.rglob("*")):
+            if not src_file.is_file() or src_file.suffix.lower() not in supported:
+                continue
+            if any(part in _IGNORED_SCAN_DIRS for part in src_file.parts):
                 continue
             try:
-                endpoints.extend(self.scan_fastapi_routes(py_file))
+                endpoints.extend(self.scan_fastapi_routes(src_file))
             except SyntaxError:
                 continue
         return endpoints

@@ -1,16 +1,24 @@
-# Release Notes: Evolution P0–P2 & Production Hardening (`v0.9.0-beta` / Unreleased)
+# Release Notes: v1.0.0 (Multi-Provider, Polyglot Drift, Cloud-Native & Hardened Control Plane)
 
 **Date**: 2026-11-22  
-**Status**: Beta Reference Implementation (Production-Hardened Architecture, Verified Zero-Cost Local & CI Suite)
+**Status**: v1.0 Reference Implementation (Production-Hardened Architecture, Zero-Warning Local & CI Suite)
 
 ## Highlights Since v0.1.0
 
-1. **Complete Evolution Stack (`EVO-001`–`EVO-033`)**: Full multi-provider streaming (`OpenAI`, `Anthropic`, `Mock`), FinOps optimization (tiered semantic `PromptCache`, 6-feature `ModelRouter`, discounted `BatchEvalRunner`), `ParallelExecutor` DAG orchestration, zero-trust `iptables` sandbox egress allowlists, Hybrid ML secret detection, Git history forensics & Clauset-Newman-Moore Strangler Fig modernization, and non-punitive SPACE/DORA DevX telemetry.
-2. **20-Round Continuous Architectural Hardening**:
-   - **Contracts & Resilience**: 100% (`12/12`) strict Pydantic v2 validation for `config/*.yaml`, OWASP `*_FILE` secret expansion, AWS Builders' Library `CircuitBreaker` + `RetryTokenBucket` + full-jitter retries.
-   - **Performance**: `14.6x` warm Cedar policy init via `(path, mtime_ns)` memoization; WAL-tuned SQLite persistence & cache backends with leak-free context-managed closing; reproducible benchmark harness (`docs/BENCHMARKS.md`).
-   - **Security**: Constant-time `hmac.compare_digest` authentication, OWASP HTTP security headers middleware, handler-attached secret-redacting JSON logs, and repo-wide AST security audits (`0` `shell=True`/`yaml.load`/`eval`/`pickle`).
-   - **Developer Experience**: New `pvs doctor`, `pvs route`, `pvs brownfield --strangler`, and `pvs devx` CLI commands with `--json`, 3 zero-cost runnable showcase demos (`examples/showcases/`), hardened multi-stage non-root `Dockerfile`, and expanded 6-hook pre-commit + CI security gates.
+1. **Multi-Provider LLM & Batch Evaluation Stack**:
+   - Native `GeminiModelAdapter`, `AzureOpenAIModelAdapter`, and `OllamaModelAdapter` alongside `OpenAI`, `Anthropic`, and `Mock`, wired through `create_adapter()` and CLI `--provider` / `--model` flags (`pvs run`, `pvs eval`, `pvs review`).
+   - 50% discounted `GeminiBatchAdapter` and `AzureOpenAIBatchAdapter` integrated into `BatchEvalRunner`, plus turnkey 5-provider FinOps routing catalog (`config/routing_multiprovider.yaml`).
+2. **Polyglot AST Drift Detection**:
+   - Deterministic structural TypeScript/JavaScript (`TypeScriptScanner`) and Go (`GoScanner`) AST drift scanning integrated end-to-end into `CodeScanner`, `SpecScanner`, and `scan_drift()`.
+3. **Production-Hardened Governance, Persistence & Cloud-Native Deployment**:
+   - Optional in-process Rust `cedarpy` PyO3 authorization backend (`cedarpy_rust` → `cedar_cli` → `python_fallback`) with 100% (`25/25`) verified parity and fail-closed numeric context guards.
+   - Async PostgreSQL persistence backend (`PostgresDatabase`, `PostgresValueStreamRepository`, `create_database()`, `migrations/postgres/001_initial_schema.sql`) alongside WAL-mode SQLite.
+   - Kubernetes Helm v3 chart (`deploy/helm/product-value-system/`, chart `1.1.0`) enforcing Restricted PSS, `NetworkPolicy`, HPA, PDB, `ServiceMonitor`, optional hardened companion OpenTelemetry Collector, and Grafana sidecar dashboard ConfigMap.
+   - Deterministic supply-chain lockfile (`requirements.lock`, `scripts/generate-lockfile.py --check`) and expanded CI (`helm lint --strict`, `kubeconform`, `pip-audit`, `detect_secrets src/ config/ deploy/`).
+4. **Complete Evolution Stack (`EVO-001`–`EVO-033`) & Continuous Architectural Hardening**:
+   - **Contracts & Resilience**: 100% (`13/13`) strict Pydantic v2 validation for `config/*.yaml`, OWASP `*_FILE` secret expansion, AWS Builders' Library `CircuitBreaker` + `RetryTokenBucket` + full-jitter retries.
+   - **FinOps & Performance**: Tiered exact + semantic `PromptCache`, 6-feature `ModelRouter`, `ParallelExecutor` DAG orchestration, `mtime_ns`-cached Cedar policy init, and reproducible benchmark harness (`docs/BENCHMARKS.md`).
+   - **Security & DevX**: Default-deny `iptables` sandbox egress allowlists, Hybrid ML secret detection, constant-time `hmac.compare_digest` auth, OWASP HTTP security headers, handler-attached secret-redacting JSON logs, Git forensics & Clauset-Newman-Moore Strangler Fig modernization, non-punitive SPACE/DORA DevX telemetry, and `pvs doctor`/`route`/`brownfield`/`devx` CLI commands.
 
 ---
 

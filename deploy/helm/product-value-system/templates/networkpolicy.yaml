@@ -1,0 +1,56 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pvs.fullname" . }}
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pvs.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000
+      {{- with .Values.networkPolicy.ingressNamespaceSelector }}
+      from:
+        - namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+      {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.allowDns }}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- if .Values.networkPolicy.allowHttpsEgress }}
+    - ports:
+        - protocol: TCP
+          port: 443
+      {{- with .Values.networkPolicy.allowedEgressCidrs }}
+      to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.config.redisHost }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.allowRedisPort }}
+    {{- end }}
+    {{- if or .Values.config.otelExporterOtlpEndpoint .Values.otelCollector.enabled }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.allowOtlpGrpcPort }}
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.allowOtlpHttpPort }}
+    {{- end }}
+{{- end }}

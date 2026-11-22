@@ -2,6 +2,7 @@
 Cedar policy engine integration.
 """
 
+import importlib
 import json
 import logging
 import math
@@ -60,14 +61,30 @@ class PolicyEngine:
     _POLICY_CACHE: dict[tuple[str, int, str, int], tuple[str, str]] = {}
     _CEDAR_BIN_CACHE: str | None = None
     _CEDAR_BIN_PROBED: bool = False
+    _CEDARPY_CACHE: Any | None = None
+    _CEDARPY_PROBED: bool = False
 
     @classmethod
     def clear_policy_cache(cls) -> None:
-        """Clear the in-process mtime-keyed Cedar policy cache and binary lookup."""
+        """Clear cached policy texts, cedarpy binding lookup, and CLI binary lookup."""
         with cls._POLICY_CACHE_LOCK:
             cls._POLICY_CACHE.clear()
             cls._CEDAR_BIN_CACHE = None
             cls._CEDAR_BIN_PROBED = False
+            cls._CEDARPY_CACHE = None
+            cls._CEDARPY_PROBED = False
+
+    @classmethod
+    def _resolve_cedarpy(cls) -> Any | None:
+        """Resolve optional native Rust ``cedarpy`` PyO3 module once per process."""
+        with cls._POLICY_CACHE_LOCK:
+            if not cls._CEDARPY_PROBED:
+                try:
+                    cls._CEDARPY_CACHE = importlib.import_module("cedarpy")
+                except ImportError:
+                    cls._CEDARPY_CACHE = None
+                cls._CEDARPY_PROBED = True
+            return cls._CEDARPY_CACHE
 
     @classmethod
     def _resolve_cedar_bin(cls) -> str | None:
@@ -83,14 +100,16 @@ class PolicyEngine:
         policies_dir: Path | str = "policies",
         policies_file: Path | str | None = None,
         schema_file: Path | str | None = None,
+        *,
+        cedarpy_module: Any | None = None,
     ) -> None:
         """
         Initialize policy engine.
 
-        Args:
-            policies_dir: Directory containing Cedar policies and schema
-            policies_file: Optional explicit path to .cedar policy file
-            schema_file: Optional explicit path to .cedarschema file
+        Evaluation precedence:
+        1. In-process Rust ``cedarpy`` PyO3 bindings (zero subprocess overhead) when installed
+        2. External ``cedar`` CLI binary when present on ``PATH``
+        3. Deterministic 100%-parity Python evaluator
         """
         self.policies_dir = Path(policies_dir)
         self.policies_file = (
@@ -107,9 +126,21 @@ class PolicyEngine:
         if not self.policies_file.exists():
             raise FileNotFoundError(f"Policies not found: {self.policies_file}")
 
+        self._cedarpy: Any | None = (
+            cedarpy_module if cedarpy_module is not None else self._resolve_cedarpy()
+        )
         self._cedar_bin: str | None = self._resolve_cedar_bin()
         self._cache_hit: bool = False
         self._load_policies()
+
+    @property
+    def active_backend(self) -> str:
+        """Return active Cedar evaluation backend identifier."""
+        if self._cedarpy is not None:
+            return "cedarpy_rust"
+        if self._cedar_bin is not None:
+            return "cedar_cli"
+        return "python_fallback"
 
     def _load_policies(self) -> None:
         """Load and validate policies with automatic mtime-based memoization."""
@@ -281,13 +312,137 @@ class PolicyEngine:
             "context": context_dict,
         }
 
+    def _validate_numeric_context(self, request: dict[str, Any]) -> AuthorizationDecision | None:
+        """Fail-closed check against NaN/Inf/negative numerical context attacks."""
+        context = request["context"]
+        principal_attrs = request["principal"].get("attrs", {})
+        cost_budget = principal_attrs.get("costBudget")
+        cost_so_far = context.get("cost_so_far", 0.0)
+        iteration_count = context.get("iteration_count", 0)
+
+        if (
+            not isinstance(cost_so_far, (int, float))
+            or isinstance(cost_so_far, bool)
+            or not math.isfinite(cost_so_far)
+            or cost_so_far < 0
+        ):
+            return AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="Invalid or non-finite cost_so_far in authorization context",
+                policies_matched=["policy_forbid_invalid_context"],
+                timestamp=datetime.now(UTC),
+            )
+
+        if (
+            not isinstance(iteration_count, int)
+            or isinstance(iteration_count, bool)
+            or iteration_count < 0
+        ):
+            return AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="Invalid negative iteration_count in authorization context",
+                policies_matched=["policy_forbid_invalid_context"],
+                timestamp=datetime.now(UTC),
+            )
+
+        if cost_budget is not None and (
+            not isinstance(cost_budget, (int, float))
+            or isinstance(cost_budget, bool)
+            or not math.isfinite(cost_budget)
+            or cost_budget <= 0
+        ):
+            return AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="Invalid or non-finite costBudget for principal",
+                policies_matched=["policy_forbid_cost_budget"],
+                timestamp=datetime.now(UTC),
+            )
+
+        return None
+
+    def _evaluate_cedarpy(self, request: dict[str, Any]) -> AuthorizationDecision | None:
+        """Evaluate request in-process via native Rust ``cedarpy`` PyO3 bindings."""
+        if self._cedarpy is None:
+            return None
+        try:
+            principal_uid = f'{request["principal"]["type"]}::"{request["principal"]["id"]}"'
+            action_uid = f'{request["action"]["type"]}::"{request["action"]["id"]}"'
+            resource_uid = f'{request["resource"]["type"]}::"{request["resource"]["id"]}"'
+            cedar_request = {
+                "principal": principal_uid,
+                "action": action_uid,
+                "resource": resource_uid,
+                "context": request["context"],
+            }
+            entities = [
+                {
+                    "uid": {
+                        "type": request["principal"]["type"],
+                        "id": request["principal"]["id"],
+                    },
+                    "attrs": request["principal"].get("attrs", {}),
+                    "parents": [],
+                },
+                {
+                    "uid": {
+                        "type": request["resource"]["type"],
+                        "id": request["resource"]["id"],
+                    },
+                    "attrs": request["resource"].get("attrs", {}),
+                    "parents": [],
+                },
+            ]
+            auth_result = self._cedarpy.is_authorized(
+                cedar_request,
+                self._policies_text,
+                entities,
+            )
+            allowed = bool(
+                getattr(auth_result, "allowed", False)
+                if not isinstance(auth_result, dict)
+                else auth_result.get("decision") == "Allow"
+            )
+            diagnostics = getattr(auth_result, "diagnostics", None)
+            matched: list[str] = []
+            if diagnostics is not None:
+                raw_reason = getattr(diagnostics, "reason", None) or []
+                matched = [str(p) for p in raw_reason]
+            elif isinstance(auth_result, dict):
+                matched = [str(p) for p in auth_result.get("policies", [])]
+
+            return AuthorizationDecision(
+                decision=Decision.ALLOW if allowed else Decision.DENY,
+                reason=(
+                    "Authorized by native Rust cedarpy policy engine"
+                    if allowed
+                    else "Denied by native Rust cedarpy policy engine"
+                ),
+                policies_matched=matched,
+                timestamp=datetime.now(UTC),
+            )
+        except Exception as exc:
+            logger.warning("cedarpy evaluation error (%s); falling back", exc)
+            return None
+
     def _evaluate(self, request: dict[str, Any]) -> AuthorizationDecision:
         """
         Evaluate authorization request against policies.
 
-        Uses Cedar CLI if available, otherwise executes deterministic
-        Cedar policy evaluation rules matching policies/agent_authorization.cedar.
+        Precedence:
+        1. Fail-closed numeric context validation
+        2. Native Rust ``cedarpy`` PyO3 bindings (in-process)
+        3. External ``cedar`` CLI binary (if installed on PATH)
+        4. Deterministic 100%-parity Python evaluator
         """
+        guard_denial = self._validate_numeric_context(request)
+        if guard_denial is not None:
+            return guard_denial
+
+        if self._cedarpy is not None:
+            cedarpy_decision = self._evaluate_cedarpy(request)
+            if cedarpy_decision is not None:
+                return cedarpy_decision
+
         if self._cedar_bin is not None:
             try:
                 result = subprocess.run(

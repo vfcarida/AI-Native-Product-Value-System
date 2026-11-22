@@ -277,10 +277,17 @@ def run_system_diagnostics(repo_root: Path | str | None = None) -> dict[str, Any
     )
 
     # 5. Live LLM provider credentials (informational — mock mode works offline at $0)
+    provider_env_checks: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("openai", ("OPENAI_API_KEY",)),
+        ("anthropic", ("ANTHROPIC_API_KEY",)),
+        ("gemini", ("GEMINI_API_KEY", "GOOGLE_API_KEY")),
+        ("azure_openai", ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_AD_TOKEN")),
+        ("ollama", ("OLLAMA_BASE_URL", "OLLAMA_HOST")),
+    )
     providers_configured = [
         name
-        for name, var in (("openai", "OPENAI_API_KEY"), ("anthropic", "ANTHROPIC_API_KEY"))
-        if os.getenv(var)
+        for name, env_vars in provider_env_checks
+        if any(os.getenv(var) for var in env_vars)
     ]
     checks.append(
         {

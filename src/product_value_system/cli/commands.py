@@ -216,6 +216,47 @@ def _build_demo_harness_factory(
     return factory
 
 
+def _resolve_cli_adapter(args: argparse.Namespace) -> Any | None:
+    """Resolve a live ``ModelAdapter`` from CLI ``--provider``/``--model`` flags or env vars.
+
+    Returns ``None`` when mock mode is requested or no live provider credentials are set.
+    """
+    from product_value_system.adapters import create_adapter
+
+    if bool(getattr(args, "use_mock", False)):
+        return None
+    provider = str(getattr(args, "provider", "auto") or "auto").strip().lower()
+    model = getattr(args, "model", None)
+
+    if provider == "mock":
+        return None
+    if provider != "auto":
+        return create_adapter(provider, model=model)
+
+    if os.environ.get("OPENAI_API_KEY"):
+        return create_adapter(
+            "openai", model=model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        )
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return create_adapter(
+            "anthropic",
+            model=model or os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        )
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return create_adapter(
+            "gemini", model=model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        )
+    if os.environ.get("AZURE_OPENAI_ENDPOINT") and (
+        os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_OPENAI_AD_TOKEN")
+    ):
+        return create_adapter("azure_openai", model=model)
+    if os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OLLAMA_HOST"):
+        return create_adapter(
+            "ollama", model=model or os.environ.get("OLLAMA_MODEL", "llama3.2")
+        )
+    return None
+
+
 def run_command(args: argparse.Namespace) -> int:
     """Execute value stream run."""
     # Pre-flight emergency stop and CLI budget guard check
@@ -284,16 +325,34 @@ def run_command(args: argparse.Namespace) -> int:
         trajectory_capture = TrajectoryCapture(enabled=True)
         trajectory_capture.start_trajectory("value-stream-run", problem)
 
+    provider_override = str(getattr(args, "provider", "auto") or "auto").strip().lower()
+    run_live_adapter: Any | None = None
+    if provider_override not in {"auto", "mock"}:
+        try:
+            run_live_adapter = _resolve_cli_adapter(args)
+        except ValueError as exc:
+            print_error(f"Provider configuration error: {exc}")
+            return 1
+
+    if run_live_adapter is not None:
+        harness_factory: Any = lambda _stage: Harness(  # noqa: E731
+            model_adapter=run_live_adapter,
+            budget=budget,
+            trajectory_capture=trajectory_capture,
+        )
+    else:
+        harness_factory = _build_demo_harness_factory(
+            budget=budget,
+            trajectory_capture=trajectory_capture,
+        )
+
     orchestrator = ValueStreamOrchestrator(
         agents=agents,
         evaluation_pipeline=eval_pipeline,
         policy_engine=policy_engine,
         checkpoint_manager=checkpoint_manager,
         artifact_root=Path(config["artifact_root"]),
-        harness_factory=_build_demo_harness_factory(
-            budget=budget,
-            trajectory_capture=trajectory_capture,
-        ),
+        harness_factory=harness_factory,
     )
 
     print(f"Starting value stream run for: {problem['statement'][:60]}...")
@@ -1016,25 +1075,11 @@ def eval_command(args: argparse.Namespace) -> int:
         print_error(f"No golden datasets found under: {dataset_root}")
         return 1
 
-    use_mock = bool(getattr(args, "use_mock", False))
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    live_adapter: Any | None = None
-
-    if not use_mock and openai_key:
-        from product_value_system.adapters.openai_adapter import OpenAIModelAdapter
-
-        live_adapter = OpenAIModelAdapter(
-            api_key=openai_key,
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-        )
-    elif not use_mock and anthropic_key:
-        from product_value_system.adapters.anthropic_adapter import AnthropicAdapter
-
-        live_adapter = AnthropicAdapter(
-            api_key=anthropic_key,
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-        )
+    try:
+        live_adapter = _resolve_cli_adapter(args)
+    except ValueError as exc:
+        print_error(f"Provider configuration error: {exc}")
+        return 1
 
     dataset_version = int(getattr(args, "dataset_version", 1))
     fast_mode = bool(getattr(args, "fast", False))
@@ -1198,25 +1243,11 @@ def review_command(args: argparse.Namespace) -> int:
         print_error(f"Specification validation failed: {exc}")
         return 1
 
-    use_mock = bool(getattr(args, "use_mock", False))
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    live_adapter: Any | None = None
-
-    if not use_mock and openai_key:
-        from product_value_system.adapters.openai_adapter import OpenAIModelAdapter
-
-        live_adapter = OpenAIModelAdapter(
-            api_key=openai_key,
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-        )
-    elif not use_mock and anthropic_key:
-        from product_value_system.adapters.anthropic_adapter import AnthropicAdapter
-
-        live_adapter = AnthropicAdapter(
-            api_key=anthropic_key,
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-        )
+    try:
+        live_adapter = _resolve_cli_adapter(args)
+    except ValueError as exc:
+        print_error(f"Provider configuration error: {exc}")
+        return 1
 
     def _mock_harness_factory(reviewer_key: str) -> Harness:
         mock_payload = json.dumps(

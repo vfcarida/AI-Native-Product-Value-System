@@ -150,7 +150,7 @@ class CachingConfigFile(StrictConfigModel):
 
 
 class RoutedModelEntrySchema(StrictConfigModel):
-    provider: Literal["openai", "anthropic"]
+    provider: Literal["openai", "anthropic", "gemini", "azure_openai", "ollama"]
     model: str = Field(min_length=1)
     cost_per_1m_input: float = Field(ge=0.0)
     cost_per_1m_output: float = Field(ge=0.0)
@@ -177,7 +177,9 @@ class RoutingBlockSchema(StrictConfigModel):
     enabled: bool = True
     shadow_mode: bool = False
     force_tier: Literal["low", "medium", "high"] | None = None
-    preferred_provider: Literal["openai", "anthropic"] | None = None
+    preferred_provider: (
+        Literal["openai", "anthropic", "gemini", "azure_openai", "ollama"] | None
+    ) = None
     models: RoutingModelsSchema
     complexity_thresholds: dict[str, dict[str, Any]] = Field(default_factory=dict)
     quality_check: RoutingQualityCheckSchema = Field(default_factory=RoutingQualityCheckSchema)
@@ -195,7 +197,7 @@ class RoutingConfigFile(StrictConfigModel):
 
 class BatchModeSchema(StrictConfigModel):
     enabled: bool = True
-    provider: Literal["openai", "anthropic"] = "openai"
+    provider: Literal["openai", "anthropic", "gemini", "azure_openai"] = "openai"
     batch_size: int = Field(default=50, ge=1, le=50000)
     max_concurrent_batches: int = Field(default=10, ge=1, le=100)
     poll_interval_seconds: float = Field(default=60.0, gt=0.0)
@@ -517,6 +519,7 @@ CONFIG_SCHEMA_REGISTRY: dict[str, type[StrictConfigModel]] = {
     "orchestrator.yaml": OrchestratorConfigFile,
     "caching.yaml": CachingConfigFile,
     "routing.yaml": RoutingConfigFile,
+    "routing_multiprovider.yaml": RoutingConfigFile,
     "evaluation.yaml": EvaluationConfigFile,
     "sandbox.yaml": SandboxConfigFile,
     "brownfield.yaml": BrownfieldConfigFile,

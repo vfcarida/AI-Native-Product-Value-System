@@ -5,9 +5,11 @@ Evaluation framework: judges, golden datasets, trajectory evaluation, and regres
 from product_value_system.evaluation.ai_judges import ClarityJudge, CompletenessJudge
 from product_value_system.evaluation.batch_adapters import (
     AnthropicBatchAdapter,
+    AzureOpenAIBatchAdapter,
     BatchAdapter,
     BatchJob,
     BatchResult,
+    GeminiBatchAdapter,
     OpenAIBatchAdapter,
 )
 from product_value_system.evaluation.batch_poller import (
@@ -80,6 +82,7 @@ __all__ = [
     "TERMINAL_STATUSES",
     "AgentTrajectory",
     "AnthropicBatchAdapter",
+    "AzureOpenAIBatchAdapter",
     "BatchAdapter",
     "BatchCostSummary",
     "BatchEvalReport",
@@ -94,6 +97,7 @@ __all__ = [
     "EvalRunner",
     "EvaluationPipeline",
     "EvaluationResult",
+    "GeminiBatchAdapter",
     "GoldenDataset",
     "GoldenDatasetLoader",
     "GoldenSample",

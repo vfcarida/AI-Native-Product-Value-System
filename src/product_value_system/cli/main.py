@@ -140,6 +140,18 @@ def create_parser() -> argparse.ArgumentParser:
         default=False,
         help="Run parallel 4-agent independent review (Security, Perf, Maint, Architecture)",
     )
+    run_parser.add_argument(
+        "--provider",
+        choices=["auto", "openai", "anthropic", "gemini", "azure_openai", "ollama", "mock"],
+        default="auto",
+        help="Model provider override (default: auto)",
+    )
+    run_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Optional model/deployment override for the selected provider",
+    )
 
     # pvs run-simulation
     sim_parser = subparsers.add_parser(
@@ -318,6 +330,18 @@ def create_parser() -> argparse.ArgumentParser:
         help="Force deterministic offline mock adapters ($0 cost)",
     )
     eval_parser.add_argument(
+        "--provider",
+        choices=["auto", "openai", "anthropic", "gemini", "azure_openai", "ollama", "mock"],
+        default="auto",
+        help="Model provider override (default: auto)",
+    )
+    eval_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Optional model/deployment override for the selected provider",
+    )
+    eval_parser.add_argument(
         "--with-trajectories",
         action="store_true",
         default=False,
@@ -357,6 +381,18 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Force deterministic offline mock reviewers ($0 cost)",
+    )
+    review_parser.add_argument(
+        "--provider",
+        choices=["auto", "openai", "anthropic", "gemini", "azure_openai", "ollama", "mock"],
+        default="auto",
+        help="Model provider override (default: auto)",
+    )
+    review_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Optional model/deployment override for the selected provider",
     )
 
     # pvs status

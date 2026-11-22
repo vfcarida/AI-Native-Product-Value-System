@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "product-value-system"
-version = "0.1.0"
+version = "1.0.0"
 description = "AI-native Product Value System reference implementation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -104,7 +104,13 @@ brownfield = [
     "jinja2>=3.1.0",
 ]
 devx = [
-    "prometheus-client>=0.19.0",
+    "prometheus-client>=0.20",
+]
+cedar = [
+    "cedarpy>=3.0",
+]
+postgres = [
+    "asyncpg>=0.29",
 ]
 dev = [
     "pytest>=7.0",

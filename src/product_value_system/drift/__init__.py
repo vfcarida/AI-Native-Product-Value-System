@@ -10,6 +10,7 @@ from product_value_system.drift.detector import (
     detect_drift,
     scan_drift,
 )
+from product_value_system.drift.multilang_scanner import GoScanner, TypeScriptScanner
 from product_value_system.drift.reporter import DriftReporter
 from product_value_system.drift.spec_scanner import (
     BehavioralSpec,
@@ -29,11 +30,13 @@ __all__ = [
     "DriftScanResult",
     "DriftSeverity",
     "FunctionSignature",
+    "GoScanner",
     "SpecEndpoint",
     "SpecFunction",
     "SpecScanner",
     "TraceScanner",
     "TraceSummary",
+    "TypeScriptScanner",
     "compare_traces_with_spec",
     "detect_drift",
     "scan_drift",
