@@ -17,11 +17,14 @@ if TYPE_CHECKING:
     from product_value_system.brownfield.git_analyzer import GitAnalyzer
     from product_value_system.brownfield.strangler_planner import StranglerPlanner
     from product_value_system.caching.prompt_cache import PromptCache
+    from product_value_system.contracts.config_schemas import validate_all_configs
     from product_value_system.evaluation.batch_runner import BatchEvalRunner
     from product_value_system.evaluation.eval_runner import EvalRunner
     from product_value_system.harness.harness import Harness
+    from product_value_system.harness.resilience import CircuitBreaker
     from product_value_system.metrics.devx_tracker import DevXTracker
     from product_value_system.metrics.space_calculator import SPACECalculator
+    from product_value_system.observability.structured_logging import run_system_diagnostics
     from product_value_system.orchestrator.controller import ValueStreamOrchestrator
     from product_value_system.orchestrator.parallel_executor import ParallelExecutor
     from product_value_system.policy.engine import PolicyEngine
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "BatchEvalRunner": ("product_value_system.evaluation.batch_runner", "BatchEvalRunner"),
     "BrownfieldAgent": ("product_value_system.agents.brownfield_agent", "BrownfieldAgent"),
+    "CircuitBreaker": ("product_value_system.harness.resilience", "CircuitBreaker"),
     "DevXTracker": ("product_value_system.metrics.devx_tracker", "DevXTracker"),
     "EvalRunner": ("product_value_system.evaluation.eval_runner", "EvalRunner"),
     "GitAnalyzer": ("product_value_system.brownfield.git_analyzer", "GitAnalyzer"),
@@ -57,6 +61,14 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "product_value_system.orchestrator.controller",
         "ValueStreamOrchestrator",
     ),
+    "run_system_diagnostics": (
+        "product_value_system.observability.structured_logging",
+        "run_system_diagnostics",
+    ),
+    "validate_all_configs": (
+        "product_value_system.contracts.config_schemas",
+        "validate_all_configs",
+    ),
 }
 
 
@@ -71,6 +83,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "BatchEvalRunner",
     "BrownfieldAgent",
+    "CircuitBreaker",
     "DevXTracker",
     "EvalRunner",
     "GitAnalyzer",
@@ -85,4 +98,6 @@ __all__ = [
     "StranglerPlanner",
     "ValueStreamOrchestrator",
     "__version__",
+    "run_system_diagnostics",
+    "validate_all_configs",
 ]

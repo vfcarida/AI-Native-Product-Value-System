@@ -8,6 +8,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import math
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -230,16 +231,19 @@ class PromptCache:
         model_version: str | None = None,
     ) -> str:
         """Compute deterministic xxhash64 cache key from normalized request parameters."""
+        temp = float(temperature)
+        if not math.isfinite(temp):
+            raise ValueError(f"temperature must be a finite float, got {temperature!r}")
         key_data: dict[str, Any] = {
             "messages": _normalize_messages(messages),
             "model": model,
-            "temperature": round(float(temperature), 2),
+            "temperature": round(temp, 2),
             "max_tokens": max_tokens,
             "tools": _normalize_tools(tools),
         }
         if self.invalidate_on_model_change and model_version:
             key_data["model_version"] = model_version
-        serialized = json.dumps(key_data, sort_keys=True, separators=(",", ":"))
+        serialized = json.dumps(key_data, sort_keys=True, separators=(",", ":"), allow_nan=False)
         return _fast_hash(serialized.encode("utf-8"))
 
     async def get(
@@ -263,7 +267,6 @@ class PromptCache:
                 await self.backend.delete(cache_key)
             else:
                 cached.hit_count += 1
-                await self.backend.set(cache_key, cached)
                 self.hits += 1
                 self._record_saved_tokens(cached.response)
                 return cached.response
@@ -275,7 +278,6 @@ class PromptCache:
                 sem_cached = await self.backend.get(semantic_key)
                 if sem_cached is not None and not sem_cached.is_expired():
                     sem_cached.hit_count += 1
-                    await self.backend.set(semantic_key, sem_cached)
                     self.semantic_hits += 1
                     self.hits += 1
                     self._record_saved_tokens(sem_cached.response)

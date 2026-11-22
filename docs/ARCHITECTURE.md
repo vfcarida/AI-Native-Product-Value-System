@@ -30,7 +30,7 @@ flowchart TB
     subgraph FinOps["FinOps & Resilience Layer"]
         Router["Complexity ModelRouter (LOW/MED/HIGH)"]
         Cache["PromptCache (L1 Memory / L2 SQLite WAL / Redis)"]
-        Batch["BatchEvaluationRunner (OpenAI 50% / Anthropic 30%)"]
+        Batch["BatchEvalRunner (OpenAI 50% / Anthropic 30%)"]
     end
 
     subgraph ExecutionPlane["Governed Agent & Modernization Plane"]

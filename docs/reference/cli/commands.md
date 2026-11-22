@@ -82,16 +82,16 @@ pvs validate <artifact_path> --type <problem|outcome|specification|evidence>
 
 ## Extended Domain Subcommands (EVO-009..EVO-023)
 
-| Command | Domain | Example |
+| Command | Domain | Verified Invocation |
 |---|---|---|
-| `pvs run-simulation` | Synthetic customer simulation (EVO-009) | `pvs run-simulation --scenario ...` |
-| `pvs measure-outcome` | Post-launch outcome measurement (EVO-010) | `pvs measure-outcome --outcome-id ...` |
-| `pvs eval` | Golden dataset regression evaluation (EVO-011) | `pvs eval --dataset golden_dataset/` |
-| `pvs review` | Multi-agent specification review (EVO-013) | `pvs review <spec.yaml>` |
+| `pvs run-simulation` | Synthetic customer simulation (EVO-009) | `pvs run-simulation examples/simulation/focus_group.yaml` |
+| `pvs measure-outcome` | Post-launch outcome measurement (EVO-010) | `pvs measure-outcome --outcome-id out-1 --use-mock-analytics` |
+| `pvs eval` | Golden dataset regression evaluation (EVO-011) | `pvs eval discovery --dataset-dir golden_datasets --use-mock` |
+| `pvs review` | Multi-agent specification review (EVO-013) | `pvs review <spec.yaml> --use-mock` |
 | `pvs flags` | Feature flag & rollout management (EVO-015) | `pvs flags list` |
-| `pvs experiment` | A/B power analysis & experiment design (EVO-016) | `pvs experiment design ...` |
+| `pvs experiment` | A/B power analysis & experiment design (EVO-016) | `pvs experiment sample-size --baseline 0.1 --mde 0.02` |
 | `pvs drift` | Spec-to-code drift detection (EVO-017) | `pvs drift check` |
-| `pvs adr` | Architecture Decision Record management (EVO-019) | `pvs adr list` |
-| `pvs spec` | Spec-Kit templates & traceability (EVO-020) | `pvs spec validate ...` |
-| `pvs interview` | AI customer interview synthesis (EVO-022) | `pvs interview analyze ...` |
-| `pvs evidence` | Multi-source evidence synthesis (EVO-023) | `pvs evidence synthesize ...` |
+| `pvs adr` | Architecture Decision Record management (EVO-018) | `pvs adr list` |
+| `pvs spec` | Spec-Kit templates & traceability (EVO-020) | `pvs spec validate <spec.md>` |
+| `pvs interview` | AI customer interview synthesis (EVO-022) | `pvs interview synthesize <transcript.vtt>` |
+| `pvs evidence` | Multi-source evidence synthesis (EVO-023) | `pvs evidence synthesize checkout --tickets <tickets.json>` |

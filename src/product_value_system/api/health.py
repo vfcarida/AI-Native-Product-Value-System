@@ -27,6 +27,37 @@ from product_value_system.monitoring.slo_evaluator import SLOEvaluator
 
 CheckCallable = Callable[[], Any]
 
+_DEFAULT_CSP = "default-src 'self'; frame-ancestors 'none'"
+
+
+def verify_api_key(request: Request, required_key: str | None) -> bool:
+    """Verify ``X-API-Key`` or ``Authorization: Bearer`` using constant-time comparison."""
+    if not required_key:
+        return True
+    provided = request.headers.get("x-api-key") or ""
+    auth_header = request.headers.get("authorization") or ""
+    bearer = auth_header.removeprefix("Bearer ").strip()
+    return hmac.compare_digest(provided, required_key) or hmac.compare_digest(
+        bearer, required_key
+    )
+
+
+def install_security_headers(app: FastAPI, *, csp: str = _DEFAULT_CSP) -> None:
+    """Attach standard OWASP HTTP security headers middleware to a FastAPI app."""
+
+    @app.middleware("http")
+    async def add_security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Content-Security-Policy", csp)
+        return response
+
 
 async def _run_check(check: CheckCallable | None, default_detail: str) -> dict[str, Any]:
     """Execute an optional sync/async dependency health check safely."""
@@ -79,21 +110,7 @@ def create_app(
         title="AI-Native Product Value System — Monitoring & Health API",
         version=__version__,
     )
-
-    @app.middleware("http")
-    async def add_security_headers(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("Cache-Control", "no-store")
-        response.headers.setdefault(
-            "Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'"
-        )
-        return response
+    install_security_headers(app)
 
     @app.get("/health")
     @app.get("/health/live")
@@ -135,18 +152,12 @@ def create_app(
         @app.get("/metrics")
         async def prometheus_metrics(request: Request) -> Response:
             """Expose Prometheus scrape endpoint with optional API-key authentication."""
-            if required_key:
-                provided = request.headers.get("x-api-key") or ""
-                auth_header = request.headers.get("authorization") or ""
-                bearer = auth_header.removeprefix("Bearer ").strip()
-                valid_header = hmac.compare_digest(provided, required_key)
-                valid_bearer = hmac.compare_digest(bearer, required_key)
-                if not (valid_header or valid_bearer):
-                    return Response(
-                        content=json.dumps({"error": "Unauthorized metrics scrape"}),
-                        status_code=401,
-                        media_type="application/json",
-                    )
+            if not verify_api_key(request, required_key):
+                return Response(
+                    content=json.dumps({"error": "Unauthorized metrics scrape"}),
+                    status_code=401,
+                    media_type="application/json",
+                )
 
             body, content_type = active_metrics.render_prometheus_metrics()
             if devx_tracker is not None and devx_tracker.enabled:

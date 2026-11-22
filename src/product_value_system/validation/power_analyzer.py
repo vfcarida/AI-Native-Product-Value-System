@@ -85,11 +85,22 @@ class PowerAnalyzer:
 
         # Resolve expected absolute effect size
         if effect_size is not None:
-            abs_effect = abs(float(effect_size))
+            es = float(effect_size)
+            if not math.isfinite(es):
+                raise ValueError(f"effect_size must be finite, got {effect_size!r}")
+            abs_effect = abs(es)
         elif effect_size_percent is not None:
-            abs_effect = mean_abs * (abs(float(effect_size_percent)) / 100.0)
+            esp = float(effect_size_percent)
+            if not math.isfinite(esp):
+                raise ValueError(
+                    f"effect_size_percent must be finite, got {effect_size_percent!r}"
+                )
+            abs_effect = mean_abs * (abs(esp) / 100.0)
         else:
             abs_effect = mean_abs * 0.10
+
+        if not math.isfinite(baseline.mean) or not math.isfinite(baseline.std):
+            raise ValueError("Baseline contains non-finite mean or std; cannot run power analysis")
 
         abs_effect = max(abs_effect, 1e-9)
 

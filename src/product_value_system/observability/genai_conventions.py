@@ -12,12 +12,14 @@ from opentelemetry import trace
 
 
 class GenAIOperation(str, Enum):
-    """Standard OpenTelemetry GenAI operation types."""
+    """Standard OpenTelemetry GenAI operation types (v1.28–v1.30+ Agents SIG)."""
 
     CHAT = "chat"
     COMPLETION = "completion"
     EMBEDDING = "embedding"
     RERANK = "rerank"
+    INVOKE_AGENT = "invoke_agent"
+    EXECUTE_TOOL = "execute_tool"
 
 
 class GenAIEvents:
@@ -52,7 +54,14 @@ class GenAIAttributes:
     # Response metadata
     RESPONSE_ID = "gen_ai.response.id"
     RESPONSE_FINISH_REASON = "gen_ai.response.finish_reason"
+    RESPONSE_FINISH_REASONS = "gen_ai.response.finish_reasons"
     RESPONSE_TOOL_CALL_COUNT = "gen_ai.response.tool_call_count"
+
+    # Agentic conventions (OTel GenAI Agents SIG)
+    GEN_AI_AGENT_NAME = "gen_ai.agent.name"
+    GEN_AI_AGENT_ID = "gen_ai.agent.id"
+    TOOL_NAME = "gen_ai.tool.name"
+    TOOL_CALL_ID = "gen_ai.tool.call.id"
 
     # Token usage (v1.28+ prompt/completion/total + input/output compatibility)
     USAGE_PROMPT_TOKENS = "gen_ai.usage.prompt_tokens"
@@ -126,6 +135,7 @@ def instrument_model_call(
 
     if finish_reason:
         span.set_attribute(GenAIAttributes.RESPONSE_FINISH_REASON, finish_reason)
+        span.set_attribute(GenAIAttributes.RESPONSE_FINISH_REASONS, [finish_reason])
 
     if response_id:
         span.set_attribute(GenAIAttributes.RESPONSE_ID, response_id)

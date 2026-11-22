@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,13 +17,14 @@ import yaml
 
 from product_value_system.drift.code_scanner import CodeScanner
 
+logger = logging.getLogger(__name__)
+
 _PYTHON_BLOCK_RE = re.compile(r"```(?:python|py)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 _DEF_STUB_RE = re.compile(
     r"^(?:async\s+)?def\s+\w+\s*\([^)]*\)(?:\s*->\s*[^:]+)?:\s*$",
     re.MULTILINE,
 )
 _LATENCY_RANGE_RE = re.compile(
-    r"(?:(?:(?P<op>[A-Za-z_][A-Za-z0-9_.-]*)\s+)?.*?)"
     r"(?:complete\s+in|under|within|latency\s*(?:<=|<|of|target:?))\s*"
     r"(?:(?P<min_val>\d+(?:\.\d+)?)\s*(?:-|to)\s*)?"
     r"(?P<max_val>\d+(?:\.\d+)?)\s*(?P<unit>ms|milliseconds?|s|sec|seconds?)\b",
@@ -331,6 +333,7 @@ class SpecScanner:
                 try:
                     endpoints.extend(self.scan_openapi_spec(path))
                     behavioral.extend(self.scan_behavioral_specs(path))
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Skipping unreadable spec file %s: %s", path, exc)
                     continue
         return functions, endpoints, behavioral

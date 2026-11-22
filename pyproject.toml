@@ -25,9 +25,9 @@ classifiers = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/ai-native-pvs/AI-Native-Product-Value-System/tree/main/docs"
-Repository = "https://github.com/ai-native-pvs/AI-Native-Product-Value-System"
-Issues = "https://github.com/ai-native-pvs/AI-Native-Product-Value-System/issues"
+Documentation = "https://github.com/vfcarida/AI-Native-Product-Value-System/tree/main/docs"
+Repository = "https://github.com/vfcarida/AI-Native-Product-Value-System"
+Issues = "https://github.com/vfcarida/AI-Native-Product-Value-System/issues"
 
 dependencies = [
     "pydantic>=2.0",

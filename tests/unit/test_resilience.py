@@ -141,3 +141,39 @@ async def test_execute_with_resilience_enforces_token_bucket_and_deadline() -> N
 
     with pytest.raises(TimeoutError):
         await execute_with_resilience(slow_op, total_deadline_seconds=0.03, max_attempts=1)
+
+
+async def test_resilience_exact_boundaries_and_non_transient_isolation() -> None:
+    """Pin exact boundary semantics uncovered by Round 4 mutation audit."""
+    # Exact token equality: tokens == retry_cost must succeed once then exhaust
+    exact_bucket = RetryTokenBucket(max_tokens=5.0, retry_cost=5.0)
+    assert exact_bucket.try_consume_retry() is True
+    assert exact_bucket.tokens == 0.0
+    assert exact_bucket.try_consume_retry() is False
+
+    # Exact recovery timeout equality: elapsed == recovery_timeout transitions to HALF_OPEN
+    now = [100.0]
+    cb_exact = CircuitBreaker(
+        "exact-boundary",
+        failure_threshold=1,
+        recovery_timeout_seconds=10.0,
+        clock=lambda: now[0],
+    )
+    cb_exact.record_failure()
+    assert cb_exact.state == CircuitState.OPEN
+    now[0] = 109.999
+    assert cb_exact.state == CircuitState.OPEN
+    now[0] = 110.0
+    assert cb_exact.state == CircuitState.HALF_OPEN
+
+    # Non-transient client error must NOT record a failure or trip a threshold-1 breaker
+    cb_strict = CircuitBreaker("strict-non-transient", failure_threshold=1)
+
+    async def bad_schema() -> str:
+        raise ValueError("400 bad request schema")
+
+    with pytest.raises(ValueError, match="400 bad request"):
+        await execute_with_resilience(bad_schema, circuit_breaker=cb_strict, max_attempts=3)
+
+    assert cb_strict.total_failures == 0
+    assert cb_strict.state == CircuitState.CLOSED

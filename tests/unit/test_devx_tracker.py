@@ -277,3 +277,24 @@ def test_metrics_yaml_config_and_zero_secrets() -> None:
     for rel in ("config/metrics.yaml", "docs/devx-metrics.md", "dashboards/devx_dashboard.json"):
         findings = detector.detect((REPO_ROOT / rel).read_text(encoding="utf-8"))
         assert findings == [], f"Unexpected secret findings in {rel}: {findings}"
+
+
+async def test_empty_tracker_reports_honest_zero_space_and_insufficient_dora() -> None:
+    """Empty tracker with zero observations must not fabricate SPACE scores or DORA tiers."""
+    tracker = DevXTracker({"enabled": True}, registry=CollectorRegistry())
+    scores = await SPACECalculator(tracker=tracker).compute_space_scores()
+    assert scores == {
+        "satisfaction": 0.0,
+        "performance": 0.0,
+        "activity": 0.0,
+        "communication": 0.0,
+        "efficiency": 0.0,
+        "overall": 0.0,
+    }
+    assert tracker.get_dora_metrics().performance_tier == "insufficient_data"
+
+    # Partially observed tracker averages overall strictly over observed dimensions
+    tracker.record_satisfaction("tool_satisfaction", 4.0)
+    partial = await SPACECalculator(tracker=tracker).compute_space_scores()
+    assert partial["satisfaction"] == pytest.approx(0.8)
+    assert partial["overall"] == pytest.approx(0.8)

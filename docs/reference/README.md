@@ -18,25 +18,25 @@ Top-level lazy imports are exposed directly on `product_value_system` (PEP 562 `
 - [`product_value_system.orchestrator`](api/orchestrator.md) — `ValueStreamOrchestrator`, `DependencyGraph`, `ParallelExecutor`, `ResourceManager`, `ConflictResolver`, `CheckpointManager` ([Parallel Execution Guide](../parallel-execution.md))
 - [`product_value_system.harness`](api/harness.md) — `Harness`, `ExecutionContext`, `Budget`, `Guardrails`, `CircuitBreaker`, `RetryTokenBucket`, `execute_with_resilience`
 - [`product_value_system.review`](../architecture/DIAGRAMS.md) — `MultiAgentReviewOrchestrator` (parallel Architecture, Security, Performance, Maintainability review synthesis)
-- [`product_value_system.adapters`](api/agents.md) — `ModelAdapter`, `OpenAIAdapter`, `AnthropicAdapter`, `MockAdapter`, `SQLAnalyticsAdapter`, `PrometheusAnalyticsAdapter`
+- [`product_value_system.adapters`](api/agents.md) — `ModelAdapter`, `OpenAIAdapter`, `AnthropicAdapter`, `MockModelAdapter`, `SQLAnalyticsAdapter`, `PrometheusAnalyticsAdapter`
 - `product_value_system.persistence` — WAL-tuned SQLite `Database` & `ValueStreamRepository`
 
 ### Governance, Security & Sandboxing
 - [`product_value_system.policy`](api/policy.md) — mtime-cached Cedar `PolicyEngine`, `AuthorizationDecision`, `Agent`, `AgentRole`, `Tool`
-- `product_value_system.security` — `HybridSecretDetector` (regex + Presidio/ML + entropy), `InputValidator`, `PromptInjectionDetector`
+- `product_value_system.security` — `HybridSecretDetector` (regex + Presidio/ML + entropy), `InputValidator`, `OutputSanitizer`
 - `product_value_system.sandbox` / `product_value_system.runtime` — `DockerSandboxProvider`, `NetworkFilter`, `IptablesManager` ([Network Egress Filtering](../network-filtering.md))
 - `product_value_system.contracts` — `SchemaValidator`, `StrictConfigModel`, `validate_all_configs`, `expand_env_vars`, `read_secret_from_file`
 
 ### FinOps & Performance Optimization
 - `product_value_system.caching` — `PromptCache`, `MemoryCacheBackend`, `SQLiteCacheBackend` (WAL), `RedisCacheBackend`, `TieredCacheBackend`, `SimilarityMatcher` ([Token Caching Guide](../token-caching.md))
 - `product_value_system.routing` — `ModelRouter`, `ComplexityClassifier`, `RoutingPolicy`, `QualityValidator`, `FallbackHandler` ([Model Routing Guide](../model-routing.md))
-- [`product_value_system.evaluation`](api/evaluation.md) — `EvaluationPipeline`, `BatchEvaluationRunner`, `OpenAIBatchAdapter`, `AnthropicBatchAdapter`, `RegressionEvaluator`, `TrajectoryEvaluator` ([Batch Evaluations Guide](../batch-evaluations.md))
+- [`product_value_system.evaluation`](api/evaluation.md) — `EvaluationPipeline`, `BatchEvalRunner`, `OpenAIBatchAdapter`, `AnthropicBatchAdapter`, `RegressionEvaluator`, `TrajectoryEvaluator` ([Batch Evaluations Guide](../batch-evaluations.md))
 
 ### Discovery, Evidence, Simulation & Learning
 - [`product_value_system.simulation`](api/simulation.md) — `TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`
 - `product_value_system.discovery` — AI-assisted `InterviewSynthesizer` & customer insight extraction
-- `product_value_system.evidence` — `EvidenceSynthesisEngine`, `ContradictionDetector`, `QualityScorer`
-- `product_value_system.experiments` / `product_value_system.validation` — `PowerAnalyzer`, `ExperimentDesigner`, `HypothesisValidator`
+- `product_value_system.evidence` — `SynthesisEngine`, `ContradictionDetector`, `QualityScorer`
+- `product_value_system.experiments` / `product_value_system.validation` — `PowerAnalyzer`, `ExperimentDesignAgent`, `StatisticalValidator`, `ValidationGate`
 - [`product_value_system.learning`](api/learning.md) — `OutcomeTracker`, `CostAttributor`, `FeedbackLoop`
 
 ### Brownfield Modernization & Engineering Governance

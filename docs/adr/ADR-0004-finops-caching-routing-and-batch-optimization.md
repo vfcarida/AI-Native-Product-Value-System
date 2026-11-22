@@ -16,7 +16,7 @@ We standardize a four-layer FinOps and resilience plane across all LLM invocatio
 
 1. **Tiered Prompt & Semantic Caching** (`PromptCache` over Memory LRU L1, WAL-tuned SQLite L2, or Redis) for deterministic prompts (`temperature < 0.3`).
 2. **Complexity-Aware Model Routing** (`ModelRouter` + 6-feature `ComplexityClassifier`) routing LOW/MEDIUM/HIGH tasks to cost-optimal tiers with automated higher-tier fallback on quality validation failure.
-3. **Discounted Batch Evaluation** (`BatchEvaluationRunner`) routing golden dataset suites exceeding threshold size through OpenAI Batch API (50% discount) and Anthropic Message Batches (30% discount) with realtime fallback.
+3. **Discounted Batch Evaluation** (`BatchEvalRunner`) routing golden dataset suites exceeding threshold size through OpenAI Batch API (50% discount) and Anthropic Message Batches (30% discount) with realtime fallback.
 4. **AWS Builders' Library Resilience** (`CircuitBreaker`, `RetryTokenBucket`, `full_jitter_delay`, `execute_with_resilience`) preventing thundering herds and retry amplification.
 
 ## Alternatives Considered

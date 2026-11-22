@@ -214,3 +214,52 @@ def test_cedar_entities_serialize() -> None:
     assert entity["type"] == "ProductValueSystem::AgentRole"
     assert entity["id"] == "test"
     assert entity["attrs"]["trustLevel"] == "high"
+
+
+@pytest.mark.unit
+def test_policy_exact_cost_budget_and_prod_resource_boundaries(
+    policy_engine: PolicyEngine,
+    discovery_agent: Agent,
+    knowledge_base_tool: Tool,
+) -> None:
+    """Pin exact cost_so_far == cost_budget denial and production-resource forbid rule."""
+    # Exact budget boundary must trigger policy_forbid_cost_budget
+    exact_budget_ctx = AuthorizationContext(
+        environment="sandbox",
+        has_human_approval=False,
+        cost_so_far=discovery_agent.cost_budget,
+        iteration_count=1,
+        stage="discovery",
+    )
+    budget_decision = policy_engine.authorize(
+        principal=discovery_agent,
+        action="query",
+        resource=knowledge_base_tool,
+        context=exact_budget_ctx,
+    )
+    assert budget_decision.decision == Decision.DENY
+    assert "policy_forbid_cost_budget" in budget_decision.policies_matched
+
+    # Deploying to a production-named resource without approval must forbid even in staging env
+    build_agent = Agent(
+        id="build-boundary",
+        role=AgentRole(name="build", trust_level=TrustLevel.HIGH),
+        version="0.1.0",
+        cost_budget=Decimal("50.0"),
+        allowed_environments={"staging", "production"},
+    )
+    staging_ctx = AuthorizationContext(
+        environment="staging",
+        has_human_approval=False,
+        cost_so_far=Decimal("1.0"),
+        iteration_count=1,
+        stage="build",
+    )
+    prod_res_decision = policy_engine.authorize(
+        principal=build_agent,
+        action="deploy",
+        resource="production_cluster",
+        context=staging_ctx,
+    )
+    assert prod_res_decision.decision == Decision.DENY
+    assert "policy_forbid_prod_deploy" in prod_res_decision.policies_matched

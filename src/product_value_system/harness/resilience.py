@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import random
 import time
 from collections.abc import Awaitable, Callable
@@ -38,6 +39,16 @@ class CircuitOpenError(RuntimeError):
     """Raised when an invocation is rejected because the circuit breaker is OPEN."""
 
 
+def _require_finite(name: str, value: float, *, minimum: float | None = None) -> float:
+    """Validate that a numeric parameter is finite (rejecting NaN/Inf)."""
+    fval = float(value)
+    if not math.isfinite(fval):
+        raise ValueError(f"{name} must be a finite number, got {value!r}")
+    if minimum is not None:
+        return max(minimum, fval)
+    return fval
+
+
 def full_jitter_delay(
     attempt: int,
     *,
@@ -46,7 +57,11 @@ def full_jitter_delay(
     rng: random.Random | None = None,
 ) -> float:
     """Compute AWS Builders' Library Full Jitter backoff in ``[0, min(max, base * 2**attempt)]``."""
-    cap = min(max_delay_seconds, base_delay_seconds * (2 ** max(0, attempt)))
+    base = _require_finite("base_delay_seconds", base_delay_seconds, minimum=0.0)
+    ceiling = _require_finite("max_delay_seconds", max_delay_seconds, minimum=0.0)
+    # Cap exponent at 60 to avoid OverflowError on huge attempt numbers
+    exp = min(max(0, int(attempt)), 60)
+    cap = min(ceiling, base * (2**exp))
     generator = rng or random
     return float(generator.uniform(0.0, max(0.0, cap)))
 
@@ -85,10 +100,10 @@ class RetryTokenBucket:
         retry_cost: float = 5.0,
         success_refill: float = 1.0,
     ) -> None:
-        self.max_tokens = max(1.0, float(max_tokens))
+        self.max_tokens = _require_finite("max_tokens", max_tokens, minimum=1.0)
         self.tokens = self.max_tokens
-        self.retry_cost = max(0.1, float(retry_cost))
-        self.success_refill = max(0.0, float(success_refill))
+        self.retry_cost = _require_finite("retry_cost", retry_cost, minimum=0.1)
+        self.success_refill = _require_finite("success_refill", success_refill, minimum=0.0)
 
     def try_consume_retry(self) -> bool:
         """Consume retry tokens if available; return False when retry budget is exhausted."""
@@ -128,7 +143,9 @@ class CircuitBreaker:
     ) -> None:
         self.name = name
         self.failure_threshold = max(1, int(failure_threshold))
-        self.recovery_timeout_seconds = max(0.0, float(recovery_timeout_seconds))
+        self.recovery_timeout_seconds = _require_finite(
+            "recovery_timeout_seconds", recovery_timeout_seconds, minimum=0.0
+        )
         self.half_open_max_calls = max(1, int(half_open_max_calls))
         self._clock = clock or time.monotonic
 

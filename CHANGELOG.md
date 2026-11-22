@@ -26,12 +26,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Reduced McCabe cyclomatic complexity of `regression_eval._score_criterion` (`73 -> 2`) and `controller._execute_stage` (`43 -> 5`) via O(1) dispatch tables; replaced library `print()` and silent `except: pass` blocks with structured `logging`.
-- Added thread-safe `(path, mtime_ns)` Cedar policy memoization (`14.6x` warm load speedup) and WAL/NORMAL SQLite tuning (`Database` and `SQLiteCacheBackend` with deterministic connection closing).
-- Upgraded `Dockerfile` to a hardened multi-stage non-root (`UID 10001`) build with `HEALTHCHECK`, modernized `scripts/final-audit.sh`, `.pre-commit-config.yaml` (6 local gates), `.github/workflows/ci.yml` (`concurrency`, pip cache, `security-and-governance` job), and `README.md`.
+- Eliminated per-call `cedar` CLI subprocess probing when `cedar` is absent from `PATH` (`PolicyEngine.authorize`: `377` -> `163,840 eval/s`, `32.1x` warm init) and removed double write-amplification in `SQLiteCacheBackend`/`PromptCache.get()` via a persistent WAL connection + deferred LRU touch flush (`28.5 ms` -> `0.276 ms` p50, `103x` faster).
+- Aligned OpenTelemetry GenAI tracing with OTel GenAI Agents SIG v1.29–v1.30+ (`invoke_agent`, `execute_tool`, `gen_ai.response.finish_reasons` array, and `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` opt-out privacy support).
+- Added `__main__.py` and PEP 562 lazy `cli/__init__.py` exports for zero-warning `python -W error -m product_value_system` execution; exposed `CircuitBreaker`, `validate_all_configs`, and `run_system_diagnostics` from top-level `product_value_system`; reconciled `requirements.txt` with `pyproject.toml`.
+- Upgraded `Dockerfile` to a hardened multi-stage non-root (`UID 10001`) build with `HEALTHCHECK`, modernized `scripts/final-audit.sh`, `.pre-commit-config.yaml` (6 local gates), `.github/workflows/ci.yml` (`concurrency`, pip cache, `security-and-governance` job), and `README.md` (including candid Known Limitations & Non-Goals).
+
+### Fixed
+
+- Fixed fabricated `SPACE` (`0.49` -> `0.00`) and `DORA` (`medium` -> `insufficient_data`) scores reported on empty trackers with zero observations; added explicit non-finite (`NaN`/`Inf`) rejection in `StatisticalValidator` and `PowerAnalyzer`.
+- Fixed `full_jitter_delay` `OverflowError` on large attempt counts, `CircuitBreaker`/`RetryTokenBucket` `NaN` deadlock/starvation, and non-standard `NaN`/`Infinity` JSON keys in `PromptCache.compute_cache_key`.
+- Hardened both `CheckpointManager` implementations with atomic `mkstemp + fsync + os.replace` writes and `.json.corrupt` quarantine recovery, plus `PRAGMA quick_check` `.db.corrupt` quarantine-and-rebuild recovery in `SQLiteCacheBackend`.
+- Fixed 6 misnamed class symbols and 4 broken CLI invocations across documentation, unified repository GitHub URLs, and added automated executable-docs regression testing (`tests/unit/test_docs_truth.py`).
+
+### Removed
+
+- Deleted dead empty package `src/product_value_system/_internal/`, orphan root `golden_dataset/` duplicate, 5 obsolete `.gitkeep` scaffold files, and duplicated HTTP auth/security-header middleware across `api/health.py` and `feature_flags/admin_ui.py`.
 
 ### Security
 
-- Fixed API-key timing side-channel in `api/health.py` and `feature_flags/admin_ui.py` using constant-time `hmac.compare_digest`.
+- Fixed fail-open IEEE 754 `NaN`/`-inf`/negative `cost_so_far` and negative `iteration_count` policy budget bypasses in `PolicyEngine._fallback_evaluate`.
+- Eliminated a `4,004 ms` CWE-1333 ReDoS catastrophic backtracking regex in `drift/spec_scanner.py` (`< 1 ms` linear time).
+- Fixed CWE-94 code-generation injection (`module.name` sanitized + `repr`-quoted) and `repo_path` traversal in `brownfield/acl_generator.py`, plus path-traversal guards on checkpoint IDs.
+- Fixed API-key timing side-channel in `api/health.py` and `feature_flags/admin_ui.py` using constant-time `hmac.compare_digest` and verified HTML XSS escaping on admin views.
 - Enforced OWASP HTTP security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cache-Control`, `Content-Security-Policy`) across all FastAPI endpoints.
 - Added automated AST & HTTP security posture audit (`tests/security/test_security_posture_audit.py`) verifying zero `shell=True`, `yaml.load`, `eval`, `exec`, or `pickle.load` in `src/`.
 

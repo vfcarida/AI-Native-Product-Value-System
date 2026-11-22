@@ -308,7 +308,10 @@ async def test_semantic_similarity_matching_hit_and_miss() -> None:
     assert sim_hit is not None
     assert cache.semantic_hits == 1
 
-    # High temperature disables semantic match to preserve sampling diversity
+    # Temperature at or above semantic_max_temperature (0.3) disables semantic match
+    boundary_temp_miss = await cache.get(p2, "gpt-4o", 0.3, 500)
+    assert boundary_temp_miss is None
+
     high_temp_miss = await cache.get(p2, "gpt-4o", 0.7, 500)
     assert high_temp_miss is None
 

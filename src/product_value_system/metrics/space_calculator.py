@@ -111,7 +111,8 @@ class LocalDevXQueryAdapter:
             )
 
         if "devx_tasks_completed_total" in q:
-            return float(len(self.tracker.cycle_time_tracker.completed_timings))
+            count = len(self.tracker.cycle_time_tracker.completed_timings)
+            return float(count) if count > 0 else None
 
         if "devx_ai_usage_total" in q and 'accepted="True"' in q:
             return float(sum(1 for e in self.tracker.ai_events if e.accepted))
@@ -166,20 +167,27 @@ class SPACECalculator:
         )
 
     async def compute_space_scores(self) -> dict[str, float]:
-        """Compute all 5 SPACE dimensions + ``overall`` average (0.0–1.0)."""
-        satisfaction = await self._query_satisfaction()
-        performance = await self._query_performance()
-        activity = await self._query_activity()
-        communication = await self._query_communication()
-        efficiency = await self._query_efficiency()
+        """Compute all 5 SPACE dimensions + ``overall`` average across observed dimensions.
 
-        overall = (satisfaction + performance + activity + communication + efficiency) / 5.0
+        Unobserved dimensions return ``0.0`` rather than fabricated neutral constants;
+        ``overall`` averages only dimensions with actual observations (``0.0`` when empty).
+        """
+        raw_dims = (
+            await self._query_satisfaction(),
+            await self._query_performance(),
+            await self._query_activity(),
+            await self._query_communication(),
+            await self._query_efficiency(),
+        )
+        observed = [val for val in raw_dims if val is not None]
+        overall = (sum(observed) / len(observed)) if observed else 0.0
+
         scores = SPACEScores(
-            satisfaction=satisfaction,
-            performance=performance,
-            activity=activity,
-            communication=communication,
-            efficiency=efficiency,
+            satisfaction=raw_dims[0] if raw_dims[0] is not None else 0.0,
+            performance=raw_dims[1] if raw_dims[1] is not None else 0.0,
+            activity=raw_dims[2] if raw_dims[2] is not None else 0.0,
+            communication=raw_dims[3] if raw_dims[3] is not None else 0.0,
+            efficiency=raw_dims[4] if raw_dims[4] is not None else 0.0,
             overall=overall,
         )
 
@@ -190,14 +198,14 @@ class SPACECalculator:
 
         return scores.to_dict()
 
-    async def _query_satisfaction(self) -> float:
+    async def _query_satisfaction(self) -> float | None:
         query = 'avg_over_time(devx_satisfaction_score{dimension="tool_satisfaction"}[7d])'
         res = await self.prom.query(query)
         if res is None:
-            return 0.5
+            return None
         return max(0.0, min(1.0, res / 5.0))
 
-    async def _query_performance(self) -> float:
+    async def _query_performance(self) -> float | None:
         total_completed = await self.prom.query("sum(increase(devx_tasks_completed_total[7d]))")
         succeeded = await self.prom.query(
             'sum(increase(devx_tasks_completed_total{success="True"}[7d]))'
@@ -214,19 +222,19 @@ class SPACECalculator:
             components.append(max(0.0, min(1.0, ai_accepted / ai_total)))
 
         if not components:
-            return 0.75
+            return None
         return sum(components) / len(components)
 
-    async def _query_activity(self) -> float:
+    async def _query_activity(self) -> float | None:
         res = await self.prom.query("sum(increase(devx_tasks_completed_total[7d]))")
-        if res is None:
-            return 0.5
+        if res is None or res <= 0:
+            return None
         return max(0.0, min(1.0, res / self.weekly_task_target))
 
-    async def _query_communication(self) -> float:
+    async def _query_communication(self) -> float | None:
         res = await self.prom.query("avg(devx_pr_review_turnaround_seconds)")
         if res is None:
-            return 0.70
+            return None
         if res <= self.excellent_pr_review_seconds:
             return 1.0
         if res >= self.poor_pr_review_seconds:
@@ -234,12 +242,12 @@ class SPACECalculator:
         span = self.poor_pr_review_seconds - self.excellent_pr_review_seconds
         return 1.0 - ((res - self.excellent_pr_review_seconds) / span) * 0.7
 
-    async def _query_efficiency(self) -> float:
+    async def _query_efficiency(self) -> float | None:
         res = await self.prom.query("avg(devx_cycle_time_seconds)")
         if res is None:
             res = await self.prom.query('avg(devx_cycle_time_seconds{stage="discovery"})')
         if res is None:
-            return 0.5
+            return None
         if res <= self.excellent_cycle_seconds:
             return 1.0
         if res >= self.poor_cycle_seconds:

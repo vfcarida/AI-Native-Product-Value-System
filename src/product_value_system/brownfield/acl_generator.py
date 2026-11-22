@@ -23,6 +23,13 @@ from jinja2 import Template
 from product_value_system.brownfield.boundary_analyzer import Module
 
 _NON_IDENT_RE = re.compile(r"[^A-Za-z0-9_]+")
+_NON_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _sanitize_module_label(raw_name: str, fallback: str) -> str:
+    """Restrict module labels used in generated code/docstrings to safe ASCII identifiers."""
+    cleaned = _NON_LABEL_RE.sub("_", raw_name).strip("._-")
+    return cleaned or fallback
 
 
 def _to_pascal_case(raw_name: str) -> str:
@@ -91,6 +98,7 @@ class {{ class_name }}:
     """Anti-Corruption Layer bridging legacy and modern ``{{ module_name }}``."""
 
     FLAG_NAME = "use_modern_{{ snake_name }}"
+    MODULE_NAME = {{ module_name_repr }}
 
     def __init__(
         self,
@@ -137,7 +145,7 @@ class {{ class_name }}:
     def _enforce_security_boundary(self, operation: str, payload: dict[str, Any]) -> None:
         if self.authorize_fn is not None and not self.authorize_fn(operation, payload):
             raise PermissionError(
-                f"ACL security boundary denied operation '{operation}' on {{ module_name }}"
+                f"ACL security boundary denied operation '{operation}' on {self.MODULE_NAME}"
             )
 
     def _translate_to_modern(
@@ -272,11 +280,12 @@ class ACLGenerator:
         extracted: list[APIFunctionSpec] = []
 
         if repo_path is not None:
+            repo_root = repo_path.resolve()
             for rel_path in module.file_paths:
                 if not rel_path.endswith(".py"):
                     continue
-                full_path = repo_path / rel_path
-                if not full_path.is_file():
+                full_path = (repo_root / rel_path).resolve()
+                if not full_path.is_relative_to(repo_root) or not full_path.is_file():
                     continue
                 try:
                     tree = ast.parse(full_path.read_text(encoding="utf-8", errors="ignore"))
@@ -314,9 +323,11 @@ class ACLGenerator:
         functions = self.extract_api(module, code_structure, repo_path=repo_path)
         class_name = f"{_to_pascal_case(module.name)}ACL"
         snake_name = _to_snake_case(module.name)
+        safe_module_name = _sanitize_module_label(module.name, snake_name)
 
         code: str = _ACL_TEMPLATE.render(
-            module_name=module.name,
+            module_name=safe_module_name,
+            module_name_repr=repr(safe_module_name),
             class_name=class_name,
             snake_name=snake_name,
             functions=functions,

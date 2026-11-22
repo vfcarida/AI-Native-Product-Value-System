@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import platform
 import statistics
@@ -54,7 +55,7 @@ from product_value_system.orchestrator import (  # noqa: E402
     ParallelExecutor,
     build_dependency_graph,
 )
-from product_value_system.policy.engine import PolicyEngine  # noqa: E402
+from product_value_system.policy.engine import Decision, PolicyEngine  # noqa: E402
 from product_value_system.routing import ComplexityLevel, ModelRouter  # noqa: E402
 from product_value_system.security.secret_detector import HybridSecretDetector  # noqa: E402
 
@@ -91,17 +92,29 @@ def bench_policy_engine(iterations: int) -> dict[str, Any]:
         PolicyEngine(policies_dir=REPO_ROOT / "policies")
         warm_samples.append(time.perf_counter() - s)
 
+    # Suppress per-request INFO audit log I/O inside the microbenchmark hot loop
+    policy_logger = logging.getLogger("product_value_system.policy.engine")
+    prev_level = policy_logger.level
+    policy_logger.setLevel(logging.WARNING)
     auth_samples: list[float] = []
-    for i in range(iterations):
-        s = time.perf_counter()
-        decision = engine.authorize(
-            principal="discovery-agent",
-            action="read",
-            resource="repo:docs",
-            context={"run_id": f"bench-{i}", "cost_so_far": 0.1},
-        )
-        auth_samples.append(time.perf_counter() - s)
-        assert decision is not None
+    try:
+        for i in range(iterations):
+            s = time.perf_counter()
+            decision = engine.authorize(
+                principal="discovery-agent",
+                action="query",
+                resource="knowledge_base",
+                context={
+                    "run_id": f"bench-{i}",
+                    "environment": "sandbox",
+                    "stage": "discovery",
+                    "cost_so_far": 0.1,
+                },
+            )
+            auth_samples.append(time.perf_counter() - s)
+            assert decision.decision == Decision.ALLOW
+    finally:
+        policy_logger.setLevel(prev_level)
 
     warm_stats = _percentiles_ms(warm_samples)
     auth_stats = _percentiles_ms(auth_samples)
@@ -172,15 +185,18 @@ async def bench_prompt_cache(iterations: int) -> dict[str, Any]:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         sql_backend = SQLiteCacheBackend(Path(tmpdir) / "bench_cache.db", max_entries=1000)
-        sql_cache = PromptCache(backend=sql_backend)
-        await sql_cache.set(base_msg, "claude-3-5-sonnet-20241022", 0.0, 1024, payload)
-        sql_runs = max(10, iterations // 5)
-        sql_samples: list[float] = []
-        for _ in range(sql_runs):
-            s = time.perf_counter()
-            hit = await sql_cache.get(base_msg, "claude-3-5-sonnet-20241022", 0.0, 1024)
-            sql_samples.append(time.perf_counter() - s)
-            assert hit is not None
+        try:
+            sql_cache = PromptCache(backend=sql_backend)
+            await sql_cache.set(base_msg, "claude-3-5-sonnet-20241022", 0.0, 1024, payload)
+            sql_runs = max(10, iterations // 5)
+            sql_samples: list[float] = []
+            for _ in range(sql_runs):
+                s = time.perf_counter()
+                hit = await sql_cache.get(base_msg, "claude-3-5-sonnet-20241022", 0.0, 1024)
+                sql_samples.append(time.perf_counter() - s)
+                assert hit is not None
+        finally:
+            sql_backend.close()
 
     # Realistic 60% workload hit rate FinOps projection
     hit_rate = 0.60

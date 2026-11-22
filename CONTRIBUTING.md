@@ -18,7 +18,7 @@ This repository is an educational reference implementation demonstrating AI-nati
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<org>/ai-native-product-value-system.git
+git clone https://github.com/vfcarida/AI-Native-Product-Value-System.git
 cd ai-native-product-value-system
 
 # 2. Create and activate a virtual environment

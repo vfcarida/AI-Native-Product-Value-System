@@ -10,7 +10,7 @@
 
 **A research-backed, production-hardened reference implementation for governed, FinOps-optimized, AI-native software delivery — from problem discovery to verified release and post-launch outcome learning.**
 
-[Quick Start](#quick-start) • [Architecture](#architecture) • [Empirical Benchmarks](#empirical-benchmarks) • [Zero-Cost Showcases](examples/showcases/README.md) • [CLI & SDK](#python-sdk--cli-examples) • [Documentation](#documentation)
+[Quick Start](#quick-start) • [Architecture](#architecture) • [Empirical Benchmarks](#empirical-benchmarks) • [Limitations & Non-Goals](#known-limitations--non-goals) • [CLI & SDK](#python-sdk--cli-examples) • [Documentation](#documentation)
 
 </div>
 
@@ -24,8 +24,8 @@ Most AI coding tools accelerate *code generation* while leaving architecture, go
 
 ### Why Teams Adopt This Architecture
 - **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity), **12 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
-- **Measured FinOps & Latency Efficiency**: Combines **tiered exact + semantic prompt caching** (`10.6 µs` L1 hits), **6-feature complexity model routing** (**90.8% cost reduction** vs. always-flagship), **30%–50% discounted batch evaluations**, **AWS Builders' Library circuit breakers & full-jitter retries**, and **NetworkX DAG parallel execution** (**2.0x** speedup on concurrent review layers).
-- **Zero-Trust Defense-in-Depth**: Enforces **default-deny Docker `iptables` egress allowlists**, **hybrid regex + ML/entropy secret detection** (`2.58 ms` p50 on 17K-token documents, 0 FP), **constant-time `hmac.compare_digest` auth**, OWASP security headers, and **handler-attached secret-redacting OpenTelemetry JSON logs**.
+- **Measured FinOps & Latency Efficiency**: Combines **tiered exact + semantic prompt caching** (`9.6 µs` L1 memory / `0.28 ms` L2 SQLite WAL hits), **6-feature complexity model routing** (**90.8% cost reduction** vs. always-flagship), **30%–50% discounted batch evaluations**, **AWS Builders' Library circuit breakers & full-jitter retries**, and **NetworkX DAG parallel execution** (**2.0x** speedup on concurrent review layers).
+- **Zero-Trust Defense-in-Depth**: Enforces **default-deny Docker `iptables` egress allowlists**, **hybrid regex + ML/entropy secret detection** (`2.59 ms` p50 on 17K-token documents, 0 FP), **constant-time `hmac.compare_digest` auth**, OWASP security headers, and **handler-attached secret-redacting OpenTelemetry JSON logs**.
 - **Enterprise Brownfield Modernization**: Prioritizes legacy refactoring via read-only **Git temporal forensics** (hotspots, temporal coupling, age, anonymized bus factor), partitions bridged monoliths using **Clauset-Newman-Moore greedy modularity** ($Q = 0.7336$), and generates **shadow-mode Anti-Corruption Layers** with sticky SHA-256 progressive Strangler Fig traffic cutovers (`1% → 100%`).
 - **Non-Punitive SPACE & DORA DevX Telemetry**: Instruments cycle time, AI acceptance rate, deployments, and satisfaction surveys with enforced `aggregate_only: true` and `anonymize: true` privacy contracts exported to Prometheus (`/metrics`), Grafana, and `/devx`.
 
@@ -48,7 +48,7 @@ flowchart TB
     subgraph FinOps["FinOps & Resilience Layer"]
         Router["Complexity ModelRouter (LOW / MED / HIGH)"]
         Cache["PromptCache (L1 Memory / L2 SQLite WAL / Redis)"]
-        Batch["BatchEvaluationRunner (OpenAI 50% / Anthropic 30%)"]
+        Batch["BatchEvalRunner (OpenAI 50% / Anthropic 30%)"]
     end
 
     subgraph Agents["Governed Agent & Modernization Plane"]
@@ -59,7 +59,7 @@ flowchart TB
     end
 
     subgraph Obs["Observability & Non-Punitive DevX"]
-        OTel["OTel GenAI v1.28+ Tracing + Secret-Redacting JSON Logs"]
+        OTel["OTel GenAI v1.28-v1.30+ Tracing + Secret-Redacting JSON Logs"]
         HTTP["FastAPI: /health/live, /health/ready, /slos, /metrics, /devx"]
         DevX["SPACE & DORA Tracker (aggregate_only=true)"]
     end
@@ -99,7 +99,7 @@ Get verified diagnostics and runnable demos in under **2 minutes** at **$0.00 ex
 make dev-setup
 
 # 2. Run environment, config contract, Cedar policy & schema diagnostics
-python -m product_value_system.cli.main doctor
+python -m product_value_system doctor
 
 # 3. Run greenfield demo offline at $0 cost using deterministic Mock adapter
 make demo USE_MOCK=1
@@ -140,7 +140,6 @@ pvs run examples/greenfield/problem_payment_flow.yaml
 Top-level lazy exports (`product_value_system`) expose the core control plane directly:
 
 ```python
-import asyncio
 from product_value_system import (
     CircuitBreaker,
     DevXTracker,
@@ -181,13 +180,14 @@ Measured deterministically at **$0.00 external API cost** via [`scripts/run_benc
 
 | Subsystem | Metric | Measured Result | Tail Latency (p95 / p99) |
 |---|---|---:|---:|
-| **Cedar Policy Engine** | Auth throughput & mtime-cache init speedup | **377 eval/s** (`14.6x` warm init) | `3.52 ms` / `3.98 ms` |
-| **Hybrid ML Secret Detector** | 17K-token clean doc scan (0 FP, `2/2` probes) | **2.58 ms** p50 (`0` FP) | `3.59 ms` / `3.59 ms` |
-| **Prompt Cache (L1 Memory)** | Exact-match lookup latency | **0.0106 ms** p50 (`60%` proj. savings) | `0.0113 ms` / `0.0185 ms` |
-| **Complexity Model Router** | Routing throughput & FinOps savings | **4,404 req/s** (**90.8%** savings vs. flagship) | `0.31 ms` / `0.44 ms` |
-| **Parallel Agent Orchestrator** | 6-agent DAG (`4` concurrent reviewers) | **2.0x** speedup (**50.0%** faster) | `141 ms` vs `282 ms` seq |
+| **Cedar Policy Engine** | Auth throughput & mtime-cache init speedup | **163,840 eval/s** (`32.1x` warm init) | `0.0062 ms` / `0.0129 ms` |
+| **Hybrid ML Secret Detector** | 17K-token clean doc scan (0 FP, `2/2` probes) | **2.59 ms** p50 (`0` FP) | `3.18 ms` / `3.18 ms` |
+| **Prompt Cache (L1 Memory)** | Exact-match lookup latency | **0.0096 ms** p50 (`60%` proj. savings) | `0.0278 ms` / `0.0433 ms` |
+| **Prompt Cache (L2 SQLite WAL)** | Persistent WAL exact-match lookup | **0.276 ms** p50 (zero-write reads) | `0.523 ms` / `0.817 ms` |
+| **Complexity Model Router** | Routing throughput & FinOps savings | **4,551 req/s** (**90.8%** savings vs. flagship) | `0.2791 ms` / `0.3545 ms` |
+| **Parallel Agent Orchestrator** | 6-agent DAG (`4` concurrent reviewers) | **2.0x** speedup (**50.0%** faster) | `141.0 ms` vs `282.0 ms` seq |
 | **Batch Evaluation Pipeline** | 500-sample golden evaluation discount | **50.0%** OpenAI / **30.0%** Anthropic | Async 24h SLA |
-| **Brownfield Modularity** | Clauset-Newman-Moore (60-file monolith) | **Q = 0.7336** (`4` domains detected) | `8.98 ms` total |
+| **Brownfield Modularity** | Clauset-Newman-Moore (60-file monolith) | **Q = 0.7336** (`4` domains detected) | `9.23 ms` total |
 
 Reproduce on your hardware:
 ```bash
@@ -196,11 +196,27 @@ python scripts/run_benchmarks.py --markdown-out docs/BENCHMARKS.md
 
 ---
 
+## Known Limitations & Non-Goals
+
+### Known Limitations
+- **Optional Rust Cedar CLI**: When `cedar` is absent from `PATH`, `PolicyEngine` runs its 100%-parity deterministic Python fallback (`scripts/validate-policy-sync.py`: `25/25`). Install `cedar-policy-cli` to execute policies directly through the Rust binary.
+- **Docker & Linux `iptables` Sandbox**: Container execution and `iptables` network egress allowlists require a running Docker daemon (Linux `NET_ADMIN` inside the sandbox container); environments without Docker run all control-plane, evaluation, and mock workflows locally without container execution.
+- **Single-Node SQLite Persistence**: `Database` and `SQLiteCacheBackend` use WAL-mode SQLite optimized for single-node processes. Multi-node horizontal deployments should configure `RedisCacheBackend` and external database storage.
+- **Deterministic `$0` Suite vs. Live LLM Variance**: The default test and benchmark suites exercise schemas, policies, routing, caching, and statistical logic deterministically (`MockModelAdapter`). Real LLM outputs and token costs vary by model snapshot; opt in to live provider checks via `RUN_REAL_INTEGRATION_TESTS=1` (capped at `$0.05/test`, `$0.50/run`).
+- **Graceful Degradation for Heavy Optional Extras**: Microsoft Presidio/spaCy NER (`secret_detection`) and `TinyTroupe` (`simulation`) fall back to deterministic heuristic/entropy implementations when optional extras are not installed.
+
+### Explicit Non-Goals
+- **Not a Hosted SaaS or Chat GUI**: Designed as a CLI-first, embeddable Python control plane and library; bundled FastAPI apps expose operational `/health/*`, `/metrics`, `/devx`, and feature-flag admin endpoints only.
+- **Not Individual Developer Surveillance**: DevX SPACE/DORA instrumentation enforces `aggregate_only: true`, SHA-256 anonymization, and explicit developer opt-out by design.
+- **No Opaque Prompt-Chain Magic**: Every stage, policy rule, budget cap, and artifact schema is declared explicitly in versioned YAML, JSON Schema, and Cedar files.
+
+---
+
 ## Repository Structure
 
 ```text
 AI-Native-Product-Value-System/
-├── src/product_value_system/   # 31 public packages (agents, orchestrator, harness, policy,
+├── src/product_value_system/   # 30 public packages (agents, orchestrator, harness, policy,
 │                               #   caching, routing, evaluation, sandbox, security, brownfield,
 │                               #   metrics, monitoring, observability, contracts, api, cli, ...)
 ├── config/                     # 12 strictly validated YAML configs (StrictConfigModel)

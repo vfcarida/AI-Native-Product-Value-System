@@ -201,8 +201,10 @@ class CycleTimeTracker:
         cfr = (failed_deploys / total_deploys) if total_deploys > 0 else 0.0
         mttr = statistics.mean(self.restore_durations) if self.restore_durations else 0.0
 
-        # Accelerate DORA classification (lead time + change failure rate + deploy freq)
-        if deploy_freq >= 1.0 and lead_p50 <= 3600.0 and cfr <= 0.15:
+        # Accelerate DORA classification (avoid fabricating a tier when zero data exists)
+        if total_deploys == 0 and not lead_times:
+            tier = "insufficient_data"
+        elif deploy_freq >= 1.0 and lead_p50 <= 3600.0 and cfr <= 0.15:
             tier = "elite"
         elif deploy_freq >= (1.0 / 7.0) and lead_p50 <= 86400.0 and cfr <= 0.20:
             tier = "high"

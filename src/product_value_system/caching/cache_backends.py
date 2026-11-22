@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import sqlite3
+import threading
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Generator
@@ -16,6 +19,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -240,48 +245,124 @@ class SQLiteCacheBackend(CacheBackend):
         self.max_entries = max(1, int(max_entries))
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._conn_lock = threading.RLock()
+        self._conn: sqlite3.Connection | None = None
+        self._pending_touches: dict[str, str] = {}
 
-    @contextmanager
-    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
-        """Open a WAL-tuned SQLite connection and guarantee deterministic close on exit."""
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
+    def _open_connection(self) -> sqlite3.Connection:
+        """Open and tune a persistent WAL-mode SQLite connection without leaking handles."""
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
         try:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA synchronous = NORMAL")
             conn.execute("PRAGMA busy_timeout = 5000")
             conn.execute("PRAGMA temp_store = MEMORY")
-            yield conn
-        finally:
+            conn.execute("PRAGMA cache_size = -16384")
+        except BaseException:
             conn.close()
+            raise
+        return conn
+
+    def _get_conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            self._conn = self._open_connection()
+        return self._conn
+
+    @contextmanager
+    def _connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """Yield the persistent WAL-tuned SQLite connection under a reentrant lock."""
+        with self._conn_lock:
+            yield self._get_conn()
+
+    def close(self) -> None:
+        """Flush deferred LRU touches and deterministically close the SQLite connection."""
+        with self._conn_lock:
+            conn = self._conn
+            self._conn = None
+            if conn is not None:
+                try:
+                    self._flush_touches_locked(conn)
+                    conn.commit()
+                except sqlite3.DatabaseError:
+                    pass
+                finally:
+                    conn.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _flush_touches_locked(self, conn: sqlite3.Connection) -> None:
+        if not self._pending_touches:
+            return
+        items = [(ts, k) for k, ts in self._pending_touches.items()]
+        self._pending_touches.clear()
+        conn.executemany(
+            "UPDATE llm_cache SET last_accessed = ?, hit_count = hit_count + 1 WHERE cache_key = ?",
+            items,
+        )
+
+    def _quarantine_corrupt_db(self, reason: Exception) -> None:
+        """Quarantine a corrupt SQLite cache file (and WAL/SHM sidecars) for clean rebuild."""
+        quarantine = self.db_path.with_suffix(self.db_path.suffix + ".corrupt")
+        logger.warning(
+            "SQLite cache corruption detected at %s (%s); quarantining to %s and rebuilding.",
+            self.db_path,
+            reason,
+            quarantine,
+        )
+        if self.db_path.exists():
+            os.replace(self.db_path, quarantine)
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(f"{self.db_path}{suffix}")
+            if sidecar.exists():
+                try:
+                    sidecar.unlink()
+                except OSError:
+                    pass
+
+    def _create_schema(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS llm_cache (
+                cache_key TEXT PRIMARY KEY,
+                response TEXT NOT NULL,
+                prompt_hash TEXT NOT NULL,
+                model TEXT NOT NULL,
+                temperature REAL NOT NULL,
+                cached_at TEXT NOT NULL,
+                ttl_seconds INTEGER NOT NULL,
+                hit_count INTEGER NOT NULL,
+                embedding TEXT,
+                prompt_text TEXT NOT NULL DEFAULT '',
+                last_accessed TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cached_at ON llm_cache(cached_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_model ON llm_cache(model)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_last_accessed ON llm_cache(last_accessed)"
+        )
+        conn.commit()
 
     def _init_sync(self) -> None:
         if self._initialized:
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS llm_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    response TEXT NOT NULL,
-                    prompt_hash TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    temperature REAL NOT NULL,
-                    cached_at TEXT NOT NULL,
-                    ttl_seconds INTEGER NOT NULL,
-                    hit_count INTEGER NOT NULL,
-                    embedding TEXT,
-                    prompt_text TEXT NOT NULL DEFAULT '',
-                    last_accessed TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_cached_at ON llm_cache(cached_at)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_model ON llm_cache(model)")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_last_accessed ON llm_cache(last_accessed)"
-            )
-            conn.commit()
+        try:
+            with self._connect() as conn:
+                check_row = conn.execute("PRAGMA quick_check").fetchone()
+                if check_row and str(check_row[0]).lower() != "ok":
+                    raise sqlite3.DatabaseError(f"PRAGMA quick_check failed: {check_row[0]}")
+                self._create_schema(conn)
+        except sqlite3.DatabaseError as exc:
+            self.close()
+            self._quarantine_corrupt_db(exc)
+            with self._connect() as conn:
+                self._create_schema(conn)
         self._initialized = True
 
     @staticmethod
@@ -312,17 +393,16 @@ class SQLiteCacheBackend(CacheBackend):
             ).fetchone()
             if row is None:
                 return None
-            conn.execute(
-                "UPDATE llm_cache SET last_accessed = ? WHERE cache_key = ?",
-                (datetime.now(UTC).isoformat(), key),
-            )
-            conn.commit()
+            # Defer LRU timestamp write to next write/eviction transaction (zero write on read)
+            self._pending_touches[key] = datetime.now(UTC).isoformat()
             return self._row_to_entry(row)
 
     def _set_sync(self, key: str, value: CachedResponse) -> None:
         self._init_sync()
         now_iso = datetime.now(UTC).isoformat()
         with self._connect() as conn:
+            self._flush_touches_locked(conn)
+            self._pending_touches.pop(key, None)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO llm_cache (

@@ -640,8 +640,11 @@ class MLSecretDetector:
                 return str(
                     self.anonymizer.anonymize(text=text, analyzer_results=presidio_results).text
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Presidio anonymizer unavailable, falling back to span redact: %s",
+                    exc,
+                )
 
         redacted = text
         for finding in sorted(findings, key=lambda f: f.start, reverse=True):

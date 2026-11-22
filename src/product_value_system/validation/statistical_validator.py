@@ -7,6 +7,7 @@ distribution normality (Shapiro-Wilk / KS), and constant-value anomalies.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -66,10 +67,13 @@ class StatisticalValidator:
         metrics["mean"] = round(baseline.mean, 6)
         metrics["std"] = round(baseline.std, 6)
 
-        # 2. Constant / empty values check
+        # 2. Constant / empty / non-finite values check
         if baseline.sample_size == 0:
             errors.append("Baseline contains zero observations")
             suggestions.append("Verify telemetry query window and filters")
+        elif any(not math.isfinite(v) for v in baseline.values):
+            errors.append("Baseline contains non-finite (NaN/Inf) values")
+            suggestions.append("Filter out NaN/Inf telemetry points before baseline validation")
         elif len(set(baseline.values)) == 1:
             errors.append("All baseline values are identical (no variance)")
             suggestions.append("Verify metric is being collected correctly")

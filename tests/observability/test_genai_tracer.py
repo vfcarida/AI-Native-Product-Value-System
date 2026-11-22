@@ -571,3 +571,51 @@ async def test_harness_invoke_model_records_tool_calls_in_genai_span(
     assert len(tool_events) == 1
     assert dict(tool_events[0].attributes or {})["gen_ai.tool.name"] == "validate_baseline"
     provider.shutdown()
+
+
+@pytest.mark.unit
+def test_otel_genai_agents_sig_and_privacy_content_suppression(
+    isolated_genai_tracer: tuple[GenAITracer, trace.Tracer, InMemorySpanExporter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify invoke_agent/execute_tool spans, finish_reasons array, and opt-out capture."""
+    genai_tracer, _, exporter = isolated_genai_tracer
+
+    # 1. Agent + nested tool spans following OTel GenAI Agents SIG
+    with genai_tracer.trace_agent_invocation(
+        "discovery-agent", agent_id="disc-01", model="claude-3-5-sonnet-20241022"
+    ):
+        with genai_tracer.trace_tool_execution("search_kb", tool_call_id="call_42"):
+            pass
+
+    # 2. OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=false suppresses raw prompt/completion
+    monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "false")
+    with genai_tracer.trace_chat_completion(
+        operation_name="chat.private",
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Sensitive PII payload"}],
+    ) as span:
+        span.record_completion(
+            response_id="resp_priv",
+            completion="Private answer",
+            prompt_tokens=10,
+            completion_tokens=5,
+            finish_reason="stop",
+        )
+
+    spans = exporter.get_finished_spans()
+    tool_span, agent_span, chat_span = spans[0], spans[1], spans[2]
+    assert dict(tool_span.attributes or {})[GenAIAttributes.OPERATION_NAME] == "execute_tool"
+    assert dict(tool_span.attributes or {})[GenAIAttributes.TOOL_NAME] == "search_kb"
+    assert dict(tool_span.attributes or {})[GenAIAttributes.TOOL_CALL_ID] == "call_42"
+
+    assert dict(agent_span.attributes or {})[GenAIAttributes.OPERATION_NAME] == "invoke_agent"
+    assert dict(agent_span.attributes or {})[GenAIAttributes.GEN_AI_AGENT_NAME] == "discovery-agent"
+    assert dict(agent_span.attributes or {})[GenAIAttributes.GEN_AI_AGENT_ID] == "disc-01"
+
+    chat_attrs = dict(chat_span.attributes or {})
+    assert list(chat_attrs[GenAIAttributes.RESPONSE_FINISH_REASONS]) == ["stop"]
+    assert not any(
+        e.name in {GenAIEvents.CONTENT_PROMPT, GenAIEvents.CONTENT_COMPLETION}
+        for e in chat_span.events
+    )

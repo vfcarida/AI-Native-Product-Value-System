@@ -5,7 +5,7 @@
 
 ## Highlights Since v0.1.0
 
-1. **Complete Evolution Stack (`EVO-001`–`EVO-033`)**: Full multi-provider streaming (`OpenAI`, `Anthropic`, `Mock`), FinOps optimization (tiered semantic `PromptCache`, 6-feature `ModelRouter`, discounted `BatchEvaluationRunner`), `ParallelExecutor` DAG orchestration, zero-trust `iptables` sandbox egress allowlists, Hybrid ML secret detection, Git history forensics & Clauset-Newman-Moore Strangler Fig modernization, and non-punitive SPACE/DORA DevX telemetry.
+1. **Complete Evolution Stack (`EVO-001`–`EVO-033`)**: Full multi-provider streaming (`OpenAI`, `Anthropic`, `Mock`), FinOps optimization (tiered semantic `PromptCache`, 6-feature `ModelRouter`, discounted `BatchEvalRunner`), `ParallelExecutor` DAG orchestration, zero-trust `iptables` sandbox egress allowlists, Hybrid ML secret detection, Git history forensics & Clauset-Newman-Moore Strangler Fig modernization, and non-punitive SPACE/DORA DevX telemetry.
 2. **20-Round Continuous Architectural Hardening**:
    - **Contracts & Resilience**: 100% (`12/12`) strict Pydantic v2 validation for `config/*.yaml`, OWASP `*_FILE` secret expansion, AWS Builders' Library `CircuitBreaker` + `RetryTokenBucket` + full-jitter retries.
    - **Performance**: `14.6x` warm Cedar policy init via `(path, mtime_ns)` memoization; WAL-tuned SQLite persistence & cache backends with leak-free context-managed closing; reproducible benchmark harness (`docs/BENCHMARKS.md`).
@@ -81,8 +81,8 @@ The **AI-native Product Value System v0.1.0** is a reference implementation demo
 
 ```bash
 # Clone repository
-git clone https://github.com/<org>/ai-native-product-value-system.git
-cd ai-native-product-value-system
+git clone https://github.com/vfcarida/AI-Native-Product-Value-System.git
+cd AI-Native-Product-Value-System
 
 # Install dependencies
 pip install -e ".[dev]"

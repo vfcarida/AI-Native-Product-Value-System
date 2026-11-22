@@ -4,6 +4,8 @@ Cedar policy engine integration.
 
 import json
 import logging
+import math
+import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -56,12 +58,25 @@ class PolicyEngine:
 
     _POLICY_CACHE_LOCK = threading.Lock()
     _POLICY_CACHE: dict[tuple[str, int, str, int], tuple[str, str]] = {}
+    _CEDAR_BIN_CACHE: str | None = None
+    _CEDAR_BIN_PROBED: bool = False
 
     @classmethod
     def clear_policy_cache(cls) -> None:
-        """Clear the in-process mtime-keyed Cedar policy cache."""
+        """Clear the in-process mtime-keyed Cedar policy cache and binary lookup."""
         with cls._POLICY_CACHE_LOCK:
             cls._POLICY_CACHE.clear()
+            cls._CEDAR_BIN_CACHE = None
+            cls._CEDAR_BIN_PROBED = False
+
+    @classmethod
+    def _resolve_cedar_bin(cls) -> str | None:
+        """Resolve ``cedar`` CLI binary once per process (avoids PATH scans per init)."""
+        with cls._POLICY_CACHE_LOCK:
+            if not cls._CEDAR_BIN_PROBED:
+                cls._CEDAR_BIN_CACHE = shutil.which("cedar")
+                cls._CEDAR_BIN_PROBED = True
+            return cls._CEDAR_BIN_CACHE
 
     def __init__(
         self,
@@ -92,6 +107,7 @@ class PolicyEngine:
         if not self.policies_file.exists():
             raise FileNotFoundError(f"Policies not found: {self.policies_file}")
 
+        self._cedar_bin: str | None = self._resolve_cedar_bin()
         self._cache_hit: bool = False
         self._load_policies()
 
@@ -120,25 +136,28 @@ class PolicyEngine:
         if schema_exists:
             with open(self.schema_file, encoding="utf-8") as sf:
                 self._schema_text = sf.read()
-            try:
-                result = subprocess.run(
-                    [
-                        "cedar",
-                        "validate",
-                        "--schema",
-                        str(self.schema_file),
-                        "--policies",
-                        str(self.policies_file),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    logger.warning("Policy validation warnings: %s", result.stderr)
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                logger.debug("Cedar CLI not available, using internal schema and policy validation")
+            if self._cedar_bin is not None:
+                try:
+                    result = subprocess.run(
+                        [
+                            self._cedar_bin,
+                            "validate",
+                            "--schema",
+                            str(self.schema_file),
+                            "--policies",
+                            str(self.policies_file),
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if result.returncode != 0:
+                        logger.warning("Policy validation warnings: %s", result.stderr)
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    logger.debug(
+                        "Cedar CLI not available, using internal schema and policy validation"
+                    )
 
         with self._POLICY_CACHE_LOCK:
             self._POLICY_CACHE[cache_key] = (self._policies_text, self._schema_text)
@@ -227,9 +246,14 @@ class PolicyEngine:
             context_dict = context.to_cedar_context()
         else:
             cost_val = context.get("cost_so_far", Decimal("0.0"))
-            cost_float = (
-                float(cost_val) if isinstance(cost_val, (Decimal, int, float)) else 0.0
-            )
+            try:
+                cost_float = (
+                    float(cost_val)
+                    if isinstance(cost_val, (Decimal, int, float, str))
+                    else float("nan")
+                )
+            except (TypeError, ValueError):
+                cost_float = float("nan")
             context_dict = {
                 "environment": str(context.get("environment", "sandbox")),
                 "has_human_approval": bool(context.get("has_human_approval", False)),
@@ -264,32 +288,35 @@ class PolicyEngine:
         Uses Cedar CLI if available, otherwise executes deterministic
         Cedar policy evaluation rules matching policies/agent_authorization.cedar.
         """
-        try:
-            result = subprocess.run(
-                ["cedar", "authorize"],
-                input=json.dumps(
-                    {
-                        "policies": self._policies_text,
-                        "entities": [],
-                        "request": request,
-                    }
-                ),
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-
-            if result.returncode == 0:
-                response = json.loads(result.stdout)
-                return AuthorizationDecision(
-                    decision=Decision.ALLOW if response["decision"] == "Allow" else Decision.DENY,
-                    reason=response.get("reason", ""),
-                    policies_matched=response.get("policies", []),
-                    timestamp=datetime.now(UTC),
+        if self._cedar_bin is not None:
+            try:
+                result = subprocess.run(
+                    [self._cedar_bin, "authorize"],
+                    input=json.dumps(
+                        {
+                            "policies": self._policies_text,
+                            "entities": [],
+                            "request": request,
+                        }
+                    ),
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    check=False,
                 )
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
-            pass
+
+                if result.returncode == 0:
+                    response = json.loads(result.stdout)
+                    return AuthorizationDecision(
+                        decision=(
+                            Decision.ALLOW if response["decision"] == "Allow" else Decision.DENY
+                        ),
+                        reason=response.get("reason", ""),
+                        policies_matched=response.get("policies", []),
+                        timestamp=datetime.now(UTC),
+                    )
+            except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+                pass
 
         return self._fallback_evaluate(request)
 
@@ -317,8 +344,40 @@ class PolicyEngine:
         cost_so_far = context.get("cost_so_far", 0.0)
         iteration_count = context.get("iteration_count", 0)
 
+        # Fail-closed validation against NaN/Inf/negative numerical context attacks
+        if (
+            not isinstance(cost_so_far, (int, float))
+            or isinstance(cost_so_far, bool)
+            or not math.isfinite(cost_so_far)
+            or cost_so_far < 0
+        ):
+            return AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="Invalid or non-finite cost_so_far in authorization context",
+                policies_matched=["policy_forbid_invalid_context"],
+                timestamp=datetime.now(UTC),
+            )
+
+        if (
+            not isinstance(iteration_count, int)
+            or isinstance(iteration_count, bool)
+            or iteration_count < 0
+        ):
+            return AuthorizationDecision(
+                decision=Decision.DENY,
+                reason="Invalid negative iteration_count in authorization context",
+                policies_matched=["policy_forbid_invalid_context"],
+                timestamp=datetime.now(UTC),
+            )
+
         # Forbid checks first (Cedar forbid-overrides-permit semantics)
-        if cost_budget is not None and cost_so_far >= cost_budget:
+        if cost_budget is not None and (
+            not isinstance(cost_budget, (int, float))
+            or isinstance(cost_budget, bool)
+            or not math.isfinite(cost_budget)
+            or cost_budget <= 0
+            or cost_so_far >= cost_budget
+        ):
             return AuthorizationDecision(
                 decision=Decision.DENY,
                 reason="Cost budget exceeded for principal",

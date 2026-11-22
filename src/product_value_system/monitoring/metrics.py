@@ -393,8 +393,8 @@ def get_metrics() -> PVSMetrics:
             _GLOBAL_METRICS = PVSMetrics(register_global_prometheus=True)
             try:
                 otel_metrics.set_meter_provider(_GLOBAL_METRICS.meter_provider)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Global OTel meter provider already configured: %s", exc)
         return _GLOBAL_METRICS
 
 

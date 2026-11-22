@@ -10,6 +10,7 @@ Supports all 4 standard operation types:
 
 from __future__ import annotations
 
+import os
 import time
 from types import TracebackType
 from typing import Any
@@ -36,6 +37,16 @@ _OPTIONAL_REQUEST_PARAMS = {
 }
 
 
+def _resolve_capture_content(explicit: bool | None) -> bool:
+    """Honor explicit flag or official OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT."""
+    if explicit is not None:
+        return explicit
+    env_val = os.environ.get("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
+    if env_val is None:
+        return True
+    return env_val.strip().lower() not in {"false", "0", "no", "off"}
+
+
 class _BaseGenAISpan:
     """Shared lifecycle, error handling, and metric recording for GenAI spans."""
 
@@ -49,6 +60,7 @@ class _BaseGenAISpan:
         system: str | None = None,
         metrics: GenAIMetrics | None = None,
         sanitize_content: bool = False,
+        capture_message_content: bool | None = None,
     ) -> None:
         self.tracer = tracer
         self.operation_name = operation_name
@@ -57,6 +69,7 @@ class _BaseGenAISpan:
         self.system = system or infer_genai_system(model)
         self.metrics = metrics
         self.sanitize_content = sanitize_content
+        self.capture_message_content = _resolve_capture_content(capture_message_content)
         self.span: trace.Span | None = None
         self._ctx_token: object | None = None
         self._start_time: float = 0.0
@@ -117,6 +130,7 @@ class ChatCompletionSpan(_BaseGenAISpan):
         system: str | None = None,
         metrics: GenAIMetrics | None = None,
         sanitize_content: bool = False,
+        capture_message_content: bool | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -127,6 +141,7 @@ class ChatCompletionSpan(_BaseGenAISpan):
             system=system,
             metrics=metrics,
             sanitize_content=sanitize_content,
+            capture_message_content=capture_message_content,
         )
         self.messages = messages
         self.temperature = temperature
@@ -151,7 +166,7 @@ class ChatCompletionSpan(_BaseGenAISpan):
         return self
 
     def _record_prompt_event(self) -> None:
-        if self.span is None:
+        if self.span is None or not self.capture_message_content:
             return
         event_attrs: dict[str, Any] = {}
         for idx, msg in enumerate(self.messages):
@@ -180,6 +195,7 @@ class ChatCompletionSpan(_BaseGenAISpan):
         self.span.set_attribute(GenAIAttributes.RESPONSE_ID, response_id)
         self.span.set_attribute(GenAIAttributes.RESPONSE_MODEL, actual_model)
         self.span.set_attribute(GenAIAttributes.RESPONSE_FINISH_REASON, finish_reason)
+        self.span.set_attribute(GenAIAttributes.RESPONSE_FINISH_REASONS, [finish_reason])
         self.span.set_attribute(GenAIAttributes.USAGE_PROMPT_TOKENS, int(prompt_tokens))
         self.span.set_attribute(GenAIAttributes.USAGE_COMPLETION_TOKENS, int(completion_tokens))
         self.span.set_attribute(GenAIAttributes.USAGE_TOTAL_TOKENS, total_tokens)
@@ -192,10 +208,11 @@ class ChatCompletionSpan(_BaseGenAISpan):
         if tool_call_count is not None:
             self.span.set_attribute(GenAIAttributes.RESPONSE_TOOL_CALL_COUNT, int(tool_call_count))
 
-        self.span.add_event(
-            name=GenAIEvents.CONTENT_COMPLETION,
-            attributes={"gen_ai.completion": self._clean(completion)},
-        )
+        if self.capture_message_content:
+            self.span.add_event(
+                name=GenAIEvents.CONTENT_COMPLETION,
+                attributes={"gen_ai.completion": self._clean(completion)},
+            )
 
         if self.metrics is not None:
             self.metrics.record_token_usage(self.system, actual_model, "prompt", int(prompt_tokens))
@@ -446,8 +463,78 @@ class RerankSpan(_BaseGenAISpan):
                 self.metrics.record_cost(self.system, self.model, float(cost_usd))
 
 
+class AgentInvocationSpan(_BaseGenAISpan):
+    """Context manager for OTel GenAI Agents SIG ``invoke_agent`` operations."""
+
+    def __init__(
+        self,
+        tracer: trace.Tracer,
+        agent_name: str,
+        *,
+        agent_id: str | None = None,
+        model: str = "unknown",
+        system: str | None = None,
+        metrics: GenAIMetrics | None = None,
+    ) -> None:
+        super().__init__(
+            tracer=tracer,
+            operation_name=f"invoke_agent {agent_name}",
+            genai_operation=GenAIOperation.INVOKE_AGENT,
+            model=model,
+            system=system,
+            metrics=metrics,
+        )
+        self.agent_name = agent_name
+        self.agent_id = agent_id or agent_name
+
+    def __enter__(self) -> AgentInvocationSpan:
+        self._start_span(
+            {
+                GenAIAttributes.OPERATION_NAME: self.genai_operation.value,
+                GenAIAttributes.SYSTEM: self.system,
+                GenAIAttributes.REQUEST_MODEL: self.model,
+                GenAIAttributes.GEN_AI_AGENT_NAME: self.agent_name,
+                GenAIAttributes.GEN_AI_AGENT_ID: self.agent_id,
+            }
+        )
+        return self
+
+
+class ToolExecutionSpan(_BaseGenAISpan):
+    """Context manager for OTel GenAI Agents SIG ``execute_tool`` operations."""
+
+    def __init__(
+        self,
+        tracer: trace.Tracer,
+        tool_name: str,
+        *,
+        tool_call_id: str | None = None,
+        metrics: GenAIMetrics | None = None,
+    ) -> None:
+        super().__init__(
+            tracer=tracer,
+            operation_name=f"execute_tool {tool_name}",
+            genai_operation=GenAIOperation.EXECUTE_TOOL,
+            model="tool",
+            system="pvs",
+            metrics=metrics,
+        )
+        self.tool_name = tool_name
+        self.tool_call_id = tool_call_id
+
+    def __enter__(self) -> ToolExecutionSpan:
+        attrs: dict[str, Any] = {
+            GenAIAttributes.OPERATION_NAME: self.genai_operation.value,
+            GenAIAttributes.TOOL_NAME: self.tool_name,
+        }
+        if self.tool_call_id:
+            attrs[GenAIAttributes.TOOL_CALL_ID] = self.tool_call_id
+        self._start_span(attrs)
+        return self
+
+
 class GenAITracer:
-    """High-level OpenTelemetry tracer compliant with GenAI v1.28+ semantic conventions."""
+    """High-level OpenTelemetry tracer compliant with GenAI v1.28–v1.30+ semantic conventions."""
 
     def __init__(
         self,
@@ -455,10 +542,12 @@ class GenAITracer:
         *,
         metrics: GenAIMetrics | None = None,
         sanitize_content: bool = False,
+        capture_message_content: bool | None = None,
     ) -> None:
         self.tracer = tracer or trace.get_tracer("product_value_system.observability.genai")
         self.metrics = metrics
         self.sanitize_content = sanitize_content
+        self.capture_message_content = capture_message_content
 
     def trace_chat_completion(
         self,
@@ -482,6 +571,7 @@ class GenAITracer:
             system=system,
             metrics=self.metrics,
             sanitize_content=self.sanitize_content,
+            capture_message_content=self.capture_message_content,
             **kwargs,
         )
 
@@ -550,4 +640,36 @@ class GenAITracer:
             system=system,
             metrics=self.metrics,
             sanitize_content=self.sanitize_content,
+        )
+
+    def trace_agent_invocation(
+        self,
+        agent_name: str,
+        *,
+        agent_id: str | None = None,
+        model: str = "unknown",
+        system: str | None = None,
+    ) -> AgentInvocationSpan:
+        """Trace an agent execution (``gen_ai.operation.name = 'invoke_agent'``)."""
+        return AgentInvocationSpan(
+            tracer=self.tracer,
+            agent_name=agent_name,
+            agent_id=agent_id,
+            model=model,
+            system=system,
+            metrics=self.metrics,
+        )
+
+    def trace_tool_execution(
+        self,
+        tool_name: str,
+        *,
+        tool_call_id: str | None = None,
+    ) -> ToolExecutionSpan:
+        """Trace a tool execution (``gen_ai.operation.name = 'execute_tool'``)."""
+        return ToolExecutionSpan(
+            tracer=self.tracer,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            metrics=self.metrics,
         )

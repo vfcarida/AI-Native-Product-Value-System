@@ -15,6 +15,7 @@ import ast
 from pathlib import Path
 
 import httpx
+import pytest
 
 from product_value_system.api.health import create_app
 from product_value_system.feature_flags.admin_ui import create_admin_app
@@ -63,13 +64,13 @@ def test_ast_zero_unsafe_subprocess_yaml_eval_or_pickle_in_src() -> None:
 
 
 def test_http_auth_endpoints_use_constant_time_compare_digest() -> None:
-    """Verify both health and admin FastAPI apps use hmac.compare_digest for API keys."""
-    for rel_path in (
-        "src/product_value_system/api/health.py",
-        "src/product_value_system/feature_flags/admin_ui.py",
-    ):
-        text = (REPO_ROOT / rel_path).read_text(encoding="utf-8")
-        assert "hmac.compare_digest" in text, f"{rel_path} must use hmac.compare_digest"
+    """Verify HTTP auth uses shared constant-time hmac.compare_digest helper."""
+    health_text = (REPO_ROOT / "src/product_value_system/api/health.py").read_text(encoding="utf-8")
+    admin_text = (REPO_ROOT / "src/product_value_system/feature_flags/admin_ui.py").read_text(
+        encoding="utf-8"
+    )
+    assert "hmac.compare_digest" in health_text
+    assert "verify_api_key" in admin_text
 
 
 async def test_health_and_admin_apps_enforce_security_headers_and_auth() -> None:
@@ -107,3 +108,75 @@ async def test_health_and_admin_apps_enforce_security_headers_and_auth() -> None
 
         denied = await client.post("/admin/flags/missing/toggle")
         assert denied.status_code == 401
+
+
+@pytest.mark.security
+def test_spec_scanner_regex_resists_redos_backtracking() -> None:
+    """Adversarial 10KB ReDoS payload must evaluate in linear time (< 50ms, was 4004ms)."""
+    import time
+
+    from product_value_system.drift.spec_scanner import _ERROR_RATE_RE, _LATENCY_RANGE_RE
+
+    payload = "a" * 5000 + " latency " + "b" * 5000
+    t0 = time.perf_counter()
+    assert _LATENCY_RANGE_RE.findall(payload) == []
+    assert _ERROR_RATE_RE.findall("error rate " + " " * 5000 + "x") == []
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    assert elapsed_ms < 50.0, f"Potential ReDoS regression: took {elapsed_ms:.2f}ms"
+
+
+@pytest.mark.security
+def test_acl_generator_neutralizes_code_injection_and_path_traversal(tmp_path: Path) -> None:
+    """Hostile module names cannot inject Python code; file_paths cannot escape repo_path."""
+    from product_value_system.brownfield.acl_generator import ACLGenerator
+    from product_value_system.brownfield.boundary_analyzer import Module
+
+    outside_py = tmp_path / "secret_outside.py"
+    outside_py.write_text("def leak_credentials():\n    return 'top-secret'\n", encoding="utf-8")
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+
+    evil_mod = Module(
+        name='billing{__import__("os").system("echo PWNED")}" + str(1)',
+        file_paths=["../secret_outside.py"],
+        lines_of_code=50,
+    )
+    gen = ACLGenerator()
+    code = gen.generate(evil_mod, repo_path=repo_dir)
+
+    tree = ast.parse(code)  # Strictly valid Python syntax without injected statements
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    called_attrs = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "__import__" not in called_names
+    assert "system" not in called_attrs
+    assert "leak_credentials" not in code
+
+
+@pytest.mark.security
+@pytest.mark.asyncio
+async def test_admin_ui_html_escapes_xss_payloads() -> None:
+    """Feature flag names and descriptions with HTML/JS payloads must be escaped."""
+    from product_value_system.feature_flags.models import FeatureFlag, FlagType
+
+    xss_flag = FeatureFlag(
+        name="safe_flag",
+        description='<script>alert("xss")</script>',
+        type=FlagType.RELEASE,
+        enabled=True,
+    )
+    admin_app = create_admin_app(flag_service=FeatureFlagService(flags={"safe_flag": xss_flag}))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=admin_app), base_url="http://test"
+    ) as client:
+        resp = await client.get("/admin/flags/safe_flag")
+        assert resp.status_code == 200
+        assert "<script>alert(" not in resp.text
+        assert "&lt;script&gt;alert(" in resp.text
