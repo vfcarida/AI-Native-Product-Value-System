@@ -1,0 +1,33 @@
+# Evaluation Pipeline & Batch API Configuration (EVO-027)
+# Controls automatic switching between fast real-time evaluation (PR / smoke tests)
+# and discounted asynchronous batch evaluation (nightly / full golden datasets).
+# No credentials are stored here; provider adapters read OPENAI_API_KEY / ANTHROPIC_API_KEY
+# from the environment at runtime.
+
+evaluation:
+  batch_mode:
+    # Set to false for instant rollback to 100% real-time evaluation
+    enabled: true
+
+    # Provider: 'openai' (50% batch discount, 24h SLA) or 'anthropic' (30% discount)
+    provider: openai
+
+    # Maximum evaluation samples per JSONL batch file
+    batch_size: 50
+
+    # Maximum concurrent batch jobs submitted in parallel
+    max_concurrent_batches: 10
+
+    # Polling configuration
+    poll_interval_seconds: 60
+    max_poll_duration_seconds: 86400  # 24 hours
+
+    # Automatic fallback to real-time judging when a batch fails or expires
+    fallback_to_realtime: true
+
+    # Hybrid execution strategy: datasets strictly smaller than this threshold
+    # run in real-time for low-latency feedback; larger datasets run via Batch API.
+    realtime_threshold_samples: 10
+
+    # Compute and attach real-time vs. batch cost savings to EvalRunSummary
+    track_savings: true

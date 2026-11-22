@@ -19,6 +19,17 @@ from product_value_system.learning.measurement_agent import MeasurementAgent
 from product_value_system.learning.outcome_tracker import OutcomeTracker
 from product_value_system.observability.tracing import set_run_context, trace_span
 from product_value_system.orchestrator.checkpoints import CheckpointManager
+from product_value_system.orchestrator.conflict_resolver import ConflictResolver
+from product_value_system.orchestrator.dependency_graph import (
+    AgentDefinition,
+    DependencyGraph,
+    ResourceRequirements,
+)
+from product_value_system.orchestrator.parallel_executor import (
+    ParallelExecutionSummary,
+    ParallelExecutor,
+)
+from product_value_system.orchestrator.resource_manager import ResourceManager
 from product_value_system.orchestrator.state_machine import (
     RunStatus,
     StageResult,
@@ -27,6 +38,12 @@ from product_value_system.orchestrator.state_machine import (
     ValueStreamStateMachine,
 )
 from product_value_system.policy.engine import PolicyEngine
+
+
+def load_orchestrator_config(path: Path | str) -> dict[str, Any]:
+    """Load orchestrator YAML configuration (e.g., ``config/orchestrator.yaml``)."""
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return dict(raw) if isinstance(raw, dict) else {}
 
 
 class OrchestratorError(Exception):
@@ -54,6 +71,9 @@ class ValueStreamOrchestrator:
         review_orchestrator: Any | None = None,
         feature_flag_service: Any | None = None,
         experiment_design_agent: Any | None = None,
+        parallel_config: dict[str, Any] | Path | str | None = None,
+        enable_parallel_execution: bool | None = None,
+        parallel_executor: ParallelExecutor | None = None,
     ) -> None:
         """
         Initialize orchestrator.
@@ -96,6 +116,107 @@ class ValueStreamOrchestrator:
         self.feedback_loop: FeedbackLoop | None = feedback_loop or (
             FeedbackLoop(self.outcome_tracker) if self.outcome_tracker is not None else None
         )
+
+        # EVO-028: Parallel execution configuration and engine
+        raw_p_cfg: dict[str, Any] = {}
+        if isinstance(parallel_config, (Path, str)):
+            raw_p_cfg = load_orchestrator_config(parallel_config)
+        elif isinstance(parallel_config, dict):
+            raw_p_cfg = dict(parallel_config)
+        orch_cfg = raw_p_cfg.get("orchestrator", raw_p_cfg)
+        pe_cfg = orch_cfg.get("parallel_execution", {}) if isinstance(orch_cfg, dict) else {}
+
+        if enable_parallel_execution is not None:
+            self.parallel_enabled = bool(enable_parallel_execution)
+        elif "enabled" in pe_cfg:
+            self.parallel_enabled = bool(pe_cfg["enabled"])
+        else:
+            self.parallel_enabled = parallel_executor is not None
+
+        self.resource_manager = (
+            parallel_executor.resource_manager
+            if parallel_executor is not None
+            else ResourceManager(
+                max_concurrent_llm_calls=int(pe_cfg.get("max_concurrent_llm_calls", 10)),
+                max_memory_mb=int(pe_cfg.get("memory_limit_mb", 2000)),
+                llm_rate_limit_per_minute=int(pe_cfg.get("llm_rate_limit_per_minute", 100)),
+            )
+        )
+        self.conflict_resolver = (
+            parallel_executor.conflict_resolver
+            if parallel_executor is not None
+            else ConflictResolver(
+                strategy=str(pe_cfg.get("conflict_strategy", "merge")),
+            )
+        )
+        self.parallel_executor = parallel_executor or ParallelExecutor(
+            resource_manager=self.resource_manager,
+            conflict_resolver=self.conflict_resolver,
+            max_concurrent=int(pe_cfg.get("max_concurrent_agents", 5)),
+            fallback_to_sequential=bool(pe_cfg.get("fallback_to_sequential", True)),
+            enabled=True,
+        )
+        self.last_parallel_summary: ParallelExecutionSummary | None = None
+
+    def build_dependency_graph(
+        self,
+        *,
+        parallel_build_with_review: bool = False,
+    ) -> DependencyGraph:
+        """Build the value stream DAG exposing parallelizable review & build stages."""
+        dag = DependencyGraph()
+        dag.add_agent(AgentDefinition(name="problem_analysis", depends_on=[]))
+        dag.add_agent(
+            AgentDefinition(name="outcome_hypothesis", depends_on=["problem_analysis"])
+        )
+        dag.add_agent(AgentDefinition(name="discovery", depends_on=["outcome_hypothesis"]))
+        dag.add_agent(AgentDefinition(name="decision_gate", depends_on=["discovery"]))
+        dag.add_agent(AgentDefinition(name="specification", depends_on=["decision_gate"]))
+
+        review_stages = ["review_architecture", "review_security"]
+        for extra in ("review_performance", "review_maintainability"):
+            if extra in self.agents:
+                review_stages.append(extra)
+
+        for idx, rev_stage in enumerate(review_stages):
+            dag.add_agent(
+                AgentDefinition(
+                    name=rev_stage,
+                    depends_on=["specification"],
+                    output_type="review",
+                    priority=len(review_stages) - idx,
+                    resource_requirements=ResourceRequirements(memory_mb=256, llm_calls=1),
+                )
+            )
+
+        if parallel_build_with_review:
+            dag.add_agent(AgentDefinition(name="build", depends_on=["specification"]))
+            dag.add_agent(
+                AgentDefinition(name="quality_gate", depends_on=["build", *review_stages])
+            )
+        else:
+            dag.add_agent(AgentDefinition(name="build", depends_on=list(review_stages)))
+            dag.add_agent(AgentDefinition(name="quality_gate", depends_on=["build"]))
+
+        dag.add_agent(AgentDefinition(name="release_decision", depends_on=["quality_gate"]))
+        dag.validate()
+        return dag
+
+    async def execute_parallel_agents(
+        self,
+        dependency_graph: DependencyGraph,
+        initial_inputs: dict[str, Any],
+        agent_registry: dict[str, Any] | None = None,
+    ) -> ParallelExecutionSummary:
+        """Execute an arbitrary agent DAG using this orchestrator's parallel executor."""
+        registry = agent_registry if agent_registry is not None else self.agents
+        summary = await self.parallel_executor.execute_with_summary(
+            dependency_graph=dependency_graph,
+            initial_inputs=initial_inputs,
+            agent_registry=registry,
+        )
+        self.last_parallel_summary = summary
+        return summary
 
     def _emit_event(
         self,
@@ -208,65 +329,78 @@ class ValueStreamOrchestrator:
                     f"({kill_eval.reason})"
                 )
 
-            while True:
-                next_stage = state_machine.get_next_stage()
-                if not next_stage:
-                    break
-
-                run.current_stage = next_stage
-                self._emit_event("stage.started", run.id, {"stage": next_stage})
-
-                stage_result = await self._execute_stage(
-                    stage_name=next_stage,
+            use_parallel = bool(
+                config.get("enable_parallel_execution", self.parallel_enabled)
+            )
+            if use_parallel:
+                cancelled = await self._execute_run_parallel_layers(
                     run=run,
                     problem=problem,
                     config=config,
+                    metrics=metrics,
                 )
+                if cancelled:
+                    return run
+            else:
+                while True:
+                    next_stage = state_machine.get_next_stage()
+                    if not next_stage:
+                        break
 
-                run.add_stage_result(stage_result)
-                self.checkpoint_manager.save_checkpoint(run)
+                    run.current_stage = next_stage
+                    self._emit_event("stage.started", run.id, {"stage": next_stage})
 
-                if stage_result.status == StageStatus.FAILED:
-                    metrics.record_agent_execution(
-                        agent=stage_result.agent_name or next_stage,
-                        status="error",
-                        cost_usd=stage_result.cost_usd,
+                    stage_result = await self._execute_stage(
+                        stage_name=next_stage,
+                        run=run,
+                        problem=problem,
+                        config=config,
                     )
-                    self._emit_event(
-                        "stage.failed",
-                        run.id,
-                        {"stage": next_stage, "error": stage_result.error},
-                    )
-                    run.status = RunStatus.FAILED
-                    run.completed_at = datetime.now(UTC)
+
+                    run.add_stage_result(stage_result)
                     self.checkpoint_manager.save_checkpoint(run)
-                    raise OrchestratorError(
-                        f"Stage {next_stage} failed: {stage_result.error}"
-                    )
 
-                metrics.record_agent_execution(
-                    agent=stage_result.agent_name or next_stage,
-                    status="success",
-                    cost_usd=stage_result.cost_usd,
-                )
-                self._emit_event("stage.completed", run.id, {"stage": next_stage})
-
-                if next_stage == "decision_gate" and config.get("require_human_approval"):
-                    run.status = RunStatus.WAITING_APPROVAL
-                    self._emit_event(
-                        "approval.requested", run.id, {"stage": next_stage}
-                    )
-                    self.checkpoint_manager.save_checkpoint(run)
-                    if config.get("human_approved", True) is False:
-                        self._emit_event(
-                            "approval.denied", run.id, {"stage": next_stage}
+                    if stage_result.status == StageStatus.FAILED:
+                        metrics.record_agent_execution(
+                            agent=stage_result.agent_name or next_stage,
+                            status="error",
+                            cost_usd=stage_result.cost_usd,
                         )
-                        run.status = RunStatus.CANCELLED
+                        self._emit_event(
+                            "stage.failed",
+                            run.id,
+                            {"stage": next_stage, "error": stage_result.error},
+                        )
+                        run.status = RunStatus.FAILED
                         run.completed_at = datetime.now(UTC)
                         self.checkpoint_manager.save_checkpoint(run)
-                        return run
-                    self._emit_event("approval.granted", run.id, {"stage": next_stage})
-                    run.status = RunStatus.RUNNING
+                        raise OrchestratorError(
+                            f"Stage {next_stage} failed: {stage_result.error}"
+                        )
+
+                    metrics.record_agent_execution(
+                        agent=stage_result.agent_name or next_stage,
+                        status="success",
+                        cost_usd=stage_result.cost_usd,
+                    )
+                    self._emit_event("stage.completed", run.id, {"stage": next_stage})
+
+                    if next_stage == "decision_gate" and config.get("require_human_approval"):
+                        run.status = RunStatus.WAITING_APPROVAL
+                        self._emit_event(
+                            "approval.requested", run.id, {"stage": next_stage}
+                        )
+                        self.checkpoint_manager.save_checkpoint(run)
+                        if config.get("human_approved", True) is False:
+                            self._emit_event(
+                                "approval.denied", run.id, {"stage": next_stage}
+                            )
+                            run.status = RunStatus.CANCELLED
+                            run.completed_at = datetime.now(UTC)
+                            self.checkpoint_manager.save_checkpoint(run)
+                            return run
+                        self._emit_event("approval.granted", run.id, {"stage": next_stage})
+                        run.status = RunStatus.RUNNING
 
             outcome_achieved = True
             if config.get("enable_measurement", False):
@@ -309,6 +443,143 @@ class ValueStreamOrchestrator:
             raise
         finally:
             metrics.track_active_run(-1)
+
+    async def _execute_run_parallel_layers(
+        self,
+        *,
+        run: ValueStreamRun,
+        problem: dict[str, Any],
+        config: dict[str, Any],
+        metrics: Any,
+    ) -> bool:
+        """Execute value stream stages layer-by-layer using ``ParallelExecutor`` (EVO-028).
+
+        Returns True if the run was cancelled at the human approval gate.
+        """
+        dag = self.build_dependency_graph(
+            parallel_build_with_review=bool(config.get("parallel_build_with_review", False))
+        )
+        layers = dag.get_execution_layers()
+
+        for layer in layers:
+            for stage_name in layer.agents:
+                self._emit_event("stage.started", run.id, {"stage": stage_name})
+
+            if len(layer.agents) == 1:
+                stage_name = layer.agents[0]
+                run.current_stage = stage_name
+                stage_results = {
+                    stage_name: await self._execute_stage(
+                        stage_name=stage_name,
+                        run=run,
+                        problem=problem,
+                        config=config,
+                    )
+                }
+            else:
+                layer_dag = DependencyGraph()
+                stage_runners: dict[str, Any] = {}
+                for stage_name in layer.agents:
+                    base_def = dag.agents[stage_name]
+                    layer_dag.add_agent(
+                        AgentDefinition(
+                            name=stage_name,
+                            depends_on=[],
+                            output_type=base_def.output_type,
+                            priority=base_def.priority,
+                            resource_requirements=base_def.resource_requirements,
+                        )
+                    )
+
+                    async def _run_stage(_inputs: dict[str, Any], st: str = stage_name) -> Any:
+                        return await self._execute_stage(
+                            stage_name=st,
+                            run=run,
+                            problem=problem,
+                            config=config,
+                        )
+
+                    stage_runners[stage_name] = _run_stage
+
+                summary = await self.parallel_executor.execute_with_summary(
+                    dependency_graph=layer_dag,
+                    initial_inputs={"problem": problem},
+                    agent_registry=stage_runners,
+                )
+                self.last_parallel_summary = summary
+                self._emit_event(
+                    "layer.parallel_completed",
+                    run.id,
+                    {
+                        "layer_number": layer.layer_number,
+                        "stages": list(layer.agents),
+                        "speedup": round(summary.speedup, 4),
+                        "peak_concurrent_agents": summary.peak_concurrent_agents,
+                    },
+                )
+                stage_results = {}
+                for stage_name in layer.agents:
+                    exec_res = summary.results[stage_name]
+                    if isinstance(exec_res.output, StageResult):
+                        stage_results[stage_name] = exec_res.output
+                    else:
+                        stage_results[stage_name] = StageResult(
+                            stage_name=stage_name,
+                            status=StageStatus.FAILED,
+                            started_at=datetime.now(UTC),
+                            completed_at=datetime.now(UTC),
+                            error=str(exec_res.error or "Parallel stage execution failed"),
+                        )
+
+            failed_stage: tuple[str, StageResult] | None = None
+            for stage_name in layer.agents:
+                sr = stage_results[stage_name]
+                run.current_stage = stage_name
+                run.add_stage_result(sr)
+                if sr.status == StageStatus.FAILED:
+                    metrics.record_agent_execution(
+                        agent=sr.agent_name or stage_name,
+                        status="error",
+                        cost_usd=sr.cost_usd,
+                    )
+                    self._emit_event(
+                        "stage.failed",
+                        run.id,
+                        {"stage": stage_name, "error": sr.error},
+                    )
+                    if failed_stage is None:
+                        failed_stage = (stage_name, sr)
+                else:
+                    metrics.record_agent_execution(
+                        agent=sr.agent_name or stage_name,
+                        status="success",
+                        cost_usd=sr.cost_usd,
+                    )
+                    self._emit_event("stage.completed", run.id, {"stage": stage_name})
+
+            self.checkpoint_manager.save_checkpoint(run)
+
+            if failed_stage is not None:
+                f_name, f_res = failed_stage
+                run.status = RunStatus.FAILED
+                run.completed_at = datetime.now(UTC)
+                self.checkpoint_manager.save_checkpoint(run)
+                raise OrchestratorError(f"Stage {f_name} failed: {f_res.error}")
+
+            if "decision_gate" in layer.agents and config.get("require_human_approval"):
+                run.status = RunStatus.WAITING_APPROVAL
+                self._emit_event("approval.requested", run.id, {"stage": "decision_gate"})
+                self.checkpoint_manager.save_checkpoint(run)
+                if config.get("human_approved", True) is False:
+                    self._emit_event("approval.denied", run.id, {"stage": "decision_gate"})
+                    run.status = RunStatus.CANCELLED
+                    run.completed_at = datetime.now(UTC)
+                    self.checkpoint_manager.save_checkpoint(run)
+                    return True
+                self._emit_event("approval.granted", run.id, {"stage": "decision_gate"})
+                run.status = RunStatus.RUNNING
+
+        return False
 
     async def _invoke_agent(
         self,
@@ -564,6 +835,28 @@ class ValueStreamOrchestrator:
                         if output_artifact.get("verdict") == "reject":
                             raise OrchestratorError("Security review rejected specification")
                     stage_result.status = StageStatus.COMPLETED
+
+            elif stage_name in {"review_performance", "review_maintainability"}:
+                agent = self.agents.get(stage_name)
+                if agent:
+                    spec_stage = run.get_stage("specification")
+                    if not spec_stage or not spec_stage.artifact_path:
+                        raise OrchestratorError("Specification artifact missing")
+                    spec = await self._load_artifact(spec_stage.artifact_path)
+                    output_artifact, cost_usd = await self._invoke_agent(
+                        agent, spec, stage_name, run.id
+                    )
+                    artifact_path = await self._save_artifact(
+                        run.artifact_dir,
+                        f"{stage_name}.yaml",
+                        output_artifact,
+                    )
+                    stage_result.artifact_path = artifact_path
+                    stage_result.agent_name = getattr(agent, "name", f"{stage_name}-agent")
+                    stage_result.cost_usd = cost_usd
+                    if output_artifact.get("verdict") == "reject":
+                        raise OrchestratorError(f"{stage_name} rejected specification")
+                stage_result.status = StageStatus.COMPLETED
 
             elif stage_name == "build":
                 agent = self.agents.get("build")

@@ -55,5 +55,6 @@ ENV/
 # Artifacts
 artifacts/
 runs/
+.cache/
 *.db
 *.sqlite

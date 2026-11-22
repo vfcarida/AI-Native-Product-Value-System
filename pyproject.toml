@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-api>=1.25.0",
     "opentelemetry-sdk>=1.25.0",
     "opentelemetry-exporter-otlp>=1.25.0",
+    "networkx>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,7 @@ eval = [
     "scipy>=1.11",
     "jsonschema>=4.0",
     "inquirer>=3.1.0",
+    "aiofiles>=23.2.0",
 ]
 monitoring = [
     "fastapi>=0.110",

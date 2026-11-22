@@ -27,8 +27,8 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Synthetic Customer Simulation**: Optional TinyTroupe-powered persona simulation (`TinyTroupeAdapter`, `PersonaFactory`, `PopulationGenerator`, `SimulationValidator`, `ScenarioRunner`) integrated into `DiscoveryAgent` and `pvs run-simulation`
 - ✅ **6-Stage AI Agent Pipeline + Multi-Agent Independent Review**: Discovery → Specification → Parallel 4-Perspective Review (Security, Performance, Maintainability, Architecture via Elephant-Goldfish pattern & conflict-resolving `ReviewSynthesizer`) → Build → Learn (`MeasurementAgent`)
 - ✅ **Outcome Measurement & Feedback Loops**: Production metric adapters (SQLite/SQLAlchemy, Prometheus, Mock), statistical significance & guardrail evaluation (`OutcomeTracker`), cost-to-outcome attribution (`CostAttributor`), regression alerting (`FeedbackLoop`), and `pvs measure-outcome` CLI
-- ✅ **Evaluation Framework, Golden Datasets & Trajectory Evaluation**: Multi-judge quality gates (`SchemaValidationJudge`, `RubricComplianceJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, plus 4 trajectory judges), 180 curated HELM-structured golden samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture` & `TrajectoryEvaluator`, `RegressionEvaluator` baseline drift detection, `pvs eval --with-trajectories`, and CI eval gates (`.github/workflows/eval-gate.yml`)
-- ✅ **Value Stream Orchestrator & Persistence**: State-machine orchestration with checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
+- ✅ **Evaluation Framework, Golden Datasets, Trajectory & Batch Evaluations**: Multi-judge quality gates (`SchemaValidationJudge`, `RubricComplianceJudge`, `PythonSyntaxJudge`, `TestCoverageJudge`, `CompletenessJudge`, `ClarityJudge`, plus 4 trajectory judges), 180 curated HELM-structured golden samples (`golden_datasets/`), 25 exemplar golden trajectories (`golden_datasets/trajectories/`), `TrajectoryCapture` & `TrajectoryEvaluator`, `RegressionEvaluator` baseline drift detection, discounted OpenAI (50%) & Anthropic (30%) batch evaluations (`BatchEvalRunner`, `EvalRunner`, `BatchPoller`, `config/evaluation.yaml`), `pvs eval --with-trajectories`, and CI eval gates (`.github/workflows/eval-gate.yml`)
+- ✅ **Value Stream Orchestrator, Parallel Execution & Persistence**: State-machine orchestration with DAG-based parallel agent execution (`DependencyGraph`, `ParallelExecutor`, `ResourceManager`, `ConflictResolver`, `config/orchestrator.yaml`), checkpoints, SQLite persistence (`pvs.db`), and `pvs` CLI
 
 ### Infrastructure & Security
 - ✅ **Docker Sandbox Isolation**: Isolated container execution (`pvs/agent-sandbox:latest`) running as non-root (`UID 1000`), with dropped Linux capabilities, memory/CPU/PID limits, and network isolation
@@ -230,6 +230,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Cost Management](docs/COST_MANAGEMENT.md)** — Per-run/daily/monthly budget guards and emergency stop
 - **[LLM Token Caching Guide](docs/token-caching.md)** — Exact & semantic prompt caching, Memory/SQLite/Redis/Tiered backends, TTL, model invalidation, and `config/caching.yaml`
 - **[Model Routing Guide](docs/model-routing.md)** — Complexity classification, cost-sorted model tiers, quality validation & automatic fallback, shadow/rollback modes, and `config/routing.yaml`
+- **[Batch Evaluations Guide](docs/batch-evaluations.md)** — OpenAI (50% discount) & Anthropic (30% discount) Batch APIs, hybrid real-time/batch `EvalRunner`, polling, automatic fallback, and `config/evaluation.yaml`
+- **[Parallel Agent Execution Guide](docs/parallel-execution.md)** — NetworkX DAG scheduling, `ParallelExecutor`, `ResourceManager` concurrency/memory/RPM guards, `ConflictResolver`, Mermaid visualization, and `config/orchestrator.yaml`
 - **[Secret Management](docs/SECRET_MANAGEMENT.md)** — Secret scanning and redaction controls
 
 ---
@@ -297,6 +299,8 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 ### v1.0 — Production Grade
 - ✅ LLM token & semantic prompt caching (`Memory`/`SQLite`/`Redis`/`Tiered`, EVO-025)
 - ✅ Complexity-based model routing, quality validation & automatic fallback (EVO-026)
+- ✅ Discounted batch evaluations for OpenAI & Anthropic Batch APIs (EVO-027)
+- ✅ DAG-based parallel agent execution, resource throttling & conflict resolution (EVO-028)
 - ✅ Hybrid ML + regex secret detection (Microsoft Presidio + entropy/Base64 classifier, EVO-024)
 - 📋 Google Gemini, Azure OpenAI, and local (Ollama/vLLM) model adapters
 - 📋 Brownfield Git history analysis & Strangler Fig modernization (EVO-030, EVO-031)

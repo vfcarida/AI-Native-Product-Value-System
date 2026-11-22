@@ -1,0 +1,22 @@
+# Orchestrator Parallel Agent Execution Configuration (EVO-028)
+# Controls DAG-based parallel execution of independent value stream stages and agents.
+# Set enabled: false for instant rollback to strictly sequential execution.
+
+orchestrator:
+  parallel_execution:
+    enabled: true
+
+    # Concurrency limits
+    max_concurrent_agents: 5       # Maximum agents running simultaneously per layer
+    max_concurrent_llm_calls: 10   # Maximum concurrent LLM calls across all agents
+
+    # Resource management
+    llm_rate_limit_per_minute: 100 # Sliding-window RPM guard to prevent API 429s
+    memory_limit_mb: 2000          # Aggregate memory budget across parallel agents
+
+    # Conflict resolution strategy when parallel agents emit the same output type:
+    # 'merge' (deep merge + conservative verdict), 'priority' (highest priority wins), 'manual'
+    conflict_strategy: merge
+
+    # Automatic fallback to sequential execution on parallel orchestration errors
+    fallback_to_sequential: true
