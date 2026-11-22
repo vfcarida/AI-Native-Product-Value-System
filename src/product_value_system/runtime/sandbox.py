@@ -5,7 +5,7 @@ Sandbox provider protocol and types.
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 class SandboxStatus(str, Enum):
@@ -30,6 +30,9 @@ class SandboxConfig:
     network_enabled: bool = True
     network_mode: str | None = None
     allowed_hosts: list[str] = field(default_factory=list)  # Allowlist for network egress
+    network_filtering_enabled: bool | None = None
+    network_allowlist: list[dict[str, Any]] = field(default_factory=list)
+    fallback_on_filter_error: bool = True
 
 
 @dataclass

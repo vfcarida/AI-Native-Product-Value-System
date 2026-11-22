@@ -1,0 +1,57 @@
+# Docker Sandbox Network Egress Filtering Configuration (EVO-029)
+# Zero-trust outbound policy: deny all egress traffic by default and permit
+# only explicitly allowlisted LLM APIs, package registries, DNS, and localhost.
+# Set filtering_enabled: false for instant rollback to standard Docker networking.
+
+sandbox:
+  network:
+    filtering_enabled: true
+    mode: allowlist  # 'allowlist' (default, recommended) or 'denylist'
+
+    # DNS resolution cache & retry settings
+    dns_cache_ttl_seconds: 300
+    dns_resolve_retries: 2
+
+    # Allowlist (only these destinations are permitted in allowlist mode)
+    allowlist:
+      # LLM APIs
+      - domain: api.openai.com
+        port: 443
+        protocol: tcp
+      - domain: api.anthropic.com
+        port: 443
+        protocol: tcp
+      - domain: generativelanguage.googleapis.com
+        port: 443
+        protocol: tcp
+
+      # Package registries (for Build Agent)
+      - domain: pypi.org
+        port: 443
+        protocol: tcp
+      - domain: files.pythonhosted.org
+        port: 443
+        protocol: tcp
+      - domain: registry.npmjs.org
+        port: 443
+        protocol: tcp
+
+      # DNS resolvers
+      - ip: 8.8.8.8
+        port: 53
+        protocol: udp
+      - ip: 1.1.1.1
+        port: 53
+        protocol: udp
+
+      # Localhost (always permitted for harness communication)
+      - ip: 127.0.0.1
+        port: any
+        protocol: any
+
+    # Blocked connection logging
+    log_blocked_connections: true
+    log_path: /var/log/sandbox_network_blocks.log
+
+    # Graceful degradation on non-Linux hosts or environments without NET_ADMIN/iptables
+    fallback_on_error: true

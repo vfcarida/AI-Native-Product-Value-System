@@ -20,6 +20,10 @@ from product_value_system.runtime.sandbox import (
     SandboxError,
     SandboxStatus,
 )
+from product_value_system.sandbox.network_filter import (
+    NetworkFilter,
+    NetworkFilterStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,25 +36,91 @@ class DockerSandboxProvider:
     - Non-root user (UID 1000)
     - Dropped capabilities
     - Resource limits (CPU, memory, PIDs)
-    - Network restrictions
+    - Network restrictions & iptables egress filtering (EVO-029)
     - Read-only filesystem except workspace
     """
 
-    def __init__(self, client: Any | None = None) -> None:
-        """Initialize Docker client."""
+    def __init__(
+        self,
+        client: Any | None = None,
+        *,
+        network_filter: NetworkFilter | None = None,
+        sandbox_config_path: Path | str | None = None,
+    ) -> None:
+        """Initialize Docker client and optional egress NetworkFilter."""
         try:
             self.client = client or docker.from_env()
             self.client.ping()
         except DockerException as e:
             raise SandboxError(f"Docker not available: {e}") from e
 
+        if network_filter is not None:
+            self.network_filter: NetworkFilter | None = network_filter
+        elif sandbox_config_path is not None:
+            self.network_filter = NetworkFilter.from_yaml(sandbox_config_path)
+        else:
+            self.network_filter = None
+
+        self._active_filters: dict[str, NetworkFilter] = {}
+        self.last_filter_status: NetworkFilterStatus | None = None
+
         logger.info("Docker sandbox provider initialized")
 
+    def _resolve_filter_for_config(self, config: SandboxConfig) -> NetworkFilter | None:
+        """Determine the active ``NetworkFilter`` for a sandbox creation request."""
+        if not config.network_enabled:
+            return None
+        if config.network_filtering_enabled is False:
+            return None
+
+        base_ipt = self.network_filter.iptables if self.network_filter is not None else None
+        base_dns = self.network_filter._dns_resolver if self.network_filter is not None else None
+
+        if config.network_allowlist:
+            return NetworkFilter(
+                {
+                    "filtering_enabled": True,
+                    "mode": "allowlist",
+                    "allowlist": list(config.network_allowlist),
+                    "fallback_on_error": config.fallback_on_filter_error,
+                },
+                iptables=base_ipt,
+                dns_resolver=base_dns,
+            )
+        if config.allowed_hosts:
+            return NetworkFilter.from_allowed_hosts(
+                list(config.allowed_hosts),
+                enabled=True,
+                fallback_on_error=config.fallback_on_filter_error,
+                iptables=base_ipt,
+                dns_resolver=base_dns,
+            )
+        return self.network_filter
+
+    @staticmethod
+    def _extract_container_ip(container: Any) -> str | None:
+        """Extract IPv4 bridge IP address from a Docker container handle if available."""
+        attrs = getattr(container, "attrs", None)
+        if isinstance(attrs, dict):
+            net_settings = attrs.get("NetworkSettings") or {}
+            ip_addr = net_settings.get("IPAddress")
+            if isinstance(ip_addr, str) and ip_addr.strip():
+                return ip_addr.strip()
+            networks = net_settings.get("Networks") or {}
+            if isinstance(networks, dict):
+                for net_info in networks.values():
+                    if isinstance(net_info, dict):
+                        candidate = net_info.get("IPAddress")
+                        if isinstance(candidate, str) and candidate.strip():
+                            return candidate.strip()
+        return None
+
     async def create(self, config: SandboxConfig) -> Sandbox:
-        """Create Docker container as sandbox."""
+        """Create Docker container as sandbox and apply egress filtering if enabled."""
         await self._ensure_image(config.image)
 
         container_id = f"pvs-sandbox-{int(time.time() * 1000)}"
+        network_mode = config.network_mode or ("bridge" if config.network_enabled else "none")
 
         container_config: dict[str, Any] = {
             "image": config.image,
@@ -65,7 +135,7 @@ class DockerSandboxProvider:
             "mem_limit": f"{config.memory_limit_mb}m",
             "nano_cpus": int(config.cpu_limit * 1_000_000_000),
             "pids_limit": config.max_pids,
-            "network_mode": "bridge" if config.network_enabled else "none",
+            "network_mode": network_mode,
             "volumes": {
                 "/tmp": {"bind": "/tmp", "mode": "rw"},
             },
@@ -73,21 +143,42 @@ class DockerSandboxProvider:
 
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
+            container = await loop.run_in_executor(
                 None,
                 lambda: self.client.containers.run(**container_config),
             )
-
-            logger.info("Created sandbox: %s", container_id)
-
-            return Sandbox(
-                id=container_id,
-                status=SandboxStatus.RUNNING,
-                config=config,
-            )
-
         except DockerException as e:
             raise SandboxError(f"Failed to create sandbox: {e}") from e
+
+        active_filter = self._resolve_filter_for_config(config)
+        if active_filter is not None and active_filter.enabled:
+            container_ip = self._extract_container_ip(container)
+            try:
+                status = await active_filter.apply_rules(
+                    container_id,
+                    container_ip=container_ip,
+                )
+                self.last_filter_status = status
+                self._active_filters[container_id] = active_filter
+            except Exception as exc:
+                logger.error(
+                    "Egress filter setup failed for %s; destroying container: %s",
+                    container_id,
+                    exc,
+                )
+                try:
+                    await loop.run_in_executor(None, lambda: container.remove(force=True))
+                except Exception:
+                    pass
+                raise SandboxError(f"Failed to apply network egress filter: {exc}") from exc
+
+        logger.info("Created sandbox: %s", container_id)
+
+        return Sandbox(
+            id=container_id,
+            status=SandboxStatus.RUNNING,
+            config=config,
+        )
 
     async def execute(
         self,
@@ -215,7 +306,14 @@ class DockerSandboxProvider:
             raise SandboxError(f"Copy failed: {e}") from e
 
     async def destroy(self, sandbox: Sandbox) -> None:
-        """Stop and remove container."""
+        """Remove egress filtering rules, then stop and remove container."""
+        active_filter = self._active_filters.pop(sandbox.id, self.network_filter)
+        if active_filter is not None and active_filter.enabled:
+            try:
+                await active_filter.remove_rules(sandbox.id)
+            except Exception as exc:
+                logger.warning("Failed removing egress rules for %s: %s", sandbox.id, exc)
+
         try:
             container = self.client.containers.get(sandbox.id)
 

@@ -6,6 +6,14 @@ from product_value_system.agents.agent import Agent, AgentResult
 from product_value_system.agents.architecture_review_agent import ArchitectureReviewAgent
 from product_value_system.agents.base_agent import BaseAgent
 from product_value_system.agents.base_review_agent import BaseReviewAgent
+from product_value_system.agents.brownfield_agent import (
+    BrownfieldAgent,
+    FileComplexity,
+    ModernizationPriority,
+    ModernizationReport,
+    StaticComplexityAnalyzer,
+    merge_insights,
+)
 from product_value_system.agents.build_agent import BuildAgent
 from product_value_system.agents.config_loader import AgentConfig
 from product_value_system.agents.discovery_agent import DiscoveryAgent
@@ -24,11 +32,17 @@ __all__ = [
     "ArchitectureReviewAgent",
     "BaseAgent",
     "BaseReviewAgent",
+    "BrownfieldAgent",
     "BuildAgent",
     "DiscoveryAgent",
     "ExperimentDesignAgent",
+    "FileComplexity",
     "MaintainabilityReviewAgent",
+    "ModernizationPriority",
+    "ModernizationReport",
     "PerformanceReviewAgent",
     "SecurityReviewAgent",
     "SpecificationAgent",
+    "StaticComplexityAnalyzer",
+    "merge_insights",
 ]

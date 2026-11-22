@@ -87,6 +87,14 @@ routing = [
     "scikit-learn>=1.3.0",
     "pyyaml>=6.0",
 ]
+sandbox = [
+    "pyroute2>=0.7.0; sys_platform == 'linux'",
+]
+brownfield = [
+    "GitPython>=3.1.40",
+    "pandas>=2.1.0",
+    "matplotlib>=3.8.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

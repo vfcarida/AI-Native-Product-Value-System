@@ -1,0 +1,36 @@
+# Brownfield Codebase Analysis & Git History Configuration (EVO-030)
+# Implements "Your Code as a Crime Scene" temporal analysis patterns:
+# change hotspots, temporal coupling, code age, and ownership/bus-factor risk.
+# Set enabled: false for instant rollback to static-only brownfield analysis.
+
+brownfield:
+  git_analysis:
+    enabled: true
+
+    # Temporal lookback & detection thresholds
+    lookback_days: 180            # Analyze last 6 months of commit history
+    min_commits_for_hotspot: 10   # Files with fewer commits are excluded from hotspots
+    coupling_threshold: 0.5       # Report file pairs with coupling coefficient >= 0.5
+    min_co_changes: 2             # Minimum shared commits required for temporal coupling
+    max_files_per_commit: 50      # Ignore bulk reformat commits touching >50 files
+    silo_threshold_pct: 80.0      # Flag ownership knowledge silo when primary author >= 80%
+
+    # Privacy: hash author emails deterministically so PII never appears in reports
+    anonymize_authors: true
+
+    # File filters
+    include_patterns:
+      - "*.py"
+      - "*.js"
+      - "*.ts"
+      - "*.java"
+      - "*.go"
+    exclude_patterns:
+      - "node_modules/**"
+      - "vendor/**"
+      - "*.test.py"
+      - "*.spec.js"
+      - "test_*.py"
+
+    # Performance safeguard for very large repositories
+    max_commits_analyzed: 10000

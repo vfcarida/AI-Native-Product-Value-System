@@ -125,6 +125,11 @@ _CODE_EXPR_RE = re.compile(
 )
 
 
+_FILESYSTEM_PATH_RE = re.compile(
+    r"^(?:\.{0,2}/)?[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_.-]*){2,}$"
+)
+
+
 def _is_unquoted_code_reference(snippet: str, payload: str) -> bool:
     """Return True if an unquoted assignment RHS is a code variable or call expression."""
     m = re.match(
@@ -421,6 +426,16 @@ class MLSecretDetector:
                 is_real_secret=False,
                 backend="ml_classifier",
                 reasons=["unquoted_code_reference"],
+            )
+
+        # 0b. Reject lowercase multi-segment repository file paths in entropy-only scans
+        if entity_type == "UNKNOWN_SECRET" and _FILESYSTEM_PATH_RE.fullmatch(payload):
+            return MLAnalysisResult(
+                entity_type=entity_type,
+                confidence=0.1,
+                is_real_secret=False,
+                backend="ml_classifier",
+                reasons=["filesystem_path"],
             )
 
         entropy = calculate_shannon_entropy(payload)
