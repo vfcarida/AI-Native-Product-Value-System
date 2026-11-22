@@ -25,12 +25,11 @@ cd ai-native-product-value-system
 python3 -m venv .venv
 source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 
-# 3. Install package with development dependencies
-pip install -e ".[dev]"
-
-# 4. Install Git pre-commit secret scanning hook
-./scripts/install-git-hooks.sh
+# 3. Install package, dev dependencies, .env template, and secret scanning hook
+make dev-setup   # or: pip install -e ".[dev]" && ./scripts/install-git-hooks.sh
 ```
+
+Run `make help` at any time to see all available targets (`make test`, `make lint`, `make format`, `make type-check`, `make validate-policies`, `make security-check`, `make clean`).
 
 ---
 

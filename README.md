@@ -34,12 +34,12 @@ It shows how to build **quality, security, and governance** into AI-accelerated 
 - ✅ **Docker Sandbox Isolation & Network Egress Filtering**: Isolated container execution (`pvs/agent-sandbox:latest`) running as non-root (`UID 1000`), with dropped Linux capabilities, memory/CPU/PID limits, and zero-trust `iptables` allowlist egress filtering (`NetworkFilter`, `IptablesManager`, `config/sandbox.yaml`) with graceful non-Linux fallback
 - ✅ **Policy-Based Authorization**: Cedar policy schema (`policies/schema.cedarschema`) and rules (`policies/agent_authorization.cedar`) with a deterministic Python fallback evaluator
 - ✅ **Security Controls & Hybrid ML Secret Detection**: Input/schema validation, path traversal prevention, command sanitization, hybrid regex + ML secret detection (`HybridSecretDetector`, `MLSecretDetector` with Microsoft Presidio + entropy/Base64 feature classifier, YAML allowlists, `<10ms` regex pre-commit hook & `<100ms` hybrid CI scan), and OWASP LLM Top 10 threat model
-- ✅ **OpenTelemetry Observability, GenAI Conventions (v1.28+), Monitoring & SLOs**: Standard `GenAITracer` (`chat`, `completion`, `embedding`, `rerank`, `gen_ai.content.*` / `gen_ai.tool.*` events), `GenAIMetrics`, legacy `llm.*` migration shim (`CompatibilityTracer`), OTEL Collector pipeline (`monitoring/otel-collector-config.yml`), 12 production metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, automated rollback (`ProductionMonitor`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 5 Grafana dashboards including `genai_overview.json` (`docker-compose.monitoring.yml`)
+- ✅ **OpenTelemetry Observability, GenAI Conventions (v1.28+), Monitoring, SLOs & DevX SPACE Metrics**: Standard `GenAITracer` (`chat`, `completion`, `embedding`, `rerank`, `gen_ai.content.*` / `gen_ai.tool.*` events), `GenAIMetrics`, legacy `llm.*` migration shim (`CompatibilityTracer`), OTEL Collector pipeline (`monitoring/otel-collector-config.yml`), 12 production metrics (`PVSMetrics`), 8+ traditional & AI-specific SLIs/SLOs, automated rollback (`ProductionMonitor`), SPACE + DORA DevX tracking (`DevXTracker`, `SPACECalculator`, `CycleTimeTracker`, `SatisfactionSurvey`, `config/metrics.yaml`), `/health`, `/ready`, `/metrics`, `/slos` endpoints, 8 multi-window burn-rate Prometheus alert rules, Alertmanager routing, and 6 Grafana dashboards including `genai_overview.json` and `devx_dashboard.json` (`docker-compose.monitoring.yml`)
 - ✅ **Progressive Delivery & Feature Flags**: Schema-validated YAML feature flags (`flags.yaml`), consistent SHA-256 user bucketing, targeting rules (`user_id`, `environment`, `attribute`, `percentage`), 6-stage `RolloutController` (`dark` → `canary` → `staged_5/25/50` → `full`) with SLO quality gates & automatic rollback, FastAPI Admin UI (`/admin/flags`), orchestrator gating, and `pvs flags` CLI
 - ✅ **Experiment Design & A/B Testing**: `ExperimentDesignAgent` turning outcome hypotheses into schema-validated `ExperimentDesign` blueprints, `PowerAnalyzer` (`scipy.stats` sample size & duration), privacy-safe `ABTest` framework with consistent SHA-256 assignment, Welch's t-test / chi-square / Bayesian posterior analysis, guardrail monitoring, early stopping, and `pvs experiment` CLI
 - ✅ **Automated Baseline Validation**: Pre-experiment `BaselineCollector` (traces, logs, JSON/YAML), `StatisticalValidator` (sample size, CV, Z-score outliers, Shapiro-Wilk/KS normality), non-central `t` `PowerAnalyzer`, Mann-Whitney U `StabilityChecker` (drift, incidents, deploys), 0–100 quality score `ValidationGate`, `ValidatedExperimentRunner`, and `pvs experiment validate-baseline` CLI
 - ✅ **Automated Drift Detection**: AST-based `CodeScanner` (functions + FastAPI routes), Markdown/OpenAPI/SLA `SpecScanner`, OpenTelemetry `TraceScanner`, structural + LLM semantic `DriftComparator`, JSON/Markdown/weekly `DriftReporter`, brownfield baseline diffing, pre-commit hook (`scripts/pre-commit-drift-check.py`), and `pvs drift` CLI
-- ✅ **Brownfield Git History & Temporal Analysis**: Read-only `GitAnalyzer` ("Your Code as a Crime Scene"), `HotspotDetector` (high-churn files), `CouplingAnalyzer` (temporal co-change coupling), `AgeAnalyzer` (volatile vs. stable legacy), `OwnershipAnalyzer` (anonymized bus-factor & knowledge silos), `BrownfieldAgent` hotspot × cyclomatic complexity prioritization, and `config/brownfield.yaml`
+- ✅ **Brownfield Git History & Strangler Fig Modernization**: Read-only `GitAnalyzer` ("Your Code as a Crime Scene"), `HotspotDetector`, `CouplingAnalyzer`, `AgeAnalyzer`, `OwnershipAnalyzer` (anonymized bus-factor & knowledge silos), `BoundaryAnalyzer` (package + NetworkX import-graph clustering), `StranglerPlanner` (8-step incremental replacement plans & risk scoring), `ACLGenerator` (Jinja2/AST compilable Python Anti-Corruption Layers), `RoutingStrategyPlanner` (`feature_flag` / `reverse_proxy` / `api_gateway` progressive cutovers), `BrownfieldAgent`, and `config/brownfield.yaml`
 - ✅ **Architecture Decision Records (ADR) Management**: Git-backed `ADRManager` with auto-numbering (`ADR-0001`), YAML metadata, lifecycle transitions (`proposed` → `accepted` → `deprecated`/`superseded`), keyword search, Mermaid supersession graphs, onboarding decision logs, `# See ADR-XXXX` code scanning, `DecisionAgentADRIntegration`, and `pvs adr` CLI
 - ✅ **Spec-Kit Structured Specification Patterns**: 5 reusable Spec-Kit templates (`user-story`, `scenario` Gherkin, `api-contract`, `nfr`, `decision`) with custom template overrides, 0–100 `SpecValidator`, `TraceabilityLinker` (code & test coverage), `DiscoverySpecGenerator` (insights → user stories), VS Code snippets (`.vscode/spec-kit.code-snippets`), and `pvs spec` CLI
 - ✅ **Customer Interview Synthesis**: Automated WebVTT/SRT/plain-text `TranscriptProcessor`, multi-layer `PIIRedactor` (emails, phones, CPFs, cards, addresses, names), LLM + offline `InsightExtractor` (severity-rated pain points, JTBD, traceable quotes, human review workflow), cosine-DBSCAN `ThemeClusterer`, `OpportunityMap` integration, JSON/Markdown/Notion exports, `SynthesisDashboard`, and `pvs interview` CLI
@@ -171,6 +171,28 @@ cargo install cedar-policy-cli
 
 ## Quick Start
 
+### Using Make (Recommended)
+
+> **Platform Note**: Works natively on Linux and macOS; on Windows, use WSL or Git Bash (or run the Python fallback commands below in PowerShell).
+
+```bash
+# 1. Install dependencies, create .env from .env.example, and install git hooks
+make dev-setup
+
+# 2. Run greenfield demo offline with $0 deterministic Mock adapter
+make demo USE_MOCK=1
+
+# 3. Or edit .env / export an API key and run live demos
+export OPENAI_API_KEY="your-openai-api-key-here"
+make demo                # Greenfield: AcmeBank payment notifications
+make demo-brownfield     # Brownfield: AcmeBank legacy Customer API
+
+# 4. List all available developer commands
+make help
+```
+
+### Without Make (Direct Python / CLI)
+
 ```bash
 # Run greenfield example (AcmeBank instant payment notifications)
 pvs run examples/greenfield/problem_payment_flow.yaml
@@ -217,11 +239,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/architecture/DIAGRAMS
 - **[Testing Guide](tests/README.md)** — 4-tier test strategy, live integration setup, and cost caps
 - **[Golden Dataset Curation Guide](golden_datasets/README.md)** — 180 HELM-structured golden samples, schema, curation CLI, and regression evaluation gates
 - **[Multi-Agent Review Guide](docs/review-guide.md)** — Elephant-Goldfish 4-perspective review, conflict resolution, and `pvs review` CLI
-- **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [OpenTelemetry GenAI Conventions](docs/otel-genai-conventions.md), [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
+- **[SLO & Monitoring Guides](docs/slo-guide.md)** — Production SLIs/SLOs, [OpenTelemetry GenAI Conventions](docs/otel-genai-conventions.md), [DevX & SPACE Metrics](docs/devx-metrics.md), [Grafana Dashboards](docs/dashboards.md), [Alerting Runbook](docs/runbooks/alerting.md), and [Monitoring Operations](docs/operations/monitoring.md)
 - **[Progressive Delivery & Feature Flags](docs/progressive-delivery.md)** — Dark launches, canary/staged rollouts, [Flag Management](docs/flag-management.md), and [Developer Flag Integration](docs/developer/flag-integration.md)
 - **[Experiment Design & A/B Testing](docs/experiment-design.md)** — Power analysis, guardrails, stopping criteria, [A/B Testing Best Practices](docs/ab-testing.md), and [Baseline Validation](docs/baseline-validation.md)
 - **[Automated Drift Detection](docs/drift-detection.md)** — Code/spec AST diffing, OpenAPI & OpenTelemetry trace checks, pre-commit gating, and `pvs drift` CLI
 - **[Brownfield Git History Analysis](docs/git-history-analysis.md)** — Change hotspots, temporal coupling, code age, anonymized ownership/bus factor, `BrownfieldAgent` hotspot × complexity prioritization, and `config/brownfield.yaml`
+- **[Strangler Fig Modernization Guide](docs/strangler-fig-modernization.md)** — Module boundary detection, candidate priority scoring, 8-step replacement plans, compilable ACL generation, progressive traffic routing (`1% → 100%`), and `config/brownfield.yaml`
 - **[Architecture Decision Records (ADR)](docs/adr-guide.md)** — ADR lifecycle, [ADR Index](docs/adr/README.md), decision graphs, onboarding logs, and `pvs adr` CLI
 - **[Spec-Kit Patterns Guide](docs/spec-kit-guide.md)** — User story, Gherkin scenario, API contract, NFR & decision templates, validation scoring, traceability, and `pvs spec` CLI
 - **[Customer Interview Synthesis Guide](docs/interview-synthesis.md)** — VTT/SRT/plain transcript parsing, PII redaction, JTBD & pain point extraction, theme clustering, Opportunity Map, Notion export, and `pvs interview` CLI
@@ -306,9 +329,11 @@ See [tests/README.md](tests/README.md) for test tiers, cost limits (`$0.05/test`
 - ✅ DAG-based parallel agent execution, resource throttling & conflict resolution (EVO-028)
 - ✅ Zero-trust sandbox network egress filtering via `iptables` allowlists (EVO-029)
 - ✅ Brownfield Git history analysis — hotspots, temporal coupling, code age & ownership (EVO-030)
+- ✅ Brownfield Strangler Fig modernization — boundaries, ACL codegen & traffic routing (EVO-031)
+- ✅ DevX metrics tracking — SPACE framework, DORA cycle times, pulse surveys & Grafana dashboard (EVO-032)
+- ✅ Self-documenting Makefile & `.env.example` developer UX workflow (EVO-033)
 - ✅ Hybrid ML + regex secret detection (Microsoft Presidio + entropy/Base64 classifier, EVO-024)
 - 📋 Google Gemini, Azure OpenAI, and local (Ollama/vLLM) model adapters
-- 📋 Brownfield Strangler Fig modernization (EVO-031)
 
 **Status Legend**: ✅ Done · 🚧 In Progress · 📋 Planned
 

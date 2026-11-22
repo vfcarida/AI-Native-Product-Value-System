@@ -1,0 +1,121 @@
+{
+  "uid": "pvs-devx-space",
+  "title": "Developer Experience (DevX) & SPACE Framework",
+  "tags": ["pvs", "devx", "space", "dora", "productivity"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "SPACE Framework Dimension Scores (0-1)",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "devx_space_score",
+          "legendFormat": "{{dimension}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 0.5},
+              {"color": "green", "value": 0.75}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Developer Satisfaction Pulse Scores (1-5)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "avg_over_time(devx_satisfaction_score[7d])",
+          "legendFormat": "{{dimension}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"min": 1, "max": 5}
+      }
+    },
+    {
+      "id": 3,
+      "title": "Task Cycle Time by Stage (p50 & p95)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(devx_cycle_time_seconds_bucket[1h])))",
+          "legendFormat": "{{stage}} p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(devx_cycle_time_seconds_bucket[1h])))",
+          "legendFormat": "{{stage}} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "s"}
+      }
+    },
+    {
+      "id": 4,
+      "title": "AI Assist Acceptance Rate by Agent",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (agent) (increase(devx_ai_usage_total{accepted=\"True\"}[7d])) / clamp_min(sum by (agent) (increase(devx_ai_usage_total[7d])), 1)",
+          "legendFormat": "{{agent}} acceptance"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "percentunit", "min": 0, "max": 1}
+      }
+    },
+    {
+      "id": 5,
+      "title": "Completed Tasks by Stage (7d Activity)",
+      "type": "barchart",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (stage) (increase(devx_tasks_completed_total[7d]))",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "DORA Delivery: Deployments & PR Review Turnaround",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (success) (increase(devx_deployments_total[7d]))",
+          "legendFormat": "deployments (success={{success}})"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(devx_pr_review_turnaround_seconds_bucket[24h])))",
+          "legendFormat": "PR review p50 (s)"
+        }
+      ]
+    }
+  ]
+}

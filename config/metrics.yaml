@@ -1,0 +1,63 @@
+# Developer Experience (DevX) & SPACE Framework Metrics Configuration (EVO-032)
+# Metrics are anonymized, voluntary (opt-out supported), aggregate-only, and strictly
+# for continuous engineering improvement — never individual performance evaluation.
+# Set devx.enabled: false for instant rollback.
+
+devx:
+  enabled: true
+
+  # SPACE dimensions to track
+  dimensions:
+    satisfaction: true
+    performance: true
+    activity: true
+    communication: true
+    efficiency: true
+
+  # Cycle time stages (DORA lead time breakdown)
+  cycle_time:
+    stages:
+      - name: discovery
+        start_event: problem_statement_created
+        end_event: outcome_hypothesis_approved
+      - name: specification
+        start_event: outcome_hypothesis_approved
+        end_event: spec_approved
+      - name: build
+        start_event: spec_approved
+        end_event: code_committed
+      - name: review
+        start_event: code_committed
+        end_event: review_passed
+      - name: deploy
+        start_event: review_passed
+        end_event: deployed_to_production
+
+  # Voluntary bi-weekly developer satisfaction pulse surveys
+  surveys:
+    enabled: true
+    frequency_days: 14
+    questions:
+      - id: tool_satisfaction
+        text: "How satisfied are you with AI coding tools? (1-5)"
+        type: rating
+      - id: cognitive_load
+        text: "How often do you feel overwhelmed by complexity? (1-5)"
+        type: rating
+      - id: flow_state
+        text: "How much uninterrupted time do you get daily? (hours)"
+        type: numeric
+      - id: feedback
+        text: "What would improve your development experience?"
+        type: free_text
+
+  # AI-native assist effectiveness metrics
+  ai_assist:
+    track_usage: true
+    track_acceptance: true
+    track_corrections: true
+
+  # Privacy & ethical safeguards
+  anonymize: true
+  aggregate_only: true
+  retention_days: 90

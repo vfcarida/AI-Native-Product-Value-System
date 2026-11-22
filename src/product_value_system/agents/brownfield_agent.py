@@ -21,6 +21,11 @@ from product_value_system.brownfield.git_analyzer import (
     load_brownfield_config,
 )
 from product_value_system.brownfield.ownership_analyzer import Ownership
+from product_value_system.brownfield.strangler_planner import (
+    StranglerPlan,
+    StranglerPlanner,
+    load_strangler_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +96,7 @@ class ModernizationReport:
     ownership_risks: list[Ownership] = field(default_factory=list)
     stable_files: list[str] = field(default_factory=list)
     recommended_actions: list[str] = field(default_factory=list)
+    strangler_plans: list[StranglerPlan] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,12 +108,14 @@ class ModernizationReport:
                 "coupling_pairs_found": len(self.coupling_risks),
                 "knowledge_silos_found": len(self.ownership_risks),
                 "stable_legacy_files": len(self.stable_files),
+                "strangler_plans_generated": len(self.strangler_plans),
             },
             "refactor_priorities": [p.to_dict() for p in self.refactor_priorities],
             "coupling_risks": [c.to_dict() for c in self.coupling_risks],
             "ownership_risks": [o.to_dict() for o in self.ownership_risks],
             "stable_files": list(self.stable_files),
             "recommended_actions": list(self.recommended_actions),
+            "strangler_plans": [sp.to_dict() for sp in self.strangler_plans],
             "git_insights": self.git_insights.to_dict(),
         }
 
@@ -141,6 +149,25 @@ class ModernizationReport:
         lines.extend(["", "## Recommended Actions", ""])
         for action in self.recommended_actions:
             lines.append(f"- {action}")
+
+        if self.strangler_plans:
+            lines.extend(["", "## Strangler Fig Modernization Plans", ""])
+            for idx, sp in enumerate(self.strangler_plans, start=1):
+                lines.append(
+                    f"### {idx}. Module `{sp.target_module.name}` "
+                    f"(priority={sp.priority_score:.2f}, "
+                    f"effort={sp.total_estimated_effort_hours}h)"
+                )
+                lines.append("")
+                lines.append(sp.risk_assessment)
+                lines.append("")
+                for step in sp.replacement_steps:
+                    lines.append(
+                        f"{step.step_number}. {step.description} "
+                        f"({step.estimated_effort_hours}h, risk={step.risk_level})"
+                    )
+                lines.append("")
+
         return "\n".join(lines) + "\n"
 
 
@@ -338,19 +365,33 @@ class BrownfieldAgent:
         *,
         git_analyzer: GitAnalyzer | None = None,
         static_analyzer: StaticComplexityAnalyzer | None = None,
+        strangler_planner: StranglerPlanner | None = None,
+        strangler_config: dict[str, Any] | None = None,
     ) -> None:
         if isinstance(config, (Path, str)):
-            raw_cfg = load_brownfield_config(config)
+            raw_git_cfg = load_brownfield_config(config)
+            raw_strangler_cfg = load_strangler_config(config)
         elif isinstance(config, dict):
-            raw_cfg = dict(config)
+            bf = config.get("brownfield", config)
+            if isinstance(bf, dict) and ("git_analysis" in bf or "strangler_fig" in bf):
+                raw_git_cfg = dict(bf.get("git_analysis") or {})
+                raw_strangler_cfg = dict(bf.get("strangler_fig") or {})
+            else:
+                raw_git_cfg = dict(config)
+                raw_strangler_cfg = {}
         else:
-            raw_cfg = {}
+            raw_git_cfg = {}
+            raw_strangler_cfg = {}
 
-        self.git_analyzer = git_analyzer or GitAnalyzer(raw_cfg)
+        if strangler_config is not None:
+            raw_strangler_cfg = dict(strangler_config)
+
+        self.git_analyzer = git_analyzer or GitAnalyzer(raw_git_cfg)
         self.static_analyzer = static_analyzer or StaticComplexityAnalyzer()
+        self.strangler_planner = strangler_planner or StranglerPlanner(raw_strangler_cfg)
 
     async def analyze_repository(self, repo_path: Path | str) -> ModernizationReport:
-        """Run git history analysis followed by static complexity analysis and merge."""
+        """Run git history analysis, static complexity scan, and Strangler Fig planning."""
         target = Path(repo_path).resolve()
 
         # 1. Temporal Git history analysis (read-only)
@@ -363,7 +404,17 @@ class BrownfieldAgent:
         )
 
         # 3. Merge into prioritized modernization report
-        return merge_insights(target, git_insights, static_complexity)
+        report = merge_insights(target, git_insights, static_complexity)
+
+        # 4. Strangler Fig incremental modernization planning (EVO-031)
+        if self.strangler_planner.enabled:
+            report.strangler_plans = await self.strangler_planner.plan(
+                git_insights,
+                static_complexity,
+                repo_path=target,
+            )
+
+        return report
 
     async def execute(
         self,

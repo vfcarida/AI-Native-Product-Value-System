@@ -1,7 +1,7 @@
-# Brownfield Codebase Analysis & Git History Configuration (EVO-030)
-# Implements "Your Code as a Crime Scene" temporal analysis patterns:
-# change hotspots, temporal coupling, code age, and ownership/bus-factor risk.
-# Set enabled: false for instant rollback to static-only brownfield analysis.
+# Brownfield Codebase Analysis, Git History & Strangler Fig Configuration (EVO-030, EVO-031)
+# Implements "Your Code as a Crime Scene" temporal analysis and Martin Fowler's
+# Strangler Fig incremental modernization planning.
+# Set enabled: false in either block for instant rollback.
 
 brownfield:
   git_analysis:
@@ -34,3 +34,27 @@ brownfield:
 
     # Performance safeguard for very large repositories
     max_commits_analyzed: 10000
+
+  strangler_fig:
+    enabled: true
+    top_candidates: 3
+
+    # Module boundary detection
+    boundary_detection:
+      method: static_analysis     # 'static_analysis', 'dependency_graph', or 'ml'
+      min_module_size_lines: 500  # Ignore tiny modules
+      max_module_size_lines: 10000  # Split oversized modules into bounded partitions
+
+    # Weighted priority criteria (negative coupling weight prefers low-coupling modules)
+    priority_factors:
+      - hotspot_score: 0.4        # Weight: High churn
+      - complexity_score: 0.3     # Weight: High complexity
+      - coupling_score: -0.2      # Weight: Prefer low coupling
+      - business_value: 0.1       # Weight: Stakeholder input
+
+    # Traffic routing & progressive rollout strategy
+    routing:
+      strategy: feature_flag      # 'feature_flag', 'reverse_proxy', or 'api_gateway'
+      initial_percentage: 1       # Start with 1% traffic to modern implementation
+      stages: [1, 5, 25, 50, 100]
+      monitoring_duration_per_stage_hours: 24

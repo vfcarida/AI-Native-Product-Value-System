@@ -128,6 +128,9 @@ _CODE_EXPR_RE = re.compile(
 _FILESYSTEM_PATH_RE = re.compile(
     r"^(?:\.{0,2}/)?[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_.-]*){2,}$"
 )
+_PYTHON_KWARG_CONST_RE = re.compile(r"^([a-z][a-z0-9_]*)=(_?[A-Z][A-Z0-9_]{2,})$")
+_ENV_CONFIG_ASSIGN_RE = re.compile(r"^([A-Z][A-Z0-9_]{2,})=([a-z0-9_.-]{1,16})$")
+_SECRET_LHS_WORDS = ("secret", "token", "key", "pass", "pwd", "auth", "cred")
 
 
 def _is_unquoted_code_reference(snippet: str, payload: str) -> bool:
@@ -437,6 +440,29 @@ class MLSecretDetector:
                 backend="ml_classifier",
                 reasons=["filesystem_path"],
             )
+
+        # 0c. Reject non-secret Python kwargs (a=CONST) and non-secret env config (FOO=bar)
+        if entity_type == "UNKNOWN_SECRET":
+            kw_match = _PYTHON_KWARG_CONST_RE.fullmatch(payload)
+            if kw_match and not any(w in kw_match.group(1) for w in _SECRET_LHS_WORDS):
+                return MLAnalysisResult(
+                    entity_type=entity_type,
+                    confidence=0.1,
+                    is_real_secret=False,
+                    backend="ml_classifier",
+                    reasons=["python_kwarg_constant"],
+                )
+            env_match = _ENV_CONFIG_ASSIGN_RE.fullmatch(payload)
+            if env_match and not any(
+                w in env_match.group(1).lower() for w in _SECRET_LHS_WORDS
+            ):
+                return MLAnalysisResult(
+                    entity_type=entity_type,
+                    confidence=0.1,
+                    is_real_secret=False,
+                    backend="ml_classifier",
+                    reasons=["non_secret_env_config"],
+                )
 
         entropy = calculate_shannon_entropy(payload)
         char_classes = sum(

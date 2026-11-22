@@ -17,6 +17,7 @@ from product_value_system.learning.analytics_adapter import AnalyticsAdapter
 from product_value_system.learning.feedback_loop import FeedbackLoop
 from product_value_system.learning.measurement_agent import MeasurementAgent
 from product_value_system.learning.outcome_tracker import OutcomeTracker
+from product_value_system.metrics.devx_tracker import DevXTracker
 from product_value_system.observability.tracing import set_run_context, trace_span
 from product_value_system.orchestrator.checkpoints import CheckpointManager
 from product_value_system.orchestrator.conflict_resolver import ConflictResolver
@@ -74,6 +75,8 @@ class ValueStreamOrchestrator:
         parallel_config: dict[str, Any] | Path | str | None = None,
         enable_parallel_execution: bool | None = None,
         parallel_executor: ParallelExecutor | None = None,
+        devx_tracker: DevXTracker | None = None,
+        metrics_config: dict[str, Any] | Path | str | None = None,
     ) -> None:
         """
         Initialize orchestrator.
@@ -157,6 +160,30 @@ class ValueStreamOrchestrator:
             enabled=True,
         )
         self.last_parallel_summary: ParallelExecutionSummary | None = None
+
+        # EVO-032: Optional DevX metrics tracker (SPACE + DORA)
+        if devx_tracker is not None:
+            self.devx_tracker: DevXTracker | None = devx_tracker
+        elif isinstance(metrics_config, (Path, str)):
+            self.devx_tracker = DevXTracker.from_yaml(metrics_config)
+        elif isinstance(metrics_config, dict):
+            self.devx_tracker = DevXTracker(metrics_config)
+        else:
+            self.devx_tracker = None
+
+    @staticmethod
+    def _map_devx_stage(stage_name: str) -> str:
+        if stage_name in {"problem_analysis", "outcome_hypothesis", "discovery"}:
+            return "discovery"
+        if stage_name == "specification":
+            return "specification"
+        if stage_name == "build":
+            return "build"
+        if stage_name.startswith("review_") or stage_name == "quality_gate":
+            return "review"
+        if stage_name == "release_decision":
+            return "deploy"
+        return stage_name
 
     def build_dependency_graph(
         self,
@@ -620,6 +647,17 @@ class ValueStreamOrchestrator:
         )
         assert run.artifact_dir is not None
 
+        devx_stage = self._map_devx_stage(stage_name)
+        devx_task_id = f"{run.id}:{stage_name}"
+        devx_user = str(config["user_id"]) if config.get("user_id") is not None else None
+        if self.devx_tracker is not None:
+            self.devx_tracker.start_task(
+                devx_task_id,
+                stage=devx_stage,
+                agent=stage_name,
+                developer_id=devx_user,
+            )
+
         try:
             if stage_name == "problem_analysis":
                 artifact_path = await self._save_artifact(
@@ -904,12 +942,43 @@ class ValueStreamOrchestrator:
                 stage_result.status = StageStatus.COMPLETED
 
             stage_result.completed_at = datetime.now(UTC)
+            if self.devx_tracker is not None:
+                succeeded = stage_result.status == StageStatus.COMPLETED
+                self.devx_tracker.complete_task(
+                    devx_task_id,
+                    stage=devx_stage,
+                    success=succeeded,
+                    developer_id=devx_user,
+                )
+                if stage_result.agent_name:
+                    self.devx_tracker.record_ai_usage(
+                        agent=stage_result.agent_name,
+                        accepted=succeeded,
+                        cost_usd=stage_result.cost_usd,
+                        developer_id=devx_user,
+                    )
+                if stage_name == "release_decision":
+                    self.devx_tracker.record_deployment(success=succeeded)
             return stage_result
 
         except Exception as e:
             stage_result.status = StageStatus.FAILED
             stage_result.error = str(e)
             stage_result.completed_at = datetime.now(UTC)
+            if self.devx_tracker is not None:
+                self.devx_tracker.complete_task(
+                    devx_task_id,
+                    stage=devx_stage,
+                    success=False,
+                    developer_id=devx_user,
+                )
+                if stage_result.agent_name:
+                    self.devx_tracker.record_ai_usage(
+                        agent=stage_result.agent_name,
+                        accepted=False,
+                        cost_usd=stage_result.cost_usd,
+                        developer_id=devx_user,
+                    )
             return stage_result
 
     async def _execute_learn_stage(
