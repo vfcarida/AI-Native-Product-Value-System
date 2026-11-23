@@ -1,6 +1,6 @@
 # Production SLO & Error Budget Guide
 
-This guide defines the **Service Level Indicators (SLIs)**, **Service Level Objectives (SLOs)**, and **Error Budget Policies** implemented in [`src/product_value_system/monitoring/`](../src/product_value_system/monitoring/).
+This guide defines the **Service Level Indicators (SLIs)**, **Service Level Objectives (SLOs)**, and **Error Budget Policies** implemented in [`src/product_value_system/monitoring/`](../src/product_value_system/monitoring/). For Kubernetes 28-day SLO targets, Prometheus Operator `PrometheusRule` alerts, and Grafana dashboards, see [`docs/operations/slos.md`](operations/slos.md).
 
 ---
 

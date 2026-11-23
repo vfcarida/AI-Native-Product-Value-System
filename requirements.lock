@@ -1,19 +1,25 @@
 # Auto-generated deterministic lockfile (python scripts/generate-lockfile.py)
 # Core and installed optional dependencies pinned with exact == versions.
 # Verify parity in CI with: python scripts/generate-lockfile.py --check
+docker==7.2.0
 fastapi==0.141.1
+httpx==0.28.1
 hypothesis==6.168.3
 jinja2==3.1.6
 jsonschema==4.26.0
 matplotlib==3.11.0
 mypy==2.3.1
-numpy==2.5.2
+networkx==3.6.1
+numpy==2.4.6
 opentelemetry-api==1.44.0
 opentelemetry-exporter-otlp==1.44.0
 opentelemetry-exporter-prometheus==0.65b0
 opentelemetry-sdk==1.44.0
 pandas==3.0.5
+presidio-analyzer==2.2.366
+presidio-anonymizer==2.2.366
 prometheus-client==0.25.0
+pydantic==2.13.4
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
@@ -22,6 +28,7 @@ pyyaml==6.0.3
 ruff==0.16.3
 scikit-learn==1.8.0
 scipy==1.18.0
+spacy==3.8.18
 tiktoken==0.13.0
 uvicorn==0.52.1
 xxhash==4.0.1

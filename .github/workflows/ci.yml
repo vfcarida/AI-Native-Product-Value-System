@@ -86,7 +86,9 @@ jobs:
           helm template pvs deploy/helm/product-value-system \
             --set secrets.existingSecret=pvs-secrets \
             --set otelCollector.enabled=true \
-            --set serviceMonitor.enabled=true > /tmp/rendered-k8s.yaml
+            --set serviceMonitor.enabled=true \
+            --set slo.enabled=true \
+            --set grafanaDashboards.enabled=true > /tmp/rendered-k8s.yaml
 
       - name: Validate rendered Kubernetes manifests with kubeconform
         run: |

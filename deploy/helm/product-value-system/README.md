@@ -41,6 +41,7 @@ helm upgrade --install pvs deploy/helm/product-value-system \
 | `config.otelCaptureMessageContent` | `"false"` | Suppress raw prompts/completions in OTel spans by default |
 | `networkPolicy.enabled` | `true` | Enforce default-deny ingress/egress `NetworkPolicy` |
 | `serviceMonitor.enabled` | `false` | Enable Prometheus Operator `ServiceMonitor` for `/metrics` |
+| `slo.enabled` | `false` | Deploy Prometheus Operator `PrometheusRule` CRD (12 SLO/saturation alerts + 4 recording rules) |
 | `otelCollector.enabled` | `false` | Deploy companion hardened OpenTelemetry Collector (OTLP 4317/4318 -> Prometheus 8889) |
 | `grafanaDashboards.enabled` | `false` | Render Grafana sidecar-discoverable dashboard ConfigMap (`grafana_dashboard: "1"`) |
 | `autoscaling.enabled` | `true` | Enable `HorizontalPodAutoscaler` (`2`–`10` replicas) |

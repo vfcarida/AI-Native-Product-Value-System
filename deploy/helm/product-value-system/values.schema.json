@@ -104,6 +104,55 @@
         "path": { "type": "string", "pattern": "^/" }
       }
     },
+    "slo": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "window": { "type": "string", "pattern": "^[0-9]+[hdw]$" },
+        "namespace": { "type": "string" },
+        "labels": { "type": "object" },
+        "availability": {
+          "type": "object",
+          "properties": {
+            "target": { "type": "number", "minimum": 0.9, "maximum": 1.0 },
+            "errorBudget": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 0.1 },
+            "criticalErrorRate": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 1.0 }
+          }
+        },
+        "latency": {
+          "type": "object",
+          "properties": {
+            "p99TargetSeconds": { "type": "number", "exclusiveMinimum": 0.0 },
+            "p99CriticalSeconds": { "type": "number", "exclusiveMinimum": 0.0 },
+            "p95SustainedSeconds": { "type": "number", "exclusiveMinimum": 0.0 },
+            "errorBudget": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 0.25 }
+          }
+        },
+        "errorRate": {
+          "type": "object",
+          "properties": {
+            "threshold": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 1.0 },
+            "criticalThreshold": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 1.0 },
+            "errorBudget": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 0.5 }
+          }
+        },
+        "agentSuccess": {
+          "type": "object",
+          "properties": {
+            "target": { "type": "number", "minimum": 0.5, "maximum": 1.0 },
+            "criticalThreshold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "errorBudget": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 0.5 }
+          }
+        },
+        "saturation": {
+          "type": "object",
+          "properties": {
+            "memoryThreshold": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 1.0 },
+            "cpuThrottleThreshold": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 1.0 }
+          }
+        }
+      }
+    },
     "otelCollector": {
       "type": "object",
       "properties": {

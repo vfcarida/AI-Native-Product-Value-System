@@ -11,6 +11,7 @@ from product_value_system.security.hybrid_detector import (
     HybridSecretDetector,
     SecretFinding,
     load_allowlist,
+    validate_allowlist_pattern,
 )
 from product_value_system.security.input_validator import (
     InputValidator as PromptInputValidator,
@@ -24,6 +25,7 @@ from product_value_system.security.input_validator import (
 from product_value_system.security.ml_secret_detector import (
     MLAnalysisResult,
     MLSecretDetector,
+    PresidioSpanMatch,
 )
 from product_value_system.security.output_sanitization import OutputSanitizer
 from product_value_system.security.path_validation import (
@@ -52,6 +54,7 @@ __all__ = [
     "OutputSanitizer",
     "PathTraversalError",
     "PathValidator",
+    "PresidioSpanMatch",
     "PromptInputValidator",
     "PromptValidationResult",
     "SecretDetector",
@@ -62,4 +65,5 @@ __all__ = [
     "redact_dict",
     "reset_detector_cache",
     "scan_secrets",
+    "validate_allowlist_pattern",
 ]

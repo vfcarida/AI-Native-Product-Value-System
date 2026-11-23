@@ -75,7 +75,9 @@ def _iter_target_files(paths: list[Path], exemptions: set[str]) -> list[Path]:
             for child in sorted(item.rglob("*")):
                 if not child.is_file():
                     continue
-                if any(part in _DEFAULT_SKIP_DIRS for part in child.parts):
+                if any(
+                    part in _DEFAULT_SKIP_DIRS or part.endswith(".egg-info") for part in child.parts
+                ):
                     continue
                 if child.suffix.lower() in _BINARY_EXTENSIONS:
                     continue

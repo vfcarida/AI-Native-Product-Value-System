@@ -157,6 +157,33 @@ serviceMonitor:
   path: /metrics
   labels: {}
 
+# Prometheus Operator SLO Alerting & Recording Rules (`PrometheusRule` CRD — PROD-002)
+slo:
+  enabled: false
+  window: 28d
+  namespace: "" # Defaults to .Release.Namespace when empty
+  labels: {}
+  availability:
+    target: 0.999
+    errorBudget: 0.001 # 0.1% (~40.32 min / 28d)
+    criticalErrorRate: 0.01 # 10x error budget burn
+  latency:
+    p99TargetSeconds: 1.0
+    p99CriticalSeconds: 5.0
+    p95SustainedSeconds: 5.0
+    errorBudget: 0.01 # 1% (~403.2 min / 28d)
+  errorRate:
+    threshold: 0.01 # < 1% 5xx requests
+    criticalThreshold: 0.05
+    errorBudget: 0.005 # 0.5%
+  agentSuccess:
+    target: 0.95 # > 95% completed agent runs
+    criticalThreshold: 0.85
+    errorBudget: 0.02 # 2%
+  saturation:
+    memoryThreshold: 0.9
+    cpuThrottleThreshold: 0.5
+
 # Optional companion OpenTelemetry Collector (OTLP gRPC 4317 / HTTP 4318 -> Prometheus 8889)
 otelCollector:
   enabled: false

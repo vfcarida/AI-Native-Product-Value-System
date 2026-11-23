@@ -24,11 +24,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-[project.urls]
-Documentation = "https://github.com/vfcarida/AI-Native-Product-Value-System/tree/main/docs"
-Repository = "https://github.com/vfcarida/AI-Native-Product-Value-System"
-Issues = "https://github.com/vfcarida/AI-Native-Product-Value-System/issues"
-
 dependencies = [
     "pydantic>=2.0",
     "jsonschema>=4.0",
@@ -40,6 +35,11 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.25.0",
     "networkx>=3.1",
 ]
+
+[project.urls]
+Documentation = "https://github.com/vfcarida/AI-Native-Product-Value-System/tree/main/docs"
+Repository = "https://github.com/vfcarida/AI-Native-Product-Value-System"
+Issues = "https://github.com/vfcarida/AI-Native-Product-Value-System/issues"
 
 [project.optional-dependencies]
 simulation = [
