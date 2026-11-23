@@ -7,6 +7,7 @@ metadata:
     {{- include "pvs.labels" . | nindent 4 }}
 spec:
   minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  unhealthyPodEvictionPolicy: {{ .Values.podDisruptionBudget.unhealthyPodEvictionPolicy | default "IfHealthyBudget" }}
   selector:
     matchLabels:
       {{- include "pvs.selectorLabels" . | nindent 6 }}

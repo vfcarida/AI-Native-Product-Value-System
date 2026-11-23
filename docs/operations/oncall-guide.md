@@ -75,6 +75,12 @@ Use [scripts/silence-alert.sh](../../scripts/silence-alert.sh) to create audited
 
 ## Related Documentation
 
+- [On-Call Quick Reference (All 20 Runbooks)](../runbooks/oncall-quick-reference.md)
+- [Troubleshooting Flowchart](../runbooks/troubleshooting-flowchart.md)
+- [Production Deployment Checklist](../runbooks/deployment-checklist.md)
+- [Emergency Rollback Procedure](../runbooks/rollback-procedure.md)
+- [Emergency Data Loss Playbook](../runbooks/emergency-data-loss.md)
+- [Emergency Security Breach Playbook](../runbooks/emergency-security-breach.md)
 - [Alert Runbook Index](alert-runbook-index.md)
 - [Production SLOs & Error Budgets](slos.md)
 - [Distributed Tracing with Jaeger](tracing-guide.md)

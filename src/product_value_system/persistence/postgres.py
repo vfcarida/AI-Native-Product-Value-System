@@ -57,8 +57,9 @@ class PostgresDatabase:
         *,
         migrations_dir: Path | str = "migrations/postgres",
         min_size: int = 2,
-        max_size: int = 10,
+        max_size: int = 20,
         command_timeout: float = 30.0,
+        statement_cache_size: int = 0,
         pool: Any | None = None,
     ) -> None:
         if not dsn.startswith(("postgresql://", "postgres://")):
@@ -70,9 +71,57 @@ class PostgresDatabase:
         self.min_size = max(1, int(min_size))
         self.max_size = max(self.min_size, int(max_size))
         self.command_timeout = float(command_timeout)
+        # statement_cache_size=0 ensures safe compatibility with PgBouncer transaction pooling
+        self.statement_cache_size = max(0, int(statement_cache_size))
         self._pool: Any | None = pool
         self._vault_client: Any | None = None
         self._vault_lease_id: str | None = None
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        dsn: str | None = None,
+        migrations_dir: Path | str = "migrations/postgres",
+        env: dict[str, str] | None = None,
+    ) -> PostgresDatabase:
+        """Instantiate ``PostgresDatabase`` using HA pool settings from environment variables."""
+        import os
+
+        environ = os.environ if env is None else env
+        resolved_dsn = dsn or environ.get("DATABASE_URL", "")
+        pool_size = int(environ.get("DATABASE_POOL_SIZE", "20"))
+        min_size = min(pool_size, max(2, int(environ.get("DATABASE_MIN_POOL_SIZE", "2"))))
+        stmt_cache = int(environ.get("DATABASE_STATEMENT_CACHE_SIZE", "0"))
+        timeout = float(environ.get("DATABASE_COMMAND_TIMEOUT", "30.0"))
+        return cls(
+            dsn=resolved_dsn,
+            migrations_dir=migrations_dir,
+            min_size=min_size,
+            max_size=pool_size,
+            command_timeout=timeout,
+            statement_cache_size=stmt_cache,
+        )
+
+    def get_pool_stats(self) -> dict[str, Any]:
+        """Return live connection pool telemetry for ``/health/metrics-summary``."""
+        current_size = 0
+        free_size = 0
+        if self._pool is not None:
+            if callable(getattr(self._pool, "get_size", None)):
+                current_size = int(self._pool.get_size())
+            if callable(getattr(self._pool, "get_idle_size", None)):
+                free_size = int(self._pool.get_idle_size())
+        return {
+            "connected": self.is_connected,
+            "min_size": self.min_size,
+            "max_size": self.max_size,
+            "size": current_size,
+            "idle": free_size,
+            "checked_out": max(0, current_size - free_size),
+            "statement_cache_size": self.statement_cache_size,
+            "pgbouncer_compatible": self.statement_cache_size == 0,
+        }
 
     @classmethod
     def from_vault(
@@ -144,6 +193,7 @@ class PostgresDatabase:
             min_size=self.min_size,
             max_size=self.max_size,
             command_timeout=self.command_timeout,
+            statement_cache_size=self.statement_cache_size,
         )
         logger.info(
             "Connected PostgresDatabase pool (min=%d, max=%d)", self.min_size, self.max_size

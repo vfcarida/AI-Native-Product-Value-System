@@ -1,0 +1,225 @@
+{{- if .Values.postgresql.ha.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pvs.fullname" . }}-patroni-config
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-ha
+data:
+  patroni.yml: |
+    scope: {{ include "pvs.fullname" . }}-pg-cluster
+    name: ${POD_NAME}
+    namespace: /db/
+    restapi:
+      listen: 0.0.0.0:8008
+      connect_address: ${POD_IP}:8008
+    etcd3:
+      hosts: {{ .Values.postgresql.ha.patroni.etcdHosts }}
+    bootstrap:
+      dcs:
+        ttl: 30
+        loop_wait: 10
+        retry_timeout: 10
+        maximum_lag_on_failover: {{ mul .Values.postgresql.ha.failover.maxLagMb 1048576 }}
+        postgresql:
+          use_pg_rewind: true
+          parameters:
+            max_connections: 200
+            shared_buffers: 1GB
+            effective_cache_size: 3GB
+            maintenance_work_mem: 256MB
+            checkpoint_completion_target: 0.9
+            wal_buffers: 16MB
+            default_statistics_target: 100
+            random_page_cost: 1.1
+            effective_io_concurrency: 200
+            work_mem: 10MB
+            min_wal_size: 1GB
+            max_wal_size: 4GB
+            max_wal_senders: 10
+            wal_keep_size: 1GB
+            hot_standby: on
+            wal_level: replica
+      initdb:
+        - encoding: UTF8
+        - data-checksums
+      pg_hba:
+        - hostssl replication replicator 0.0.0.0/0 scram-sha-256
+        - hostssl all all 0.0.0.0/0 scram-sha-256
+    postgresql:
+      listen: 0.0.0.0:5432
+      connect_address: ${POD_IP}:5432
+      data_dir: /var/lib/postgresql/data
+      pgpass: /tmp/pgpass
+      parameters:
+        unix_socket_directories: '/var/run/postgresql'
+      create_replica_methods:
+        - basebackup
+      basebackup:
+        max-rate: 100M
+        checkpoint: fast
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "pvs.fullname" . }}-postgres-ha
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-ha
+spec:
+  serviceName: {{ include "pvs.fullname" . }}-postgres-ha
+  replicas: {{ .Values.postgresql.ha.replicas }}
+  selector:
+    matchLabels:
+      app: postgres-ha
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: postgres-ha
+        {{- include "pvs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres-ha
+    spec:
+      serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: postgres-ha
+                topologyKey: kubernetes.io/hostname
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: postgres-ha
+                topologyKey: topology.kubernetes.io/zone
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgresql.ha.image.repository }}:{{ .Values.postgresql.ha.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.ha.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 5432
+              name: postgres
+            - containerPort: 8008
+              name: patroni
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: PATRONI_CONFIGURATION
+              value: /etc/patroni/patroni.yml
+            - name: PATRONI_REPLICATION_USERNAME
+              value: replicator
+            - name: PATRONI_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.ha.existingSecret }}
+                  key: replication-password
+            - name: PATRONI_SUPERUSER_USERNAME
+              value: postgres
+            - name: PATRONI_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.ha.existingSecret }}
+                  key: superuser-password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: patroni-config
+              mountPath: /etc/patroni
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.postgresql.ha.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: patroni
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: patroni
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+      volumes:
+        - name: patroni-config
+          configMap:
+            name: {{ include "pvs.fullname" . }}-patroni-config
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.postgresql.ha.storage.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.ha.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pvs.fullname" . }}-postgres-primary
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-primary
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-ha
+    role: master
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pvs.fullname" . }}-postgres-replica
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-replica
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres-ha
+    role: replica
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+{{- end }}

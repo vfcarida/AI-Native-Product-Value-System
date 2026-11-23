@@ -78,14 +78,57 @@
         "minReplicas": { "type": "integer", "minimum": 1 },
         "maxReplicas": { "type": "integer", "minimum": 1 },
         "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 10, "maximum": 95 },
-        "targetMemoryUtilizationPercentage": { "type": "integer", "minimum": 10, "maximum": 95 }
+        "targetMemoryUtilizationPercentage": { "type": "integer", "minimum": 10, "maximum": 95 },
+        "targetRequestsPerSecond": { "type": ["integer", "string", "null"] }
       }
     },
     "podDisruptionBudget": {
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "minAvailable": { "type": ["integer", "string"] }
+        "minAvailable": { "type": ["integer", "string"] },
+        "unhealthyPodEvictionPolicy": {
+          "type": "string",
+          "enum": ["IfHealthyBudget", "AlwaysAllow"]
+        }
+      }
+    },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 5, "maximum": 600 },
+    "ha": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "antiAffinity": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "ha": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "replicas": { "type": "integer", "minimum": 1, "maximum": 9 },
+            "existingSecret": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "pgbouncer": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicas": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "poolMode": { "type": "string", "enum": ["transaction", "session", "statement"] },
+        "maxClientConnections": { "type": "integer", "minimum": 10 },
+        "defaultPoolSize": { "type": "integer", "minimum": 1 },
+        "reservePoolSize": { "type": "integer", "minimum": 0 },
+        "existingSecret": { "type": "string", "minLength": 1 }
       }
     },
     "networkPolicy": {

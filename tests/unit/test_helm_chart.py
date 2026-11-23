@@ -102,6 +102,8 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
         "NOTES.txt",
         "otel-collector.yaml",
         "pdb.yaml",
+        "pgbouncer.yaml",
+        "postgresql-ha.yaml",
         "prometheusrule.yaml",
         "secret.yaml",
         "service.yaml",

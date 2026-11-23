@@ -94,7 +94,9 @@ jobs:
             --set tracing.enabled=true \
             --set tracing.jaeger.enabled=true \
             --set alerting.enabled=true \
-            --set disasterRecovery.enabled=true > /tmp/rendered-k8s.yaml
+            --set disasterRecovery.enabled=true \
+            --set postgresql.ha.enabled=true \
+            --set pgbouncer.enabled=true > /tmp/rendered-k8s.yaml
 
       - name: Validate rendered Kubernetes manifests with kubeconform
         run: |

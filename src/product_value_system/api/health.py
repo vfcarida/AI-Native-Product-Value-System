@@ -14,6 +14,8 @@ import hmac
 import inspect
 import json
 import os
+import socket
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -130,6 +132,9 @@ def create_app(
     gdpr_export_dir: Path | None = None,
     audit_rate_limit_per_hour: int = 100,
     enable_tracing: bool = True,
+    startup_check: CheckCallable | None = None,
+    pool_stats_provider: Callable[[], dict[str, Any]] | None = None,
+    pod_name: str | None = None,
 ) -> FastAPI:
     """
     Build the FastAPI monitoring/health application for production deployments.
@@ -158,11 +163,54 @@ def create_app(
     if enable_tracing:
         install_tracing_middleware(app)
 
+    started_monotonic = time.monotonic()
+    resolved_pod_name = pod_name or os.getenv("POD_NAME") or socket.gethostname()
+
     @app.get("/health")
     @app.get("/health/live")
-    async def health() -> dict[str, str]:
+    async def health(response: Response) -> dict[str, str]:
         """Liveness probe returning 200 OK when the service process is alive."""
-        return {"status": "healthy", "version": __version__}
+        response.headers["X-Pod-Name"] = resolved_pod_name
+        return {
+            "status": "healthy",
+            "version": __version__,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+
+    @app.get("/health/startup")
+    async def startup() -> Response:
+        """Startup probe verifying initialization (config, schemas, migrations)."""
+        checks = {
+            "config": {"status": "ok", "detail": "loaded"},
+            "startup": await _run_check(startup_check, "initialized"),
+        }
+        all_ok = all(item.get("status") == "ok" for item in checks.values())
+        payload = {
+            "status": "started" if all_ok else "starting",
+            "checks": checks,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        return Response(
+            content=json.dumps(payload),
+            status_code=200 if all_ok else 503,
+            media_type="application/json",
+            headers={"X-Pod-Name": resolved_pod_name},
+        )
+
+    @app.get("/health/metrics-summary")
+    async def metrics_summary(response: Response) -> dict[str, Any]:
+        """Human-readable service health & connection pool summary."""
+        response.headers["X-Pod-Name"] = resolved_pod_name
+        snap = active_metrics.get_snapshot()
+        return {
+            "pod_name": resolved_pod_name,
+            "uptime_seconds": round(time.monotonic() - started_monotonic, 2),
+            "requests_total": snap.get("total_requests", 0),
+            "errors_total": snap.get("total_errors", 0),
+            "avg_latency_ms": round(float(snap.get("avg_latency_seconds", 0.0)) * 1000.0, 2),
+            "database_pool": pool_stats_provider() if pool_stats_provider is not None else {},
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
 
     @app.get("/ready")
     @app.get("/health/ready")
@@ -177,11 +225,13 @@ def create_app(
         payload = {
             "status": "ready" if all_ok else "not_ready",
             "checks": checks,
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         return Response(
             content=json.dumps(payload),
             status_code=200 if all_ok else 503,
             media_type="application/json",
+            headers={"X-Pod-Name": resolved_pod_name},
         )
 
     @app.get("/slos")
