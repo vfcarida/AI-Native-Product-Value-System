@@ -1,5 +1,5 @@
 # Agent sandbox: Isolated execution environment for agents
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 # Install essential tools and iptables for network egress filtering (PROD-003)
 RUN apt-get update && \
