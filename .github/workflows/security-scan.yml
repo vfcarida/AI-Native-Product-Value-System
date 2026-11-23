@@ -31,7 +31,7 @@ jobs:
         run: docker build -t product-value-system:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scan (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'product-value-system:${{ github.sha }}'
           format: 'sarif'
@@ -47,7 +47,7 @@ jobs:
           sarif_file: 'trivy-results.sarif'
 
       - name: Run Trivy vulnerability gate (CRITICAL & HIGH)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'product-value-system:${{ github.sha }}'
           format: 'table'
@@ -64,7 +64,7 @@ jobs:
             -f deploy/docker/Dockerfile.sandbox-typescript deploy/docker
 
       - name: Scan Python sandbox image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'sandbox-python:${{ github.sha }}'
           format: 'table'
@@ -74,7 +74,7 @@ jobs:
           exit-code: '1'
 
       - name: Scan TypeScript sandbox image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'sandbox-typescript:${{ github.sha }}'
           format: 'table'
@@ -153,7 +153,7 @@ jobs:
         run: docker build -t product-value-system:${{ github.sha }} .
 
       - name: Generate CycloneDX SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'product-value-system:${{ github.sha }}'
           format: 'cyclonedx'
