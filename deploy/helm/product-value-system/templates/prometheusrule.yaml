@@ -286,4 +286,52 @@ spec:
             description: "Pod {{ "{{ $labels.pod }}" }} CPU throttled {{ "{{ $value | humanizePercentage }}" }} of interval."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/slos.md#alerting-rules"
             dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
+
+    - name: backup_health
+      interval: 60s
+      rules:
+        - alert: BackupFailed
+          expr: |
+            backup_verification_success{namespace="{{ $ns }}"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            slo: durability
+            tier: infrastructure
+            team: platform
+          annotations:
+            summary: "Database backup or weekly restore verification failed"
+            description: "Backup verification reported failure; RPO/RTO SLA at risk."
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/disaster-recovery-plan.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
+
+        - alert: BackupOld
+          expr: |
+            backup_age_seconds{namespace="{{ $ns }}"} > 7200
+          for: 10m
+          labels:
+            severity: warning
+            slo: durability
+            tier: infrastructure
+            team: platform
+          annotations:
+            summary: "Last successful database backup is older than 2 hours"
+            description: "Backup age {{ "{{ $value | humanizeDuration }}" }} exceeds 2h threshold."
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/disaster-recovery-plan.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
+
+        - alert: BackupSizeTooSmall
+          expr: |
+            backup_size_bytes{namespace="{{ $ns }}"} < 0.5 * avg_over_time(backup_size_bytes{namespace="{{ $ns }}"}[7d])
+          for: 5m
+          labels:
+            severity: warning
+            slo: durability
+            tier: infrastructure
+            team: platform
+          annotations:
+            summary: "Database backup size dropped below 50% of 7-day average"
+            description: "Potential truncated or corrupted backup detected ({{ "{{ $value }}" }} bytes)."
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/restore-procedures.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 {{- end }}

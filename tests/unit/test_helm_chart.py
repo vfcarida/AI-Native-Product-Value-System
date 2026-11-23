@@ -89,6 +89,8 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
     expected_templates = {
         "_helpers.tpl",
         "alertmanager-secret.yaml",
+        "backup-cronjob.yaml",
+        "backup-verification-cronjob.yaml",
         "configmap.yaml",
         "cronjob-archive.yaml",
         "deployment.yaml",

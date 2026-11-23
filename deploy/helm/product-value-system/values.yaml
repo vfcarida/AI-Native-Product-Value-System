@@ -280,6 +280,53 @@ alerting:
     apiKey: "" # Pass via --set or existingSecret
     toEmail: "engineering-notifications@example.com"
 
+# Isolated k6 Load Testing Environment Parameters (PROD-009)
+loadTesting:
+  enabled: false
+  isolatedNamespace: "pvs-load-test"
+  replicaCount: 3
+  maxMonthlySpendUsd: 100
+  seed: 42
+  k6Resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# Disaster Recovery — Hourly pgBackRest Backups, Cross-Region S3 & Verification (PROD-010)
+disasterRecovery:
+  enabled: false
+  stanza: "product-value-system"
+  backupSchedule: "0 * * * *" # Hourly (full on Sunday, diff Mon-Sat)
+  verificationSchedule: "0 6 * * 0" # Weekly Sunday 06:00 UTC restore test
+  existingSecret: "backup-secrets"
+  pvcName: "backup-storage-pvc"
+  rtoTargetSeconds: 3600 # < 1 hour
+  rpoTargetSeconds: 900 # < 15 minutes
+  s3:
+    bucket: "pvs-backups"
+    primaryRegion: "us-east-1"
+    replicaRegion: "us-west-2"
+    retentionDays: 30
+    objectLockEnabled: true
+  pgbackrestImage:
+    repository: pgbackrest/pgbackrest
+    tag: "2.53.1"
+    pullPolicy: IfNotPresent
+  postgresImage:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

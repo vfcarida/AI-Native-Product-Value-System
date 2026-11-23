@@ -8,7 +8,9 @@
 	security-scan-snyk generate-sbom security-report license-check clean demo \
 	demo-greenfield demo-brownfield demo-custom docker-check docker-build \
 	docker-build-sandbox docker-run env-check build publish-test publish \
-	update-deps docs-serve benchmark platform-info
+	update-deps docs-serve benchmark load-test-smoke load-test-greenfield \
+	load-test-brownfield load-test-stress load-test-soak load-test-spike \
+	capacity-plan platform-info
 
 # Default target shows self-documented help
 .DEFAULT_GOAL := help
@@ -169,6 +171,40 @@ benchmark: ## Run performance benchmark tests
 	@printf "$(BLUE)Running performance benchmarks...$(NC)\n"
 	@$(PYTHON) -m pytest tests/ -k "performance or benchmark" -v
 	@printf "$(GREEN)✓ Benchmarks complete$(NC)\n"
+
+load-test-smoke: ## Run 1-minute k6 smoke load test against BASE_URL
+	@printf "$(BLUE)Running k6 smoke load test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --vus 5 --duration 1m --summary-export=results/smoke-summary.json tests/load/k6-greenfield.js
+
+load-test-greenfield: ## Run full k6 greenfield workload (100 VUs, p99 < 5s)
+	@printf "$(BLUE)Running k6 greenfield load test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --summary-export=results/greenfield-summary.json tests/load/k6-greenfield.js
+
+load-test-brownfield: ## Run k6 brownfield modernization workload (50 VUs, p99 < 10s)
+	@printf "$(BLUE)Running k6 brownfield load test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --summary-export=results/brownfield-summary.json tests/load/k6-brownfield.js
+
+load-test-stress: ## Run k6 stress test up to 10k req/s to identify breaking point
+	@printf "$(BLUE)Running k6 stress test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --summary-export=results/stress-summary.json tests/load/k6-stress-test.js
+
+load-test-soak: ## Run k6 24-hour soak test (override duration via SOAK_DURATION)
+	@printf "$(BLUE)Running k6 soak test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --summary-export=results/soak-summary.json tests/load/k6-soak-test.js
+
+load-test-spike: ## Run k6 10x sudden traffic spike test
+	@printf "$(BLUE)Running k6 spike test...$(NC)\n"
+	@mkdir -p results
+	@k6 run --summary-export=results/spike-summary.json tests/load/k6-spike-test.js
+
+capacity-plan: ## Project pod/node capacity and FinOps cost from results/stress-summary.json
+	@printf "$(BLUE)Running capacity planning model...$(NC)\n"
+	@$(PYTHON) scripts/capacity-planning.py results/stress-summary.json
 
 # ------------------------------------------------------------------------------
 # Demos & Value Stream Examples

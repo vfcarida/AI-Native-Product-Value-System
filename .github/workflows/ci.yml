@@ -93,7 +93,8 @@ jobs:
             --set compliance.enabled=true \
             --set tracing.enabled=true \
             --set tracing.jaeger.enabled=true \
-            --set alerting.enabled=true > /tmp/rendered-k8s.yaml
+            --set alerting.enabled=true \
+            --set disasterRecovery.enabled=true > /tmp/rendered-k8s.yaml
 
       - name: Validate rendered Kubernetes manifests with kubeconform
         run: |

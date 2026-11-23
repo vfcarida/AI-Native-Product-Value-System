@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Synthetic, PII-free greenfield and brownfield project fixtures for k6 load tests (PROD-009)",
+    "seed": 42
+  },
+  "greenfield_projects": [
+    {
+      "id": "gf-001",
+      "name": "payment-notification-service",
+      "domain": "fintech",
+      "description": "Event-driven payment settlement notification service with idempotent webhook delivery and retry queues.",
+      "files": ["src/events.py", "src/dispatcher.py", "src/retry_policy.py", "tests/test_events.py"]
+    },
+    {
+      "id": "gf-002",
+      "name": "subscription-metering-engine",
+      "domain": "saas-billing",
+      "description": "Real-time API usage metering and tiered invoice aggregation with late-arriving event reconciliation.",
+      "files": ["src/meter.py", "src/aggregator.py", "src/invoice.py", "tests/test_meter.py"]
+    },
+    {
+      "id": "gf-003",
+      "name": "inventory-allocation-api",
+      "domain": "ecommerce",
+      "description": "Multi-warehouse stock reservation API using optimistic concurrency control and TTL expiration.",
+      "files": ["src/allocator.py", "src/warehouse.py", "src/locks.py", "tests/test_allocator.py"]
+    },
+    {
+      "id": "gf-004",
+      "name": "shipment-eta-predictor",
+      "domain": "logistics",
+      "description": "Carrier telemetry ingestion pipeline computing rolling delivery ETA confidence intervals.",
+      "files": ["src/ingest.py", "src/eta_model.py", "src/alerts.py", "tests/test_eta.py"]
+    },
+    {
+      "id": "gf-005",
+      "name": "clinical-appointment-scheduler",
+      "domain": "healthcare",
+      "description": "Conflict-free appointment booking service supporting multi-resource room and clinician constraints.",
+      "files": ["src/calendar.py", "src/constraints.py", "src/booking.py", "tests/test_booking.py"]
+    },
+    {
+      "id": "gf-006",
+      "name": "feature-flag-evaluator",
+      "domain": "platform",
+      "description": "Sub-millisecond deterministic rollout rule engine with percentage bucketing and audit logging.",
+      "files": ["src/flags.py", "src/evaluator.py", "src/audit.py", "tests/test_flags.py"]
+    }
+  ],
+  "brownfield_projects": [
+    {
+      "id": "bf-001",
+      "name": "legacy-customer-ledger-monolith",
+      "language": "python",
+      "loc": 48000,
+      "description": "10-year-old tightly coupled billing and customer profile monolith requiring strangler-fig extraction of ledger postings.",
+      "hotspots": ["billing/ledger.py", "billing/reconcile.py", "core/db_session.py", "api/legacy_views.py"],
+      "target_boundary": "ledger-service"
+    },
+    {
+      "id": "bf-002",
+      "name": "order-fulfillment-erp",
+      "language": "typescript",
+      "loc": 62000,
+      "description": "Express monolith combining catalog, cart, checkout, and warehouse dispatch with shared mutable globals.",
+      "hotspots": ["src/checkout/processor.ts", "src/warehouse/sync.ts", "src/shared/state.ts"],
+      "target_boundary": "fulfillment-worker"
+    },
+    {
+      "id": "bf-003",
+      "name": "telemetry-ingestion-gateway",
+      "language": "go",
+      "loc": 35000,
+      "description": "High-throughput Go gateway with unbuffered channel bottlenecks and mixed auth/routing concerns.",
+      "hotspots": ["pkg/router/dispatch.go", "pkg/auth/middleware.go", "pkg/store/writer.go"],
+      "target_boundary": "auth-edge-proxy"
+    },
+    {
+      "id": "bf-004",
+      "name": "claims-adjudication-core",
+      "language": "python",
+      "loc": 81000,
+      "description": "Insurance claims rules engine with circular module imports and missing contract schemas.",
+      "hotspots": ["rules/engine.py", "claims/workflow.py", "reports/exporter.py"],
+      "target_boundary": "rules-evaluation-service"
+    },
+    {
+      "id": "bf-005",
+      "name": "partner-edi-translator",
+      "language": "typescript",
+      "loc": 29000,
+      "description": "Batch EDI document parser needing async queue decoupling and schema validation contracts.",
+      "hotspots": ["src/parsers/x12.ts", "src/mappers/orders.ts", "src/transport/sftp.ts"],
+      "target_boundary": "edi-parser-service"
+    },
+    {
+      "id": "bf-006",
+      "name": "reporting-warehouse-etl",
+      "language": "python",
+      "loc": 54000,
+      "description": "Nightly SQL aggregation scripts with high co-change coupling and unindexed full-table scans.",
+      "hotspots": ["etl/daily_rollup.py", "etl/customer_metrics.py", "etl/schema_sync.py"],
+      "target_boundary": "metrics-materializer"
+    }
+  ]
+}

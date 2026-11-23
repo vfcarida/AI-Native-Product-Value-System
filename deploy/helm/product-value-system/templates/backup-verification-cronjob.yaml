@@ -1,0 +1,77 @@
+{{- if .Values.disasterRecovery.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pvs.fullname" . }}-backup-verification
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup-verification
+spec:
+  schedule: {{ .Values.disasterRecovery.verificationSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 4
+  failedJobsHistoryLimit: 4
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "pvs.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup-verification
+        spec:
+          serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: verify-backup
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.disasterRecovery.postgresImage.repository }}:{{ .Values.disasterRecovery.postgresImage.tag }}"
+              imagePullPolicy: {{ .Values.disasterRecovery.postgresImage.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  pgbackrest --stanza={{ .Values.disasterRecovery.stanza }} restore \
+                    --pg1-path=/tmp/test_restore --set=latest --type=immediate
+                  pg_ctl -D /tmp/test_restore start -o "-p 5433 -k /tmp"
+                  trap 'pg_ctl -D /tmp/test_restore stop || true; rm -rf /tmp/test_restore' EXIT
+                  ROW_COUNT="$(psql -h /tmp -p 5433 -U postgres -d pvs_db -tAc 'SELECT COUNT(*) FROM audit_logs;')"
+                  echo "Verified restored audit_logs rows: ${ROW_COUNT}"
+                  if [ "${ROW_COUNT}" -le 0 ]; then
+                    echo "Backup verification failed: audit_logs empty" >&2
+                    exit 1
+                  fi
+              env:
+                - name: PGBACKREST_REPO1_CIPHER_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.disasterRecovery.existingSecret }}
+                      key: encryption-key
+              resources:
+                {{- toYaml .Values.disasterRecovery.resources | nindent 16 }}
+              volumeMounts:
+                - name: pgbackrest-config
+                  mountPath: /etc/pgbackrest
+                  readOnly: true
+                - name: backup-storage
+                  mountPath: /var/lib/pgbackrest
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: pgbackrest-config
+              configMap:
+                name: {{ include "pvs.fullname" . }}-pgbackrest-config
+                optional: true
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: {{ .Values.disasterRecovery.pvcName }}
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi
+{{- end }}

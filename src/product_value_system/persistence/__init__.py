@@ -3,6 +3,14 @@ SQLite persistence layer for value stream runs, stages, policies, evaluations, a
 """
 
 from product_value_system.persistence.database import Database
+from product_value_system.persistence.disaster_recovery import (
+    BackupManifest,
+    DisasterRecoveryManager,
+    DRDrillReport,
+    decrypt_backup_bytes,
+    encrypt_backup_bytes,
+    generate_backup_key,
+)
 from product_value_system.persistence.models import (
     CostRecord,
     EvaluationRecord,
@@ -18,8 +26,11 @@ from product_value_system.persistence.postgres import (
 from product_value_system.persistence.repository import ValueStreamRepository
 
 __all__ = [
+    "BackupManifest",
     "CostRecord",
+    "DRDrillReport",
     "Database",
+    "DisasterRecoveryManager",
     "EvaluationRecord",
     "PolicyDecisionRecord",
     "PostgresDatabase",
@@ -28,4 +39,7 @@ __all__ = [
     "StageRecord",
     "ValueStreamRepository",
     "create_database",
+    "decrypt_backup_bytes",
+    "encrypt_backup_bytes",
+    "generate_backup_key",
 ]

@@ -1,0 +1,85 @@
+{{- if .Values.disasterRecovery.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pvs.fullname" . }}-postgresql-backup
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql-backup
+spec:
+  schedule: {{ .Values.disasterRecovery.backupSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 24
+  failedJobsHistoryLimit: 10
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "pvs.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: postgresql-backup
+        spec:
+          serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: pgbackrest-backup
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.disasterRecovery.pgbackrestImage.repository }}:{{ .Values.disasterRecovery.pgbackrestImage.tag }}"
+              imagePullPolicy: {{ .Values.disasterRecovery.pgbackrestImage.pullPolicy }}
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  DAY_OF_WEEK="$(date -u +%u)"
+                  if [ "${DAY_OF_WEEK}" -eq 7 ]; then
+                    BACKUP_TYPE="full"
+                  else
+                    BACKUP_TYPE="diff"
+                  fi
+                  pgbackrest --stanza={{ .Values.disasterRecovery.stanza }} backup \
+                    --type="${BACKUP_TYPE}" --log-level-console=info
+                  pgbackrest --stanza={{ .Values.disasterRecovery.stanza }} info
+              env:
+                - name: PGBACKREST_REPO1_CIPHER_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.disasterRecovery.existingSecret }}
+                      key: encryption-key
+                - name: PGBACKREST_REPO2_CIPHER_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.disasterRecovery.existingSecret }}
+                      key: encryption-key
+                - name: PGBACKREST_REPO2_S3_BUCKET
+                  value: {{ .Values.disasterRecovery.s3.bucket | quote }}
+                - name: PGBACKREST_REPO2_S3_REGION
+                  value: {{ .Values.disasterRecovery.s3.replicaRegion | quote }}
+              resources:
+                {{- toYaml .Values.disasterRecovery.resources | nindent 16 }}
+              volumeMounts:
+                - name: pgbackrest-config
+                  mountPath: /etc/pgbackrest
+                  readOnly: true
+                - name: backup-storage
+                  mountPath: /var/lib/pgbackrest
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: pgbackrest-config
+              configMap:
+                name: {{ include "pvs.fullname" . }}-pgbackrest-config
+                optional: true
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: {{ .Values.disasterRecovery.pvcName }}
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 128Mi
+{{- end }}

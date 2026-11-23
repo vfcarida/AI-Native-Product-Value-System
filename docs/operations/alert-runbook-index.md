@@ -20,6 +20,9 @@ Complete mapping of all Prometheus SLO and infrastructure alerts defined in [pro
 | `AgentSuccessRateLow` | `slo_agent_success` | Warning | `#alerts-warnings` | 1 hour | [Quality Degradation Warning](../runbooks/alerting.md#qualitydegradationwarning) |
 | `PodMemoryHigh` | `resource_saturation` | Warning | `#alerts-warnings` | 1 hour | [SLO Alerting Rules](slos.md#alerting-rules) |
 | `PodCPUThrottled` | `resource_saturation` | Warning | `#alerts-warnings` | 1 hour | [SLO Alerting Rules](slos.md#alerting-rules) |
+| `BackupFailed` | `backup_health` | **Critical** | PagerDuty + `#alerts-critical` | 15 min | [Disaster Recovery Plan](disaster-recovery-plan.md) |
+| `BackupOld` | `backup_health` | Warning | `#alerts-warnings` | 1 hour | [Disaster Recovery Plan](disaster-recovery-plan.md) |
+| `BackupSizeTooSmall` | `backup_health` | Warning | `#alerts-warnings` | 1 hour | [Restore Procedures](restore-procedures.md) |
 
 ---
 

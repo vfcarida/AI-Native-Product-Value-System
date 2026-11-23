@@ -1,0 +1,144 @@
+{
+  "uid": "pvs-load-testing",
+  "title": "Product Value System - k6 Load Testing & Capacity Dashboard",
+  "description": "Real-time k6 throughput, tail latencies, error rates, token consumption, and pod memory soak tracking (PROD-009).",
+  "tags": ["pvs", "k6", "load-testing", "performance", "capacity", "slo"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active Virtual Users & Request Throughput (RPS)",
+      "description": "Concurrent k6 virtual users alongside achieved HTTP request rate.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "k6_vus",
+          "legendFormat": "Virtual Users"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(k6_http_reqs_total[1m]))",
+          "legendFormat": "Requests/sec"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP Request Latency (p50 / p95 / p99)",
+      "description": "End-to-end latency percentiles against the 1000ms SLO target.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(k6_http_req_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99 (SLO < 1s)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "HTTP Error Rate (%)",
+      "description": "Target < 1% under normal & soak load; < 10% during 10x spike.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(k6_http_req_failed_total[5m])) / clamp_min(sum(rate(k6_http_reqs_total[5m])), 1e-9)) * 100",
+          "legendFormat": "Error Rate %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "LLM Token Consumption Under Load",
+      "description": "Total LLM tokens consumed during greenfield/brownfield load suites.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(k6_tokens_used_total[1h]))",
+          "legendFormat": "Tokens (1h)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Pod Memory Usage Under Soak Load (Leak Detection)",
+      "description": "Monotonic upward trend during 24h soak indicates memory leak.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"pvs-load-test\",container!=\"\"})",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Pod CPU Utilization Under Stress Load",
+      "description": "CPU saturation tracking to pinpoint HPA scale-out & breaking point.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"pvs-load-test\",container!=\"\"}[1m]))",
+          "legendFormat": "{{pod}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    }
+  ]
+}

@@ -279,6 +279,40 @@
         }
       }
     },
+    "loadTesting": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "isolatedNamespace": { "type": "string", "minLength": 1 },
+        "replicaCount": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "maxMonthlySpendUsd": { "type": "number", "minimum": 1 },
+        "seed": { "type": "integer" },
+        "k6Resources": { "type": "object" }
+      }
+    },
+    "disasterRecovery": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "stanza": { "type": "string", "minLength": 1 },
+        "backupSchedule": { "type": "string", "minLength": 9 },
+        "verificationSchedule": { "type": "string", "minLength": 9 },
+        "existingSecret": { "type": "string", "minLength": 1 },
+        "pvcName": { "type": "string", "minLength": 1 },
+        "rtoTargetSeconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+        "rpoTargetSeconds": { "type": "integer", "minimum": 60, "maximum": 900 },
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": { "type": "string", "minLength": 3 },
+            "primaryRegion": { "type": "string", "minLength": 2 },
+            "replicaRegion": { "type": "string", "minLength": 2 },
+            "retentionDays": { "type": "integer", "minimum": 7 },
+            "objectLockEnabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
     "config": {
       "type": "object",
       "required": ["logLevel", "devxAggregateOnly", "devxAnonymize"],

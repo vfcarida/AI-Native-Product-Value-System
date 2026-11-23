@@ -1,0 +1,95 @@
+name: Performance Regression Testing
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * *' # Nightly regression check at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load-test:
+    name: k6 Load Test & Performance Regression Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: "!contains(github.event.pull_request.title, '[skip-perf-test]')"
+
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install k6
+        run: |
+          K6_VERSION="v0.54.0"
+          curl -fsSL "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-amd64.tar.gz" -o /tmp/k6.tar.gz
+          tar -xzf /tmp/k6.tar.gz -C /tmp
+          sudo mv "/tmp/k6-${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      - name: Validate all k6 load scripts
+        run: |
+          for script in tests/load/k6-greenfield.js tests/load/k6-brownfield.js tests/load/k6-stress-test.js tests/load/k6-soak-test.js tests/load/k6-spike-test.js; do
+            k6 inspect "$script" >/dev/null
+            echo "Validated $script"
+          done
+
+      - name: Run k6 smoke / greenfield workload against isolated test target
+        if: ${{ vars.LOAD_TEST_BASE_URL != '' }}
+        env:
+          BASE_URL: ${{ vars.LOAD_TEST_BASE_URL }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
+          LOAD_TEST_SEED: "42"
+        run: |
+          mkdir -p results
+          k6 run tests/load/k6-greenfield.js \
+            --vus 10 \
+            --duration 2m \
+            --summary-export=results/greenfield-summary.json
+
+      - name: Compare against baseline & enforce 10% regression threshold
+        if: ${{ vars.LOAD_TEST_BASE_URL != '' }}
+        run: |
+          if [ -f results/greenfield-baseline.json ]; then
+            python3 scripts/analyze-k6-results.py \
+              results/greenfield-summary.json \
+              results/greenfield-baseline.json \
+              --slo-p99-max-ms 5000 \
+              --markdown-out results/regression-report.md \
+              --json-out results/regression-report.json
+          else
+            echo "No baseline file present yet; recording initial greenfield summary."
+          fi
+
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-test-results
+          path: results/
+          if-no-files-found: ignore
+
+      - name: Post PR performance summary comment
+        if: github.event_name == 'pull_request' && hashFiles('results/regression-report.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('results/regression-report.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
