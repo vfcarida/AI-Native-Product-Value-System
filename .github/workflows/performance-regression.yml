@@ -82,7 +82,7 @@ jobs:
 
       - name: Post PR performance summary comment
         if: github.event_name == 'pull_request' && hashFiles('results/regression-report.md') != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
