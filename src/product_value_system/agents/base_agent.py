@@ -6,11 +6,14 @@ import time
 from typing import Any
 
 from jsonschema import ValidationError
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from product_value_system.agents.agent import AgentResult
 from product_value_system.compliance.audit_logger import AuditEventType, log_audit_event_safe
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
+from product_value_system.observability.trace_config import hash_user_id
 from product_value_system.observability.tracing import traced
 
 
@@ -92,10 +95,21 @@ class BaseAgent:
             AgentResult with output and telemetry
         """
         start_time = time.time()
+        active_tracer = trace.get_tracer(__name__)
+        root_span = trace.get_current_span()
+        root_span.set_attribute("agent.name", self.name)
+        root_span.set_attribute("agent.version", self.version)
+        root_span.set_attribute("pvs.run_id", context.run_id)
+        raw_user_id = getattr(context, "user_id", None)
+        if raw_user_id:
+            root_span.set_attribute("user.id_hash", hash_user_id(str(raw_user_id)))
 
         try:
-            self._validate_input(input_artifact)
+            with active_tracer.start_as_current_span("agent.input_validation") as val_span:
+                val_span.set_attribute("agent.name", self.name)
+                self._validate_input(input_artifact)
         except ValidationError as e:
+            root_span.set_status(Status(StatusCode.ERROR, e.message))
             return AgentResult(
                 success=False,
                 output_artifact={},
@@ -128,14 +142,30 @@ class BaseAgent:
             started_trajectory = True
 
         try:
-            result = await self._execute_impl(
-                input_artifact=input_artifact,
-                harness=harness,
-                context=context,
-            )
+            with active_tracer.start_as_current_span("agent.execution") as exec_span:
+                exec_span.set_attribute("agent.name", self.name)
+                result = await self._execute_impl(
+                    input_artifact=input_artifact,
+                    harness=harness,
+                    context=context,
+                )
+                exec_span.set_attribute("agent.iterations", result.iterations)
+                exec_span.set_attribute("agent.cost_usd", float(result.cost_usd))
+                exec_span.set_attribute("agent.success", result.success)
 
-            self._validate_output(result.output_artifact)
+            with active_tracer.start_as_current_span("agent.output_validation") as out_span:
+                out_span.set_attribute("agent.name", self.name)
+                self._validate_output(result.output_artifact)
+
             result.duration_seconds = time.time() - start_time
+            root_span.set_attribute("agent.iterations", result.iterations)
+            root_span.set_attribute("agent.cost_usd", float(result.cost_usd))
+            root_span.set_attribute("agent.success", result.success)
+            root_span.set_status(
+                Status(StatusCode.OK)
+                if result.success
+                else Status(StatusCode.ERROR, result.error or "agent_failed")
+            )
             if started_trajectory:
                 result.trajectory = harness.trajectory_capture.finalize_trajectory(
                     result.output_artifact,
@@ -164,6 +194,8 @@ class BaseAgent:
             return result
 
         except Exception as e:
+            root_span.set_status(Status(StatusCode.ERROR, str(e)))
+            root_span.record_exception(e)
             captured_traj = None
             if started_trajectory:
                 captured_traj = harness.trajectory_capture.finalize_trajectory(

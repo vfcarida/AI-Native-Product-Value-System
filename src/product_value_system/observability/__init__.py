@@ -46,10 +46,22 @@ from product_value_system.observability.structured_logging import (
     configure_logging,
     run_system_diagnostics,
 )
+from product_value_system.observability.trace_config import (
+    TracingConfig,
+    build_sampler,
+    hash_user_id,
+)
+from product_value_system.observability.trace_decorator import (
+    build_service_dependency_graph,
+    trace_agent_step,
+    trace_model_call,
+)
 from product_value_system.observability.tracing import (
     CURRENT_RUN_ID,
     clear_run_context,
     configure_tracing,
+    get_tracer,
+    init_tracing,
     set_run_context,
     trace_span,
     traced,
@@ -74,12 +86,18 @@ __all__ = [
     "SecretRedactingFilter",
     "StructuredJsonFormatter",
     "TextCompletionSpan",
+    "TracingConfig",
+    "build_sampler",
+    "build_service_dependency_graph",
     "clear_run_context",
     "configure_logging",
     "configure_tracing",
     "create_console_exporter",
     "create_otlp_exporter",
+    "get_tracer",
+    "hash_user_id",
     "infer_genai_system",
+    "init_tracing",
     "instrument_model_call",
     "migrate_attributes",
     "run_system_diagnostics",
@@ -87,6 +105,8 @@ __all__ = [
     "sanitize_string",
     "set_run_context",
     "setup_sanitized_tracing",
+    "trace_agent_step",
+    "trace_model_call",
     "trace_span",
     "traced",
 ]

@@ -88,12 +88,14 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
     """Every required K8s template exists and has balanced Go template block directives."""
     expected_templates = {
         "_helpers.tpl",
+        "alertmanager-secret.yaml",
         "configmap.yaml",
         "cronjob-archive.yaml",
         "deployment.yaml",
         "grafana-dashboards-configmap.yaml",
         "hpa.yaml",
         "ingress.yaml",
+        "jaeger.yaml",
         "networkpolicy.yaml",
         "NOTES.txt",
         "otel-collector.yaml",

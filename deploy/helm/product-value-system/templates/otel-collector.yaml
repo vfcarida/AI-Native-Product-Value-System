@@ -23,18 +23,42 @@ data:
       batch:
         timeout: 5s
         send_batch_size: 512
+      {{- if .Values.tracing.enabled }}
+      resource:
+        attributes:
+          - key: service.name
+            value: {{ .Values.config.otelServiceName }}
+            action: upsert
+      probabilistic_sampler:
+        sampling_percentage: {{ mul .Values.tracing.sampleRate 100 }}
+      {{- end }}
     exporters:
       prometheus:
         endpoint: 0.0.0.0:8889
         namespace: pvs
+      {{- if and .Values.tracing.enabled .Values.tracing.jaeger.enabled }}
+      otlp/jaeger:
+        endpoint: {{ .Values.tracing.jaeger.collectorEndpoint }}
+        tls:
+          insecure: {{ .Values.tracing.jaeger.insecure }}
+      {{- else }}
       debug:
         verbosity: basic
+      {{- end }}
     service:
       pipelines:
         traces:
           receivers: [otlp]
+          {{- if .Values.tracing.enabled }}
+          processors: [memory_limiter, batch, resource, probabilistic_sampler]
+          {{- else }}
           processors: [memory_limiter, batch]
+          {{- end }}
+          {{- if and .Values.tracing.enabled .Values.tracing.jaeger.enabled }}
+          exporters: [otlp/jaeger]
+          {{- else }}
           exporters: [debug]
+          {{- end }}
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]

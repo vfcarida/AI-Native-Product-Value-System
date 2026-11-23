@@ -1,0 +1,145 @@
+{
+  "uid": "pvs-alert-metrics",
+  "title": "Product Value System - Alerting & On-Call Metrics",
+  "description": "AlertManager firing volume, MTTA, MTTR, top firing alerts, and false-positive rate monitoring (PROD-008).",
+  "tags": ["pvs", "alerting", "alertmanager", "pagerduty", "oncall", "sre"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Alerts Firing (by Severity)",
+      "description": "Currently firing Prometheus alerts grouped by severity.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity) (ALERTS{alertstate=\"firing\"})",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Alert Fire Rate (24h)",
+      "description": "Rate of alerts received by AlertManager over the last 24 hours.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(alertmanager_alerts_received_total[24h]))",
+          "legendFormat": "Alerts/sec"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "False Positive / Silenced Alert Rate (%)",
+      "description": "Target < 5% to prevent on-call alert fatigue.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(alertmanager_silences_active[24h])) / clamp_min(sum(rate(alertmanager_alerts_received_total[24h])), 1e-9)) * 100",
+          "legendFormat": "False Positive %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 10}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Mean Time To Acknowledge (MTTA)",
+      "description": "Target < 15 minutes (900s) for critical PagerDuty incidents.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(pagerduty_incident_acknowledge_duration_seconds)",
+          "legendFormat": "MTTA"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 600},
+              {"color": "red", "value": 900}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Mean Time To Resolve (MTTR)",
+      "description": "Target < 1 hour (3600s) for P1 production incidents.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(pagerduty_incident_resolve_duration_seconds)",
+          "legendFormat": "MTTR"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1800},
+              {"color": "red", "value": 3600}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Top 10 Firing Alerts (by Alertname)",
+      "description": "Most frequent alerts for tuning noise and identifying recurring failure modes.",
+      "type": "barchart",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (alertname) (ALERTS{alertstate=\"firing\"}))",
+          "legendFormat": "{{alertname}}"
+        }
+      ]
+    }
+  ]
+}

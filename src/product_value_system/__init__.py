@@ -39,6 +39,12 @@ if TYPE_CHECKING:
     from product_value_system.metrics.devx_tracker import DevXTracker
     from product_value_system.metrics.space_calculator import SPACECalculator
     from product_value_system.observability.structured_logging import run_system_diagnostics
+    from product_value_system.observability.trace_config import TracingConfig
+    from product_value_system.observability.trace_decorator import (
+        trace_agent_step,
+        trace_model_call,
+    )
+    from product_value_system.observability.tracing import init_tracing
     from product_value_system.orchestrator.controller import ValueStreamOrchestrator
     from product_value_system.orchestrator.parallel_executor import ParallelExecutor
     from product_value_system.persistence.postgres import PostgresDatabase, create_database
@@ -98,6 +104,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "product_value_system.brownfield.strangler_planner",
         "StranglerPlanner",
     ),
+    "TracingConfig": ("product_value_system.observability.trace_config", "TracingConfig"),
     "ValueStreamOrchestrator": (
         "product_value_system.orchestrator.controller",
         "ValueStreamOrchestrator",
@@ -106,9 +113,18 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "create_adapter": ("product_value_system.adapters", "create_adapter"),
     "create_database": ("product_value_system.persistence.postgres", "create_database"),
     "get_vault_client": ("product_value_system.secrets.vault_client", "get_vault_client"),
+    "init_tracing": ("product_value_system.observability.tracing", "init_tracing"),
     "run_system_diagnostics": (
         "product_value_system.observability.structured_logging",
         "run_system_diagnostics",
+    ),
+    "trace_agent_step": (
+        "product_value_system.observability.trace_decorator",
+        "trace_agent_step",
+    ),
+    "trace_model_call": (
+        "product_value_system.observability.trace_decorator",
+        "trace_model_call",
     ),
     "validate_all_configs": (
         "product_value_system.contracts.config_schemas",
@@ -151,12 +167,16 @@ __all__ = [
     "RetentionPolicy",
     "SPACECalculator",
     "StranglerPlanner",
+    "TracingConfig",
     "ValueStreamOrchestrator",
     "VaultClient",
     "__version__",
     "create_adapter",
     "create_database",
     "get_vault_client",
+    "init_tracing",
     "run_system_diagnostics",
+    "trace_agent_step",
+    "trace_model_call",
     "validate_all_configs",
 ]

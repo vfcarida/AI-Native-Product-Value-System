@@ -1,0 +1,57 @@
+# PagerDuty On-Call Rotation, Escalation Policies & Service Configuration (PROD-008)
+# Strictly validated by PagerDutyScheduleConfigFile in contracts/config_schemas.py.
+---
+schedules:
+  - name: "Product Value System - Primary On-Call"
+    time_zone: "America/New_York"
+    description: "24/7 primary on-call rotation (minimum 3 engineers)"
+    layers:
+      - name: "Weekly rotation"
+        start: "2026-11-23T09:00:00"
+        rotation_virtual_start: "2026-11-23T09:00:00"
+        rotation_turn_length_seconds: 604800
+        users:
+          - email: "engineer1@example.com"
+          - email: "engineer2@example.com"
+          - email: "engineer3@example.com"
+
+  - name: "Product Value System - Backup On-Call"
+    time_zone: "America/New_York"
+    description: "Backup rotation (auto-escalation after 15 minutes)"
+    layers:
+      - name: "Weekly rotation"
+        start: "2026-11-23T09:00:00"
+        rotation_virtual_start: "2026-11-23T09:00:00"
+        rotation_turn_length_seconds: 604800
+        users:
+          - email: "senior1@example.com"
+          - email: "senior2@example.com"
+
+escalation_policies:
+  - name: "Product Value System - Standard Escalation"
+    description: "Primary -> Backup (15m) -> Engineering Manager (30m)"
+    num_loops: 2
+    rules:
+      - escalation_delay_in_minutes: 0
+        targets:
+          - type: "schedule_reference"
+            id: "Product Value System - Primary On-Call"
+
+      - escalation_delay_in_minutes: 15
+        targets:
+          - type: "schedule_reference"
+            id: "Product Value System - Backup On-Call"
+
+      - escalation_delay_in_minutes: 30
+        targets:
+          - type: "user_reference"
+            id: "engineering-manager@example.com"
+
+services:
+  - name: "Product Value System"
+    description: "AI-Native Product Value System Control Plane"
+    escalation_policy: "Product Value System - Standard Escalation"
+    alert_creation: "create_alerts_and_incidents"
+    incident_urgency_rule:
+      type: "constant"
+      urgency: "high"

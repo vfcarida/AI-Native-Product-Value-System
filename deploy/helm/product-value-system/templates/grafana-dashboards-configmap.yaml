@@ -75,4 +75,26 @@ data:
         }
       ]
     }
+  pvs-alert-metrics.json: |
+    {
+      "title": "Product Value System - Alerting & On-Call Metrics",
+      "uid": "pvs-alert-metrics",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Alerts Firing (by Severity)",
+          "targets": [{"expr": "sum by (severity) (ALERTS{alertstate=\"firing\"})"}]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "False Positive / Silenced Rate (%)",
+          "targets": [{"expr": "(sum(rate(alertmanager_silences_active[24h])) / clamp_min(sum(rate(alertmanager_alerts_received_total[24h])), 1e-9)) * 100"}]
+        }
+      ]
+    }
 {{- end }}

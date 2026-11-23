@@ -184,7 +184,7 @@ slo:
     memoryThreshold: 0.9
     cpuThrottleThreshold: 0.5
 
-# Optional companion OpenTelemetry Collector (OTLP gRPC 4317 / HTTP 4318 -> Prometheus 8889)
+# Optional companion OpenTelemetry Collector (OTLP gRPC 4317 / HTTP 4318 -> Prometheus 8889 / Jaeger)
 otelCollector:
   enabled: false
   replicaCount: 1
@@ -199,6 +199,24 @@ otelCollector:
     limits:
       cpu: 500m
       memory: 384Mi
+
+# Distributed Tracing with Jaeger & Adaptive/Probabilistic Sampling (PROD-007)
+tracing:
+  enabled: false
+  sampleRate: 0.1 # 10% sampling in production (set 1.0 in development)
+  jaeger:
+    enabled: true
+    deployInstance: false # Set true when Jaeger Operator CRD is installed
+    strategy: production # production | allInOne
+    collectorEndpoint: "product-value-system-jaeger-collector.jaeger.svc.cluster.local:4317"
+    insecure: false
+    collectorReplicas: 3
+    queryReplicas: 2
+    retentionTtlSeconds: 2592000 # 30 days hot storage
+    cassandra:
+      servers: "cassandra.jaeger.svc.cluster.local"
+      keyspace: "jaeger_v1_prod"
+      replicationFactor: 3
 
 # Optional Grafana sidecar dashboard ConfigMap (`grafana_dashboard: "1"`)
 grafanaDashboards:
@@ -245,6 +263,22 @@ compliance:
       limits:
         cpu: 500m
         memory: 512Mi
+
+# AlertManager On-Call Automation — PagerDuty, Slack & Email (PROD-008)
+alerting:
+  enabled: false
+  existingSecret: "" # Preferred: Vault / External Secrets managed Secret
+  createSecret: false
+  pagerduty:
+    serviceKey: "" # Pass via --set or existingSecret
+    escalationDelayMinutes: 15
+  slack:
+    webhookUrl: "" # Pass via --set or existingSecret
+    criticalChannel: "#alerts-critical"
+    warningChannel: "#alerts-warnings"
+  sendgrid:
+    apiKey: "" # Pass via --set or existingSecret
+    toEmail: "engineering-notifications@example.com"
 
 nodeSelector: {}
 tolerations: []

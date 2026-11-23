@@ -2,6 +2,13 @@
 Production monitoring, SLI/SLO definitions, error budgets, metrics, and rollback (EVO-014).
 """
 
+from product_value_system.monitoring.alert_router import (
+    Alert,
+    AlertRoutingEngine,
+    Silence,
+    SilenceMatcher,
+    sanitize_alert_payload,
+)
 from product_value_system.monitoring.error_budget import (
     DEFAULT_ERROR_BUDGET_ACTIONS,
     ErrorBudgetPolicy,
@@ -42,6 +49,8 @@ __all__ = [
     "AI_SLIS",
     "AVAILABILITY_SLI",
     "AVAILABILITY_SLO",
+    "Alert",
+    "AlertRoutingEngine",
     "AlertRuleEvaluation",
     "COST_PER_OUTCOME_SLI",
     "COST_SLO",
@@ -68,8 +77,11 @@ __all__ = [
     "SLO",
     "SLOEvaluator",
     "SLIType",
+    "Silence",
+    "SilenceMatcher",
     "THROUGHPUT_SLI",
     "TRADITIONAL_SLIS",
     "get_metrics",
     "reset_metrics",
+    "sanitize_alert_payload",
 ]

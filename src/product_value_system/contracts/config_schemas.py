@@ -602,6 +602,79 @@ class ComplianceConfigFile(StrictConfigModel):
 
 
 # ---------------------------------------------------------------------------
+# 15. config/pagerduty-schedule.yaml (PROD-008)
+# ---------------------------------------------------------------------------
+
+
+class OnCallUserSchema(StrictConfigModel):
+    email: str = Field(min_length=3)
+
+
+class OnCallLayerSchema(StrictConfigModel):
+    name: str = Field(min_length=1)
+    start: str = Field(min_length=10)
+    rotation_virtual_start: str | None = None
+    rotation_turn_length_seconds: int = Field(ge=3600)
+    users: list[OnCallUserSchema] = Field(min_length=1)
+
+
+class OnCallScheduleSchema(StrictConfigModel):
+    name: str = Field(min_length=1)
+    time_zone: str = Field(min_length=2)
+    description: str = ""
+    layers: list[OnCallLayerSchema] = Field(min_length=1)
+
+
+class EscalationTargetSchema(StrictConfigModel):
+    type: Literal["schedule_reference", "user_reference"]
+    id: str = Field(min_length=1)
+
+
+class EscalationRuleSchema(StrictConfigModel):
+    escalation_delay_in_minutes: int = Field(ge=0, le=1440)
+    targets: list[EscalationTargetSchema] = Field(min_length=1)
+
+
+class EscalationPolicySchema(StrictConfigModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+    num_loops: int = Field(default=1, ge=0, le=9)
+    rules: list[EscalationRuleSchema] = Field(min_length=1)
+
+
+class IncidentUrgencyRuleSchema(StrictConfigModel):
+    type: Literal["constant", "use_support_hours"] = "constant"
+    urgency: Literal["high", "low", "severity_based"] = "high"
+
+
+class OnCallServiceSchema(StrictConfigModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+    escalation_policy: str = Field(min_length=1)
+    alert_creation: Literal["create_alerts_and_incidents", "create_incidents"] = (
+        "create_alerts_and_incidents"
+    )
+    incident_urgency_rule: IncidentUrgencyRuleSchema = Field(
+        default_factory=IncidentUrgencyRuleSchema
+    )
+
+
+class PagerDutyScheduleConfigFile(StrictConfigModel):
+    schedules: list[OnCallScheduleSchema] = Field(min_length=1)
+    escalation_policies: list[EscalationPolicySchema] = Field(min_length=1)
+    services: list[OnCallServiceSchema] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_primary_rotation_coverage(self) -> PagerDutyScheduleConfigFile:
+        primary_users = len(self.schedules[0].layers[0].users)
+        if primary_users < 3:
+            raise ValueError(
+                f"Primary on-call rotation requires >= 3 engineers, found {primary_users}"
+            )
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Registry & Unified Validator
 # ---------------------------------------------------------------------------
 
@@ -614,6 +687,7 @@ CONFIG_SCHEMA_REGISTRY: dict[str, type[StrictConfigModel]] = {
     "sandbox.yaml": SandboxConfigFile,
     "network_allowlist.yaml": NetworkAllowlistConfigFile,
     "compliance.yaml": ComplianceConfigFile,
+    "pagerduty-schedule.yaml": PagerDutyScheduleConfigFile,
     "brownfield.yaml": BrownfieldConfigFile,
     "metrics.yaml": MetricsConfigFile,
     "budget_limits.yaml": BudgetLimitsConfigFile,

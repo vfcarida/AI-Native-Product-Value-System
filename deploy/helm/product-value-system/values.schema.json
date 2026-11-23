@@ -160,6 +160,34 @@
         "replicaCount": { "type": "integer", "minimum": 1, "maximum": 10 }
       }
     },
+    "tracing": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sampleRate": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "jaeger": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "deployInstance": { "type": "boolean" },
+            "strategy": { "type": "string", "enum": ["production", "allInOne"] },
+            "collectorEndpoint": { "type": "string", "minLength": 1 },
+            "insecure": { "type": "boolean" },
+            "collectorReplicas": { "type": "integer", "minimum": 1, "maximum": 20 },
+            "queryReplicas": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "retentionTtlSeconds": { "type": "integer", "minimum": 3600 },
+            "cassandra": {
+              "type": "object",
+              "properties": {
+                "servers": { "type": "string", "minLength": 1 },
+                "keyspace": { "type": "string", "minLength": 1 },
+                "replicationFactor": { "type": "integer", "minimum": 1, "maximum": 5 }
+              }
+            }
+          }
+        }
+      }
+    },
     "grafanaDashboards": {
       "type": "object",
       "properties": {
@@ -217,6 +245,36 @@
             "successfulJobsHistoryLimit": { "type": "integer", "minimum": 1 },
             "failedJobsHistoryLimit": { "type": "integer", "minimum": 1 },
             "resources": { "type": "object" }
+          }
+        }
+      }
+    },
+    "alerting": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "existingSecret": { "type": "string" },
+        "createSecret": { "type": "boolean" },
+        "pagerduty": {
+          "type": "object",
+          "properties": {
+            "serviceKey": { "type": "string" },
+            "escalationDelayMinutes": { "type": "integer", "minimum": 1, "maximum": 120 }
+          }
+        },
+        "slack": {
+          "type": "object",
+          "properties": {
+            "webhookUrl": { "type": "string" },
+            "criticalChannel": { "type": "string", "pattern": "^#" },
+            "warningChannel": { "type": "string", "pattern": "^#" }
+          }
+        },
+        "sendgrid": {
+          "type": "object",
+          "properties": {
+            "apiKey": { "type": "string" },
+            "toEmail": { "type": "string", "minLength": 3 }
           }
         }
       }

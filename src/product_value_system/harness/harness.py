@@ -381,6 +381,19 @@ class Harness:
                 cost_usd=actual_cost,
                 tool_call_count=len(response.tool_calls) if response.tool_calls else None,
             )
+            # Jaeger-compatible model.* cost attribution tags (PROD-007)
+            current_span = trace.get_current_span()
+            provider_name = (
+                routing_decision.provider
+                if routing_decision is not None
+                else str(getattr(active_adapter, "provider", type(active_adapter).__name__))
+            )
+            current_span.set_attribute("model.name", response.model or adapter_model)
+            current_span.set_attribute("model.provider", provider_name)
+            current_span.set_attribute("model.tokens.prompt", prompt_tokens)
+            current_span.set_attribute("model.tokens.completion", completion_tokens)
+            current_span.set_attribute("model.tokens.total", actual_tokens)
+            current_span.set_attribute("model.cost.usd", round(actual_cost, 6))
 
         elapsed_sec = time.perf_counter() - step_start
         metrics.record_request(
@@ -446,15 +459,21 @@ class Harness:
         parameters: dict[str, Any],
         context: dict[str, Any] | None = None,
     ) -> Any:
-        """Execute a registered tool with policy check and trajectory observation logging."""
+        """Execute a registered tool with policy check, tracing span, and observation logging."""
         capture_active = self.trajectory_capture.enabled
         start_time = time.perf_counter() if capture_active else 0.0
-        tool_call = await self.tools.execute(
-            agent_name=self.context.agent_name,
-            tool_name=tool_name,
-            parameters=parameters,
-            context=context or {},
-        )
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(f"agent.tool.{tool_name}") as tool_span:
+            tool_span.set_attribute("tool.name", tool_name)
+            tool_span.set_attribute("agent.name", self.context.agent_name)
+            tool_call = await self.tools.execute(
+                agent_name=self.context.agent_name,
+                tool_name=tool_name,
+                parameters=parameters,
+                context=context or {},
+            )
+            tool_span.set_attribute("tool.authorized", bool(tool_call.authorized))
+            tool_span.set_attribute("tool.has_error", tool_call.error is not None)
         if capture_active:
             latency_ms = (time.perf_counter() - start_time) * 1000.0
             obs = (

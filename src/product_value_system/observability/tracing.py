@@ -1,20 +1,31 @@
 """
-OpenTelemetry tracing configuration and utilities.
+OpenTelemetry tracing configuration and Jaeger OTLP backend integration (PROD-007).
 """
+
+from __future__ import annotations
 
 import contextvars
 import functools
 import inspect
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+    SpanExporter,
+)
 
 from product_value_system.observability.sanitization import sanitize_attributes
+from product_value_system.observability.trace_config import TracingConfig, build_sampler
+
+logger = logging.getLogger(__name__)
 
 # Context var for current run ID
 CURRENT_RUN_ID: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -31,6 +42,116 @@ def _set_global_tracer_provider(provider: TracerProvider) -> None:
     if hasattr(trace, "_TRACER_PROVIDER"):
         trace._TRACER_PROVIDER = None
     trace.set_tracer_provider(provider)
+
+
+def _auto_instrument_optional_libraries() -> list[str]:
+    """Attach optional OpenTelemetry auto-instrumentors if installed."""
+    instrumented: list[str] = []
+    candidates = (
+        ("opentelemetry.instrumentation.fastapi", "FastAPIInstrumentor", "fastapi"),
+        ("opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor", "httpx"),
+        ("opentelemetry.instrumentation.sqlalchemy", "SQLAlchemyInstrumentor", "sqlalchemy"),
+    )
+    for mod_name, cls_name, label in candidates:
+        try:
+            mod = __import__(mod_name, fromlist=[cls_name])
+            instrumentor = getattr(mod, cls_name)()
+            if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
+                instrumentor.instrument()
+            instrumented.append(label)
+        except Exception:
+            continue
+    return instrumented
+
+
+def init_tracing(
+    service_name: str = "product-value-system",
+    environment: str | None = None,
+    *,
+    config: TracingConfig | None = None,
+    otlp_endpoint: str | None = None,
+    sample_rate: float | None = None,
+    span_exporter: SpanExporter | None = None,
+    use_simple_processor: bool = False,
+    auto_instrument: bool = True,
+) -> TracerProvider:
+    """Initialize OpenTelemetry tracing exporting to OpenTelemetry Collector / Jaeger.
+
+    Preserves application availability: exporter initialization errors degrade
+    gracefully instead of crashing startup, and ``OTEL_SDK_DISABLED=true`` disables
+    export cleanly.
+    """
+    cfg = config or TracingConfig.from_env(
+        service_name=service_name,
+        environment=environment,
+        otlp_endpoint=otlp_endpoint,
+        sample_rate=sample_rate,
+    )
+
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        otel_sdk_version = _pkg_version("opentelemetry-sdk")
+    except Exception:
+        otel_sdk_version = "unknown"
+
+    resource = Resource.create(
+        {
+            SERVICE_NAME: cfg.service_name,
+            SERVICE_VERSION: cfg.service_version,
+            "deployment.environment": cfg.environment,
+            "telemetry.sdk.name": "opentelemetry",
+            "telemetry.sdk.language": "python",
+            "telemetry.sdk.version": otel_sdk_version,
+        }
+    )
+
+    provider = TracerProvider(resource=resource, sampler=build_sampler(cfg))
+
+    if not cfg.disabled:
+        active_exporter: SpanExporter | None = span_exporter
+        if active_exporter is None:
+            try:
+                active_exporter = OTLPSpanExporter(
+                    endpoint=cfg.otlp_endpoint,
+                    insecure=cfg.otlp_insecure,
+                )
+            except Exception as exc:
+                logger.warning("OTLP span exporter unavailable (%s); tracing degraded", exc)
+                active_exporter = None
+
+        if active_exporter is not None:
+            base_processor: SpanProcessor = (
+                SimpleSpanProcessor(active_exporter)
+                if use_simple_processor
+                else BatchSpanProcessor(
+                    active_exporter,
+                    max_queue_size=cfg.batch_max_queue_size,
+                    max_export_batch_size=cfg.batch_max_export_batch_size,
+                    schedule_delay_millis=cfg.batch_schedule_delay_millis,
+                )
+            )
+            if cfg.redact_sensitive:
+                from product_value_system.observability.sanitized_tracing import (
+                    SanitizingSpanProcessor,
+                )
+
+                processor: SpanProcessor = SanitizingSpanProcessor(base_processor)
+            else:
+                processor = base_processor
+            provider.add_span_processor(processor)
+
+    _set_global_tracer_provider(provider)
+
+    if auto_instrument and not cfg.disabled:
+        _auto_instrument_optional_libraries()
+
+    return provider
+
+
+def get_tracer(name: str = __name__) -> trace.Tracer:
+    """Return a tracer from the currently active global ``TracerProvider``."""
+    return trace.get_tracer(name)
 
 
 def configure_tracing(

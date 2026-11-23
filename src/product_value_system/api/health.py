@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request, Response
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from prometheus_client import generate_latest
 
 from product_value_system.__version__ import __version__
@@ -68,6 +70,33 @@ def install_security_headers(app: FastAPI, *, csp: str = _DEFAULT_CSP) -> None:
         return response
 
 
+def install_tracing_middleware(app: FastAPI) -> None:
+    """Attach lightweight OpenTelemetry HTTP request tracing middleware (PROD-007)."""
+
+    @app.middleware("http")
+    async def trace_http_requests(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        tracer = trace.get_tracer("product_value_system.api")
+        span_name = f"http.{request.method} {request.url.path}"
+        with tracer.start_as_current_span(span_name) as span:
+            span.set_attribute("http.method", request.method)
+            span.set_attribute("http.route", request.url.path)
+            try:
+                response = await call_next(request)
+                span.set_attribute("http.status_code", response.status_code)
+                if response.status_code >= 500:
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
+                else:
+                    span.set_status(Status(StatusCode.OK))
+                return response
+            except Exception as exc:
+                span.set_status(Status(StatusCode.ERROR, str(exc)))
+                span.record_exception(exc)
+                raise
+
+
 async def _run_check(check: CheckCallable | None, default_detail: str) -> dict[str, Any]:
     """Execute an optional sync/async dependency health check safely."""
     if check is None:
@@ -100,6 +129,7 @@ def create_app(
     audit_principals: Mapping[str, AuditPrincipal] | None = None,
     gdpr_export_dir: Path | None = None,
     audit_rate_limit_per_hour: int = 100,
+    enable_tracing: bool = True,
 ) -> FastAPI:
     """
     Build the FastAPI monitoring/health application for production deployments.
@@ -125,6 +155,8 @@ def create_app(
         version=__version__,
     )
     install_security_headers(app)
+    if enable_tracing:
+        install_tracing_middleware(app)
 
     @app.get("/health")
     @app.get("/health/live")

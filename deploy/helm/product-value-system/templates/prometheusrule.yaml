@@ -57,6 +57,7 @@ spec:
             summary: "SLO-01 availability error budget burning"
             description: "Current non-2xx ratio {{ "{{ $value | humanizePercentage }}" }} exceeds 28d error budget threshold ({{ .Values.slo.availability.errorBudget }})."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnrateslow"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: SLOAvailabilityCritical
           expr: |
@@ -72,10 +73,12 @@ spec:
             severity: critical
             slo: availability
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-01 availability critical breach (10x error budget)"
             description: "Non-2xx ratio {{ "{{ $value | humanizePercentage }}" }} is >10x the 0.1% availability error budget."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnratefast"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: SLOAvailabilityMultiWindowBurn
           expr: |
@@ -103,10 +106,12 @@ spec:
             severity: critical
             slo: availability
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-01 fast multi-window burn rate (14.4x)"
             description: "Both 5m and 1h burn rates exceed 14.4x budget; 28-day error budget will exhaust in <2 days."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnratefast"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
     - name: slo_latency
       interval: 30s
@@ -122,10 +127,12 @@ spec:
             severity: warning
             slo: latency
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-02 API p99 latency degraded"
             description: "HTTP p99 latency {{ "{{ $value | humanizeDuration }}" }} exceeds {{ .Values.slo.latency.p99TargetSeconds }}s SLO target."
-            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#latencysloburnslow"
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/trace-high-latency.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: SLOLatencyP99Critical
           expr: |
@@ -138,10 +145,12 @@ spec:
             severity: critical
             slo: latency
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-02 API p99 latency critical breach"
             description: "HTTP p99 latency {{ "{{ $value | humanizeDuration }}" }} exceeds {{ .Values.slo.latency.p99CriticalSeconds }}s severe threshold."
-            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#latencysloburnfast"
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/trace-high-latency.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: SLOLatencyP95Sustained
           expr: |
@@ -151,10 +160,12 @@ spec:
             severity: warning
             slo: latency
             tier: control-plane
+            team: platform
           annotations:
             summary: "Agent/model p95 latency sustained above target"
             description: "15m average pvs_latency_p95_seconds ({{ "{{ $value | humanizeDuration }}" }}) exceeds {{ .Values.slo.latency.p95SustainedSeconds }}s."
-            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#latencysloburnslow"
+            runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/trace-high-latency.md"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
     - name: slo_error_rate
       interval: 30s
@@ -171,10 +182,12 @@ spec:
             severity: warning
             slo: error_rate
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-03 HTTP 5xx error rate elevated"
             description: "5xx error rate {{ "{{ $value | humanizePercentage }}" }} exceeds {{ .Values.slo.errorRate.threshold }} threshold."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnrateslow"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: SLOErrorRateCritical
           expr: |
@@ -188,10 +201,12 @@ spec:
             severity: critical
             slo: error_rate
             tier: control-plane
+            team: platform
           annotations:
             summary: "SLO-03 HTTP 5xx error rate critical"
             description: "5xx error rate {{ "{{ $value | humanizePercentage }}" }} exceeds {{ .Values.slo.errorRate.criticalThreshold }} critical limit."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#sloburnratefast"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
     - name: slo_agent_success
       interval: 60s
@@ -208,10 +223,12 @@ spec:
             severity: warning
             slo: agent_success
             tier: agent-plane
+            team: platform
           annotations:
             summary: "SLO-04 agent completion rate below 95% target"
             description: "Agent completion rate {{ "{{ $value | humanizePercentage }}" }} dropped below {{ .Values.slo.agentSuccess.target }} SLO."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#qualitydegradationwarning"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: AgentSuccessRateCritical
           expr: |
@@ -225,10 +242,12 @@ spec:
             severity: critical
             slo: agent_success
             tier: agent-plane
+            team: platform
           annotations:
             summary: "SLO-04 agent completion rate critically low"
             description: "Agent completion rate {{ "{{ $value | humanizePercentage }}" }} dropped below {{ .Values.slo.agentSuccess.criticalThreshold }}; freeze deployments."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/runbooks/alerting.md#qualitydegradationcritical"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
     - name: resource_saturation
       interval: 30s
@@ -245,10 +264,12 @@ spec:
             severity: warning
             slo: saturation
             tier: infrastructure
+            team: platform
           annotations:
             summary: "Pod memory usage exceeds saturation threshold"
             description: "Pod {{ "{{ $labels.pod }}" }} memory utilization at {{ "{{ $value | humanizePercentage }}" }}."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/slos.md#alerting-rules"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 
         - alert: PodCPUThrottled
           expr: |
@@ -259,8 +280,10 @@ spec:
             severity: warning
             slo: saturation
             tier: infrastructure
+            team: platform
           annotations:
             summary: "Pod CPU throttling detected"
             description: "Pod {{ "{{ $labels.pod }}" }} CPU throttled {{ "{{ $value | humanizePercentage }}" }} of interval."
             runbook_url: "https://github.com/vfcarida/AI-Native-Product-Value-System/blob/main/docs/operations/slos.md#alerting-rules"
+            dashboard_url: "https://grafana.internal/d/pvs-slo-dashboard"
 {{- end }}

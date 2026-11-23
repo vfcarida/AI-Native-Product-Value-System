@@ -1,0 +1,120 @@
+# Jaeger Operator & Production Distributed Tracing Values (PROD-007)
+# Production: strategy=production with Cassandra (30d hot TTL, 90d cold retention)
+# Development: override strategy=allInOne and storage.type=memory for local all-in-one.
+---
+jaeger:
+  operator:
+    enabled: true
+    image: jaegertracing/jaeger-operator:1.51
+
+  instance:
+    name: product-value-system-jaeger
+    strategy: production # allInOne for local dev, production for Kubernetes clusters
+
+    storage:
+      type: cassandra
+      cassandra:
+        servers: cassandra.jaeger.svc.cluster.local
+        keyspace: jaeger_v1_prod
+        replicationFactor: 3
+        tls:
+          enabled: true
+      options:
+        cassandra:
+          max-traces: 1000000
+          ttl: 2592000 # 30 days hot storage (seconds)
+          cold-retention-days: 90
+
+    query:
+      enabled: true
+      replicas: 2
+      service:
+        type: ClusterIP
+        port: 16686
+      ingress:
+        enabled: true
+        host: jaeger.product-value-system.internal
+        tls: true
+        oauth2Proxy:
+          enabled: true
+          provider: oidc
+
+    collector:
+      enabled: true
+      replicas: 3
+      service:
+        otlp:
+          grpc:
+            port: 4317
+          http:
+            port: 4318
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "500m"
+        limits:
+          memory: "2Gi"
+          cpu: "2000m"
+
+    agent:
+      enabled: true
+      strategy: DaemonSet
+      service:
+        compactPort: 6831
+        binaryPort: 6832
+        samplingPort: 5778
+
+    sampling:
+      type: adaptive # adaptive | probabilistic | ratelimiting
+      param: 0.10 # 10% sampling in production (1.0 in development)
+
+otelCollector:
+  enabled: true
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 512
+        spike_limit_mib: 128
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+      resource:
+        attributes:
+          - key: service.name
+            value: product-value-system
+            action: upsert
+          - key: deployment.environment
+            from_attribute: k8s.namespace.name
+            action: insert
+      probabilistic_sampler:
+        sampling_percentage: 10 # 10% production trace sampling
+
+    exporters:
+      # Modern Jaeger (>= 1.35) ingests native OTLP gRPC on port 4317
+      otlp/jaeger:
+        endpoint: product-value-system-jaeger-collector.jaeger.svc.cluster.local:4317
+        tls:
+          insecure: false
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: pvs
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resource, probabilistic_sampler]
+          exporters: [otlp/jaeger]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]

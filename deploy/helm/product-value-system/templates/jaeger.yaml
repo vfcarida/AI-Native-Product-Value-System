@@ -1,0 +1,49 @@
+{{- if and .Values.tracing.enabled .Values.tracing.jaeger.deployInstance }}
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: {{ include "pvs.fullname" . }}-jaeger
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger
+spec:
+  strategy: {{ .Values.tracing.jaeger.strategy }}
+  {{- if eq .Values.tracing.jaeger.strategy "production" }}
+  storage:
+    type: cassandra
+    options:
+      cassandra:
+        servers: {{ .Values.tracing.jaeger.cassandra.servers }}
+        keyspace: {{ .Values.tracing.jaeger.cassandra.keyspace }}
+        replication-factor: {{ .Values.tracing.jaeger.cassandra.replicationFactor }}
+    cassandraCreateSchema:
+      enabled: true
+      traceTTL: {{ .Values.tracing.jaeger.retentionTtlSeconds }}
+  collector:
+    replicas: {{ .Values.tracing.jaeger.collectorReplicas }}
+    options:
+      collector:
+        otlp:
+          enabled: true
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+  query:
+    replicas: {{ .Values.tracing.jaeger.queryReplicas }}
+  {{- else }}
+  allInOne:
+    options:
+      collector:
+        otlp:
+          enabled: true
+  {{- end }}
+  sampling:
+    options:
+      default_strategy:
+        type: probabilistic
+        param: {{ .Values.tracing.sampleRate }}
+{{- end }}
