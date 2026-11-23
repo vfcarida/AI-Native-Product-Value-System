@@ -1,5 +1,5 @@
 # Hardened TypeScript Sandbox Container with iptables Egress Filtering (PROD-003)
-FROM node:20-slim
+FROM node:26-slim
 
 # Install iptables for default-deny egress allowlist enforcement
 RUN apt-get update && \
