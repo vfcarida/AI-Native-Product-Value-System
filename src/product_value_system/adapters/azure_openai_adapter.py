@@ -36,6 +36,7 @@ from product_value_system.adapters.model_adapter import (
     ToolCall,
     Usage,
 )
+from product_value_system.secrets.vault_client import resolve_secret
 from product_value_system.security.secret_detection import SecretDetector
 
 if TYPE_CHECKING:
@@ -92,7 +93,12 @@ class AzureOpenAIModelAdapter:
                 "AZURE_OPENAI_DEPLOYMENT)"
             )
 
-        resolved_key = api_key or os.environ.get("AZURE_OPENAI_API_KEY")
+        resolved_key = resolve_secret(
+            vault_path="product-value-system/azure_openai",
+            key="api_key",
+            env_vars=("AZURE_OPENAI_API_KEY",),
+            explicit=api_key,
+        )
         resolved_token = azure_ad_token or os.environ.get("AZURE_OPENAI_AD_TOKEN")
         if not resolved_key and not resolved_token and client is None:
             raise ValueError(

@@ -15,9 +15,12 @@ import asyncio
 import ipaddress
 import logging
 import re
+import shlex
 import socket
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,10 +36,21 @@ from product_value_system.sandbox.iptables_manager import (
 
 logger = logging.getLogger(__name__)
 
+try:
+    from opentelemetry import trace as _otel_trace
+
+    _TRACER: Any | None = _otel_trace.get_tracer(__name__)
+except Exception:
+    _TRACER = None
+
 _DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.?$"
 )
+_WILDCARD_DOMAIN_RE = re.compile(
+    r"^\*\.(?=.{1,251}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*\.?$"
+)
 _VALID_PROTOCOLS: frozenset[str] = frozenset({"tcp", "udp", "icmp", "any"})
+_FORBIDDEN_IPTABLES_META: tuple[str, ...] = (";", "|", "&", "`", "$(", "\n", "\r")
 
 DNSResolverFn = Callable[[str], list[str]]
 
@@ -70,6 +84,108 @@ def _system_dns_resolve(domain: str) -> list[str]:
     addr_info = socket.getaddrinfo(domain, None, family=socket.AF_INET)
     ips = sorted({str(info[4][0]) for info in addr_info if info[4]})
     return ips
+
+
+@dataclass
+class NetworkRule:
+    """Represents a validated egress filtering rule (domain, wildcard, or IP/CIDR — PROD-003)."""
+
+    destination: str
+    port: int | str = 443
+    protocol: str = "tcp"
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        dest = self.destination.strip()
+        if not dest:
+            raise ValueError("NetworkRule destination cannot be empty")
+        if any(tok in dest for tok in _FORBIDDEN_IPTABLES_META) or " " in dest:
+            raise ValueError(f"Unsafe characters in NetworkRule destination: {self.destination!r}")
+
+        is_ip = False
+        try:
+            ipaddress.ip_network(dest, strict=False)
+            is_ip = True
+        except ValueError:
+            is_ip = False
+
+        if not is_ip:
+            dest_norm = dest.lower().rstrip(".")
+            if not (_DOMAIN_RE.match(dest_norm) or _WILDCARD_DOMAIN_RE.match(dest_norm)):
+                raise ValueError(f"Invalid destination in NetworkRule: {self.destination!r}")
+            self.destination = dest_norm
+        else:
+            self.destination = dest
+
+        proto = str(self.protocol).strip().lower()
+        if proto not in _VALID_PROTOCOLS:
+            raise ValueError(
+                f"Invalid protocol {self.protocol!r}; expected one of {sorted(_VALID_PROTOCOLS)}"
+            )
+        self.protocol = proto
+
+        if isinstance(self.port, str):
+            p_str = self.port.strip().lower()
+            if p_str == "any":
+                self.port = "any"
+            else:
+                p_int = int(p_str)
+                if not (1 <= p_int <= 65535):
+                    raise ValueError(f"Port must be 1..65535 or 'any', got {self.port!r}")
+                self.port = p_int
+        else:
+            p_int = int(self.port)
+            if not (1 <= p_int <= 65535):
+                raise ValueError(f"Port must be 1..65535 or 'any', got {self.port!r}")
+            self.port = p_int
+
+    @property
+    def is_wildcard(self) -> bool:
+        return self.destination.startswith("*.")
+
+    def to_allowlist_entry(self) -> AllowlistEntry | None:
+        """Convert non-wildcard ``NetworkRule`` into an ``AllowlistEntry``."""
+        if self.is_wildcard:
+            return None
+        try:
+            ipaddress.ip_network(self.destination, strict=False)
+            return AllowlistEntry(ip=self.destination, port=self.port, protocol=self.protocol)
+        except ValueError:
+            return AllowlistEntry(domain=self.destination, port=self.port, protocol=self.protocol)
+
+
+def load_allowlist_from_config(config_path: Path | str) -> list[NetworkRule]:
+    """Load validated ``NetworkRule`` list from a YAML allowlist file (PROD-003).
+
+    Supports both ``config/network_allowlist.yaml`` (``destination`` entries) and
+    ``config/sandbox.yaml`` (``sandbox.network.allowlist`` ``domain``/``ip`` entries).
+    """
+    cfg_path = Path(config_path)
+    raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        return []
+
+    if "sandbox" in raw and isinstance(raw["sandbox"], dict):
+        entries_raw = raw["sandbox"].get("network", {}).get("allowlist", [])
+    else:
+        entries_raw = raw.get("allowlist", [])
+
+    rules: list[NetworkRule] = []
+    for entry in entries_raw:
+        if not isinstance(entry, dict):
+            continue
+        dest = entry.get("destination") or entry.get("domain") or entry.get("ip")
+        if not dest:
+            continue
+        rules.append(
+            NetworkRule(
+                destination=str(dest),
+                port=entry.get("port", 443),
+                protocol=str(entry.get("protocol", "tcp")),
+                description=str(entry.get("description", "")),
+            )
+        )
+    return rules
 
 
 @dataclass
@@ -246,16 +362,54 @@ class NetworkFilter:
 
     def __init__(
         self,
-        config: dict[str, Any] | None = None,
+        config: dict[str, Any] | Sequence[NetworkRule | AllowlistEntry] | None = None,
         *,
         iptables: IptablesManager | None = None,
         dns_resolver: DNSResolverFn | None = None,
+        dns_cache_ttl_seconds: float | None = None,
+        log_blocked_connections: bool | None = None,
+        fallback_on_error: bool | None = None,
+        wildcard_subdomains: dict[str, list[str]] | None = None,
     ) -> None:
-        raw = dict(config or {})
-        if "sandbox" in raw and isinstance(raw["sandbox"], dict):
-            raw = dict(raw["sandbox"].get("network", raw["sandbox"]))
-        elif "network" in raw and isinstance(raw["network"], dict):
-            raw = dict(raw["network"])
+        self.rules: list[NetworkRule] = []
+        self._resolved_ips: set[str] = set()
+        self._wildcard_subdomains: dict[str, list[str]] = {
+            k.strip().lower(): list(v) for k, v in (wildcard_subdomains or {}).items()
+        }
+
+        if isinstance(config, Sequence) and not isinstance(config, (str, bytes)):
+            raw: dict[str, Any] = {
+                "filtering_enabled": True,
+                "mode": "allowlist",
+                "dns_cache_ttl_seconds": (
+                    dns_cache_ttl_seconds if dns_cache_ttl_seconds is not None else 3600.0
+                ),
+                "log_blocked_connections": (
+                    True if log_blocked_connections is None else log_blocked_connections
+                ),
+                "fallback_on_error": True if fallback_on_error is None else fallback_on_error,
+            }
+            entries_raw: list[Any] = []
+            for item in config:
+                if isinstance(item, NetworkRule):
+                    self.rules.append(item)
+                    converted = item.to_allowlist_entry()
+                    if converted is not None:
+                        entries_raw.append(converted)
+                elif isinstance(item, AllowlistEntry):
+                    entries_raw.append(item)
+                    dest = item.ip or item.domain or ""
+                    if dest:
+                        self.rules.append(
+                            NetworkRule(destination=dest, port=item.port, protocol=item.protocol)
+                        )
+            raw["allowlist"] = entries_raw
+        else:
+            raw = dict(config or {})
+            if "sandbox" in raw and isinstance(raw["sandbox"], dict):
+                raw = dict(raw["sandbox"].get("network", raw["sandbox"]))
+            elif "network" in raw and isinstance(raw["network"], dict):
+                raw = dict(raw["network"])
 
         self.config: dict[str, Any] = raw
         self.enabled: bool = bool(raw.get("filtering_enabled", False))
@@ -263,13 +417,25 @@ class NetworkFilter:
         if self.mode not in {"allowlist", "denylist"}:
             raise ValueError(f"Unsupported network filter mode: {self.mode!r}")
 
-        self.log_blocked_connections: bool = bool(raw.get("log_blocked_connections", True))
+        self.log_blocked_connections: bool = (
+            bool(log_blocked_connections)
+            if log_blocked_connections is not None
+            else bool(raw.get("log_blocked_connections", True))
+        )
         self.log_path: str = str(raw.get("log_path", "/var/log/sandbox_network_blocks.log"))
-        self.fallback_on_error: bool = bool(raw.get("fallback_on_error", True))
-        self.dns_cache_ttl_seconds: float = float(raw.get("dns_cache_ttl_seconds", 300.0))
+        self.fallback_on_error: bool = (
+            bool(fallback_on_error)
+            if fallback_on_error is not None
+            else bool(raw.get("fallback_on_error", True))
+        )
+        self.dns_cache_ttl_seconds: float = (
+            float(dns_cache_ttl_seconds)
+            if dns_cache_ttl_seconds is not None
+            else float(raw.get("dns_cache_ttl_seconds", 300.0))
+        )
         self.dns_resolve_retries: int = max(1, int(raw.get("dns_resolve_retries", 2)))
 
-        entries_raw = raw.get("allowlist", [])
+        entries_list = raw.get("allowlist", [])
         self.allowlist: list[AllowlistEntry] = [
             entry
             if isinstance(entry, AllowlistEntry)
@@ -279,8 +445,15 @@ class NetworkFilter:
                 port=entry.get("port", 443),
                 protocol=entry.get("protocol", "tcp"),
             )
-            for entry in entries_raw
+            for entry in entries_list
         ]
+        if not self.rules:
+            for entry in self.allowlist:
+                dest = entry.ip or entry.domain or ""
+                if dest:
+                    self.rules.append(
+                        NetworkRule(destination=dest, port=entry.port, protocol=entry.protocol)
+                    )
 
         self.iptables: IptablesManager = iptables or IptablesManager()
         self._dns_resolver: DNSResolverFn = dns_resolver or _system_dns_resolve
@@ -347,6 +520,198 @@ class NetworkFilter:
     def is_available(self) -> bool:
         """Return True if iptables enforcement is available on this host."""
         return self.iptables.is_available()
+
+    @staticmethod
+    def _is_ip_or_cidr(destination: str) -> bool:
+        """Return True when ``destination`` is a valid IPv4/IPv6 address or CIDR range."""
+        try:
+            ipaddress.ip_network(destination.strip(), strict=False)
+            return True
+        except ValueError:
+            return False
+
+    def _resolve_domain(self, domain: str, *, force_refresh: bool = False) -> set[str]:
+        """Resolve ``domain`` to IPv4 addresses with TTL caching (default 1h in PROD-003 mode)."""
+        cleaned = domain.strip().lower().rstrip(".")
+        now = time.monotonic()
+        cached = self._dns_cache.get(cleaned)
+        if (
+            not force_refresh
+            and cached is not None
+            and (now - cached[0]) < self.dns_cache_ttl_seconds
+        ):
+            return set(cached[1])
+
+        ips: list[str] = []
+        try:
+            raw_ips = self._dns_resolver(cleaned)
+            validated: list[str] = []
+            for candidate in raw_ips:
+                try:
+                    net = ipaddress.ip_network(candidate, strict=False)
+                    if net.version == 4:
+                        validated.append(candidate)
+                except ValueError:
+                    continue
+            ips = sorted(set(validated))
+            if ips:
+                self._dns_cache[cleaned] = (time.monotonic(), list(ips))
+        except (socket.gaierror, OSError) as exc:
+            logger.warning("Failed to resolve %s: %s", cleaned, exc)
+            if cached is not None:
+                return set(cached[1])
+        return set(ips)
+
+    def reload_allowlist(self, config_path: Path | str) -> int:
+        """Reload allowlist rules dynamically from YAML without restarting containers."""
+        loaded = load_allowlist_from_config(config_path)
+        self.rules = list(loaded)
+        self.allowlist = [
+            entry for rule in loaded if (entry := rule.to_allowlist_entry()) is not None
+        ]
+        self._dns_cache.clear()
+        self._resolved_ips.clear()
+        logger.info("Reloaded %d network allowlist rule(s) from %s", len(self.rules), config_path)
+        return len(self.rules)
+
+    def generate_iptables_rules(self, *, force_refresh_dns: bool = False) -> list[str]:
+        """Generate complete in-container ``iptables`` commands enforcing default-deny egress."""
+        commands: list[str] = [
+            "iptables -F OUTPUT",
+            "iptables -P OUTPUT DROP",
+            "iptables -A OUTPUT -o lo -j ACCEPT",
+            "iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+            "iptables -A OUTPUT -p udp --dport 53 -j ACCEPT",
+            "iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT",
+        ]
+
+        # Collect concrete domains needing resolution and resolve concurrently for <50ms setup
+        domains_to_resolve: list[str] = []
+        for rule in self.rules:
+            if self._is_ip_or_cidr(rule.destination):
+                continue
+            if rule.is_wildcard:
+                subdomains = self._wildcard_subdomains.get(rule.destination, [])
+                domains_to_resolve.extend(subdomains)
+            else:
+                domains_to_resolve.append(rule.destination)
+
+        unique_domains = list(dict.fromkeys(domains_to_resolve))
+        resolved_map: dict[str, list[str]] = {}
+        if unique_domains:
+            uncached = [
+                d
+                for d in unique_domains
+                if force_refresh_dns or d not in self._dns_cache
+            ]
+            if len(uncached) > 1:
+                with ThreadPoolExecutor(max_workers=min(8, len(uncached))) as pool:
+                    futures = {
+                        d: pool.submit(self._resolve_domain, d, force_refresh=force_refresh_dns)
+                        for d in uncached
+                    }
+                    for domain, fut in futures.items():
+                        resolved_map[domain] = sorted(fut.result())
+            for domain in unique_domains:
+                if domain not in resolved_map:
+                    resolved_map[domain] = sorted(
+                        self._resolve_domain(domain, force_refresh=force_refresh_dns)
+                    )
+
+        def _append_rule(ip_dest: str, rule: NetworkRule) -> None:
+            parts = ["iptables", "-A", "OUTPUT"]
+            if rule.protocol != "any":
+                parts.extend(["-p", rule.protocol])
+            parts.extend(["-d", ip_dest])
+            if rule.port != "any" and rule.protocol in {"tcp", "udp"}:
+                parts.extend(["--dport", str(rule.port)])
+            parts.extend(["-j", "ACCEPT"])
+            commands.append(" ".join(parts))
+
+        for rule in self.rules:
+            if self._is_ip_or_cidr(rule.destination):
+                _append_rule(rule.destination, rule)
+            elif rule.is_wildcard:
+                subdomains = self._wildcard_subdomains.get(rule.destination, [])
+                if not subdomains:
+                    logger.debug(
+                        "Wildcard allowlist rule %s requires pre-resolved subdomains for iptables",
+                        rule.destination,
+                    )
+                for sub in subdomains:
+                    for ip_addr in resolved_map.get(sub, []):
+                        _append_rule(ip_addr, rule)
+                        self._resolved_ips.add(ip_addr)
+            else:
+                for ip_addr in resolved_map.get(rule.destination, []):
+                    _append_rule(ip_addr, rule)
+                    self._resolved_ips.add(ip_addr)
+
+        if self.log_blocked_connections:
+            commands.append(
+                'iptables -A OUTPUT -j LOG --log-prefix "SANDBOX-DENIED: " --log-level 4'
+            )
+
+        return commands
+
+    @staticmethod
+    def _validate_iptables_command(cmd: str) -> list[str]:
+        """Ensure an iptables command string is strictly safe (no shell metacharacters)."""
+        stripped = cmd.strip()
+        if not stripped.startswith("iptables "):
+            raise ValueError(f"Refusing non-iptables command: {cmd!r}")
+        if any(meta in stripped for meta in _FORBIDDEN_IPTABLES_META):
+            raise ValueError(f"Forbidden shell metacharacter in iptables command: {cmd!r}")
+        return shlex.split(stripped)
+
+    @staticmethod
+    def apply_rules_in_container(
+        container: Any,
+        commands: Sequence[str],
+        *,
+        fallback_on_error: bool = False,
+    ) -> float:
+        """Execute validated ``iptables`` commands inside a running Docker container.
+
+        Returns:
+            Elapsed rule-application latency in milliseconds.
+        """
+        parsed_cmds = [NetworkFilter._validate_iptables_command(cmd) for cmd in commands]
+        started = time.perf_counter()
+        span_cm = (
+            _TRACER.start_as_current_span("sandbox.network_filter.apply")
+            if _TRACER is not None
+            else nullcontext()
+        )
+        with span_cm as span:
+            applied = True
+            for raw_cmd, argv in zip(commands, parsed_cmds, strict=True):
+                try:
+                    result = container.exec_run(argv, privileged=True, user="0")
+                except TypeError:
+                    # Compatibility with minimal mock containers accepting (cmd, privileged=...)
+                    result = container.exec_run(raw_cmd, privileged=True)
+                exit_code, output = result
+                if exit_code != 0:
+                    decoded = (
+                        output.decode("utf-8", errors="replace")
+                        if isinstance(output, (bytes, bytearray))
+                        else str(output)
+                    )
+                    msg = f"iptables command failed: {raw_cmd}\nOutput: {decoded}"
+                    if fallback_on_error:
+                        logger.warning("%s; continuing without egress filter (fallback)", msg)
+                        applied = False
+                        break
+                    raise RuntimeError(msg)
+                logger.debug("Applied container rule: %s", raw_cmd)
+
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            if span is not None:
+                span.set_attribute("sandbox.network_filter.rules_count", len(parsed_cmds))
+                span.set_attribute("sandbox.network_filter.latency_ms", round(elapsed_ms, 3))
+                span.set_attribute("sandbox.network_filter.applied", applied)
+            return elapsed_ms
 
     def _resolve_entry_ips_cached(
         self,

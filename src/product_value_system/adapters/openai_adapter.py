@@ -5,7 +5,6 @@ OpenAI model adapter implementation.
 import asyncio
 import json
 import logging
-import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +23,7 @@ from product_value_system.adapters.model_adapter import (
     ToolCall,
     Usage,
 )
+from product_value_system.secrets.vault_client import resolve_secret
 from product_value_system.security.secret_detection import SecretDetector
 
 if TYPE_CHECKING:
@@ -77,9 +77,16 @@ class OpenAIModelAdapter:
             transport: Optional custom httpx transport (for testing)
             client: Optional pre-configured httpx.AsyncClient (for testing)
         """
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = resolve_secret(
+            vault_path="product-value-system/openai",
+            key="api_key",
+            env_vars=("OPENAI_API_KEY",),
+            explicit=api_key,
+        )
         if not self.api_key:
-            raise ValueError("OpenAI API key required (set OPENAI_API_KEY env var)")
+            raise ValueError(
+                "OpenAI API key required (configure HashiCorp Vault or set OPENAI_API_KEY)"
+            )
 
         self.model = model
         self.base_url = base_url.rstrip("/")

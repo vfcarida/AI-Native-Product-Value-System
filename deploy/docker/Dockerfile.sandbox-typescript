@@ -1,0 +1,28 @@
+# Hardened TypeScript Sandbox Container with iptables Egress Filtering (PROD-003)
+FROM node:20-slim
+
+# Install iptables for default-deny egress allowlist enforcement
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        iptables \
+        ca-certificates \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install TypeScript compiler and runtime
+RUN npm install -g typescript ts-node && npm cache clean --force
+
+# Non-root user (UID 1000; rename existing node user if UID 1000 is occupied)
+RUN if id -u 1000 >/dev/null 2>&1; then \
+        usermod -l sandbox -d /home/sandbox -m "$(id -nu 1000)" && \
+        groupmod -n sandbox "$(id -ng sandbox)" ; \
+    else \
+        useradd -m -u 1000 -s /bin/bash sandbox ; \
+    fi && \
+    mkdir -p /sandbox && \
+    chown -R sandbox:sandbox /sandbox
+
+USER sandbox
+WORKDIR /sandbox
+
+CMD ["/bin/bash"]

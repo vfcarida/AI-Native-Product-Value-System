@@ -28,11 +28,14 @@ from product_value_system.sandbox.network_filter import (
     EgressDecision,
     NetworkFilter,
     NetworkFilterStatus,
+    NetworkRule,
+    load_allowlist_from_config,
     load_sandbox_network_config,
 )
 
 if TYPE_CHECKING:
     from product_value_system.runtime.docker_sandbox import DockerSandboxProvider
+    from product_value_system.sandbox.docker_sandbox import DockerSandbox
 
 
 def __getattr__(name: str) -> Any:
@@ -40,6 +43,10 @@ def __getattr__(name: str) -> Any:
         from product_value_system.runtime.docker_sandbox import DockerSandboxProvider
 
         return DockerSandboxProvider
+    if name == "DockerSandbox":
+        from product_value_system.sandbox.docker_sandbox import DockerSandbox
+
+        return DockerSandbox
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -47,6 +54,7 @@ __all__ = [
     "DEFAULT_ALLOWLIST",
     "AllowlistEntry",
     "CommandResult",
+    "DockerSandbox",
     "DockerSandboxProvider",
     "EgressDecision",
     "ExecutionResult",
@@ -54,11 +62,13 @@ __all__ = [
     "IptablesManager",
     "NetworkFilter",
     "NetworkFilterStatus",
+    "NetworkRule",
     "Sandbox",
     "SandboxConfig",
     "SandboxError",
     "SandboxProvider",
     "SandboxStatus",
+    "load_allowlist_from_config",
     "load_sandbox_network_config",
     "sanitize_chain_name",
     "validate_chain_name",

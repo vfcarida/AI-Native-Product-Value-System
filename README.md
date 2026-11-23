@@ -23,7 +23,7 @@ Most AI coding tools accelerate *code generation* while leaving architecture, go
 > `Problem → Discovery & Evidence → Specification → Parallel Multi-Agent Review → Sandboxed Build → Progressive Release → Post-Launch Outcome Learning`
 
 ### Why Teams Adopt This Architecture
-- **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity, optional in-process Rust `cedarpy` PyO3 backend), **13 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
+- **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity, optional in-process Rust `cedarpy` PyO3 backend), **14 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
 - **Measured FinOps & Latency Efficiency**: Combines **tiered exact + semantic prompt caching** (`9.6 µs` L1 memory / `0.28 ms` L2 SQLite WAL hits), **6-feature complexity model routing** (**90.8% cost reduction** vs. always-flagship), **30%–50% discounted batch evaluations**, **AWS Builders' Library circuit breakers & full-jitter retries**, and **NetworkX DAG parallel execution** (**2.0x** speedup on concurrent review layers).
 - **Zero-Trust Defense-in-Depth**: Enforces **default-deny Docker `iptables` egress allowlists**, **hybrid regex + ML/entropy secret detection** (`2.59 ms` p50 on 17K-token documents, 0 FP), **constant-time `hmac.compare_digest` auth**, OWASP security headers, and **handler-attached secret-redacting OpenTelemetry JSON logs**.
 - **Enterprise Brownfield Modernization**: Prioritizes legacy refactoring via read-only **Git temporal forensics** (hotspots, temporal coupling, age, anonymized bus factor), partitions bridged monoliths using **Clauset-Newman-Moore greedy modularity** ($Q = 0.7336$), and generates **shadow-mode Anti-Corruption Layers** with sticky SHA-256 progressive Strangler Fig traffic cutovers (`1% → 100%`).
@@ -39,7 +39,7 @@ flowchart TB
 
     subgraph Control["Deterministic Control Plane"]
         Orch["ValueStreamOrchestrator + ParallelExecutor (DAG)"]
-        Contracts["13 Strict Pydantic YAML Contracts + 8 JSON Schemas"]
+        Contracts["14 Strict Pydantic YAML Contracts + 8 JSON Schemas"]
         Harness["Harness: Hard Budget + Guardrails + CircuitBreaker"]
         Policy["mtime-Cached Cedar PolicyEngine (cedarpy / CLI / Python)"]
         DB["WAL SQLite / Async PostgreSQL Persistence & Checkpoints"]
@@ -120,7 +120,7 @@ git clone https://github.com/vfcarida/AI-Native-Product-Value-System.git
 cd AI-Native-Product-Value-System
 pip install -e ".[dev]"
 
-# Verify all 13 YAML configs, 8 JSON schemas, and Cedar policy engine
+# Verify all 14 YAML configs, 8 JSON schemas, and Cedar policy engine
 pvs doctor --json
 
 # Inspect FinOps model routing for any prompt
@@ -149,7 +149,7 @@ from product_value_system import (
     validate_all_configs,
 )
 
-# 1. Fail-fast startup validation across all 13 config/*.yaml contracts
+# 1. Fail-fast startup validation across all 14 config/*.yaml contracts
 report = validate_all_configs("config", expand_env=True)
 assert report.is_valid, report.errors
 
@@ -166,7 +166,7 @@ Sample output from `pvs doctor`:
 ```text
 PVS Doctor v1.0.0 — HEALTHY
   [OK] python_runtime: Python 3.12.10
-  [OK] yaml_config_contracts: 13 configs valid
+  [OK] yaml_config_contracts: 14 configs valid
   [OK] cedar_policy_engine: Loaded agent_authorization.cedar (cached=False)
   [OK] json_schemas: 8 schema file(s) in schemas
   [OK] llm_provider_credentials: No live API keys set (offline mock mode ready at $0 cost)
@@ -219,7 +219,7 @@ AI-Native-Product-Value-System/
 ├── src/product_value_system/   # 30 public packages (agents, orchestrator, harness, policy,
 │                               #   caching, routing, evaluation, sandbox, security, brownfield,
 │                               #   metrics, monitoring, observability, contracts, api, cli, ...)
-├── config/                     # 13 strictly validated YAML configs (StrictConfigModel)
+├── config/                     # 14 strictly validated YAML configs (StrictConfigModel)
 ├── schemas/                    # 8 JSON Schema 2020-12 artifact contracts
 ├── policies/                   # Declarative Cedar authorization schema & policies
 ├── examples/                   # Greenfield, brownfield, progressive delivery & $0 showcases
@@ -241,7 +241,7 @@ AI-Native-Product-Value-System/
 | **Architecture & ADRs** | [Architecture Guide](docs/ARCHITECTURE.md) · [C4 & Sequence Diagrams](docs/architecture/DIAGRAMS.md) · [ADR Index (`ADR-0001`–`0006`)](docs/adr/README.md) · [Empirical Benchmarks](docs/BENCHMARKS.md) |
 | **API, Config & CLI** | [Reference Index](docs/reference/README.md) · [All 21 `pvs` CLI Commands](docs/reference/cli/commands.md) · [How-To Guides](docs/howto/README.md) · [Zero-Cost Showcases](examples/showcases/README.md) |
 | **FinOps & Orchestration** | [Token Caching](docs/token-caching.md) · [Model Routing](docs/model-routing.md) · [Batch Evaluations](docs/batch-evaluations.md) · [Parallel Execution](docs/parallel-execution.md) · [Cost Management](docs/COST_MANAGEMENT.md) |
-| **Security & Governance** | [Threat Model (OWASP LLM/Agentic)](docs/THREAT_MODEL.md) · [Secret Detection (Presidio ML)](docs/security/secret-detection.md) · [Network Egress Filtering](docs/network-filtering.md) · [Policy Sync](docs/POLICY_SYNC.md) · [Secret Management](docs/SECRET_MANAGEMENT.md) · [Security Testing](docs/SECURITY_TESTING.md) |
+| **Security & Governance** | [Threat Model (OWASP LLM/Agentic)](docs/THREAT_MODEL.md) · [Secret Detection (Presidio ML)](docs/security/secret-detection.md) · [Sandbox Security (iptables)](docs/security/sandbox-security.md) · [HashiCorp Vault](docs/security/vault-integration.md) · [Emergency Revocation Runbook](docs/operations/runbooks/emergency-secret-revocation.md) · [Network Egress Filtering](docs/network-filtering.md) · [Policy Sync](docs/POLICY_SYNC.md) · [Secret Management](docs/SECRET_MANAGEMENT.md) · [Security Testing](docs/SECURITY_TESTING.md) |
 | **Brownfield & Engineering** | [Git History Analysis](docs/git-history-analysis.md) · [Strangler Fig Modernization](docs/strangler-fig-modernization.md) · [Drift Detection](docs/drift-detection.md) · [Spec-Kit Patterns](docs/spec-kit-guide.md) |
 | **Observability, SLOs & DevX** | [OTel GenAI Conventions](docs/otel-genai-conventions.md) · [DevX SPACE/DORA Metrics](docs/devx-metrics.md) · [Production SLOs & Alerting](docs/operations/slos.md) · [SLOs & Rollback](docs/slo-guide.md) · [Progressive Delivery](docs/progressive-delivery.md) · [Grafana Dashboards](docs/dashboards.md) · [Kubernetes Helm Chart](deploy/helm/product-value-system/README.md) |
 | **Discovery & Validation** | [Evidence Synthesis](docs/evidence-synthesis.md) · [Interview Synthesis](docs/interview-synthesis.md) · [Experiment Design](docs/experiment-design.md) · [Baseline Validation](docs/baseline-validation.md) · [Golden Datasets](golden_datasets/README.md) |

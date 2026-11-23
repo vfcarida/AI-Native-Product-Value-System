@@ -102,6 +102,7 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
         "service.yaml",
         "serviceaccount.yaml",
         "servicemonitor.yaml",
+        "vault-auth-serviceaccount.yaml",
     }
     actual_templates = {p.name for p in TEMPLATES_DIR.iterdir() if p.is_file()}
     assert expected_templates.issubset(actual_templates)

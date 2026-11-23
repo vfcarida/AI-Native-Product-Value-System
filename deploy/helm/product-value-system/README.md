@@ -44,4 +44,5 @@ helm upgrade --install pvs deploy/helm/product-value-system \
 | `slo.enabled` | `false` | Deploy Prometheus Operator `PrometheusRule` CRD (12 SLO/saturation alerts + 4 recording rules) |
 | `otelCollector.enabled` | `false` | Deploy companion hardened OpenTelemetry Collector (OTLP 4317/4318 -> Prometheus 8889) |
 | `grafanaDashboards.enabled` | `false` | Render Grafana sidecar-discoverable dashboard ConfigMap (`grafana_dashboard: "1"`) |
+| `vault.enabled` | `false` | Enable HashiCorp Vault Agent sidecar injection & Kubernetes auth (`VAULT_ADDR`) |
 | `autoscaling.enabled` | `true` | Enable `HorizontalPodAutoscaler` (`2`–`10` replicas) |

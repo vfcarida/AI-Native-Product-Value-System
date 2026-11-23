@@ -168,6 +168,24 @@
         "labelValue": { "type": "string", "minLength": 1 }
       }
     },
+    "vault": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "address": { "type": "string", "pattern": "^https?://" },
+        "authMethod": { "type": "string", "enum": ["kubernetes", "approle", "token"] },
+        "role": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string" },
+        "agentInject": { "type": "boolean" },
+        "secretPath": { "type": "string", "minLength": 1 },
+        "injectSecrets": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "createDedicatedServiceAccount": { "type": "boolean" },
+        "serviceAccountAnnotations": { "type": "object" }
+      }
+    },
     "config": {
       "type": "object",
       "required": ["logLevel", "devxAggregateOnly", "devxAnonymize"],

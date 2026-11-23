@@ -512,6 +512,30 @@ class SecretDetectionAllowlistConfigFile(StrictConfigModel):
 
 
 # ---------------------------------------------------------------------------
+# 13. config/network_allowlist.yaml (PROD-003)
+# ---------------------------------------------------------------------------
+
+
+class NetworkAllowlistRuleSchema(StrictConfigModel):
+    destination: str = Field(min_length=1)
+    port: int | Literal["any"] = 443
+    protocol: Literal["tcp", "udp", "icmp", "any"] = "tcp"
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _validate_port(self) -> NetworkAllowlistRuleSchema:
+        if isinstance(self.port, int) and not (1 <= self.port <= 65535):
+            raise ValueError(f"Port must be 1..65535, got {self.port}")
+        return self
+
+
+class NetworkAllowlistConfigFile(StrictConfigModel):
+    version: str = "1.0"
+    description: str = ""
+    allowlist: list[NetworkAllowlistRuleSchema] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Registry & Unified Validator
 # ---------------------------------------------------------------------------
 
@@ -522,6 +546,7 @@ CONFIG_SCHEMA_REGISTRY: dict[str, type[StrictConfigModel]] = {
     "routing_multiprovider.yaml": RoutingConfigFile,
     "evaluation.yaml": EvaluationConfigFile,
     "sandbox.yaml": SandboxConfigFile,
+    "network_allowlist.yaml": NetworkAllowlistConfigFile,
     "brownfield.yaml": BrownfieldConfigFile,
     "metrics.yaml": MetricsConfigFile,
     "budget_limits.yaml": BudgetLimitsConfigFile,

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from product_value_system.policy.engine import PolicyEngine
     from product_value_system.routing.model_router import ModelRouter
     from product_value_system.sandbox.network_filter import NetworkFilter
+    from product_value_system.secrets.vault_client import VaultClient, get_vault_client
     from product_value_system.security.hybrid_detector import HybridSecretDetector
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
@@ -81,8 +82,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "product_value_system.orchestrator.controller",
         "ValueStreamOrchestrator",
     ),
+    "VaultClient": ("product_value_system.secrets.vault_client", "VaultClient"),
     "create_adapter": ("product_value_system.adapters", "create_adapter"),
     "create_database": ("product_value_system.persistence.postgres", "create_database"),
+    "get_vault_client": ("product_value_system.secrets.vault_client", "get_vault_client"),
     "run_system_diagnostics": (
         "product_value_system.observability.structured_logging",
         "run_system_diagnostics",
@@ -123,9 +126,11 @@ __all__ = [
     "SPACECalculator",
     "StranglerPlanner",
     "ValueStreamOrchestrator",
+    "VaultClient",
     "__version__",
     "create_adapter",
     "create_database",
+    "get_vault_client",
     "run_system_diagnostics",
     "validate_all_configs",
 ]

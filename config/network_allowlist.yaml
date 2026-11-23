@@ -1,0 +1,116 @@
+# Approved Egress Destinations for Docker Sandbox (PROD-003)
+# Default-deny policy: all outbound traffic not listed below is dropped by iptables.
+# Changes require security team review via GitOps Pull Request.
+---
+version: "1.0"
+description: "Approved egress destinations for Docker sandbox"
+
+allowlist:
+  # --- AI & LLM Provider APIs ---
+  - destination: "api.openai.com"
+    port: 443
+    protocol: tcp
+    description: "OpenAI API (GPT-4o, o3, embeddings)"
+
+  - destination: "api.anthropic.com"
+    port: 443
+    protocol: tcp
+    description: "Anthropic API (Claude)"
+
+  - destination: "generativelanguage.googleapis.com"
+    port: 443
+    protocol: tcp
+    description: "Google Gemini API"
+
+  - destination: "bedrock-runtime.us-east-1.amazonaws.com"
+    port: 443
+    protocol: tcp
+    description: "AWS Bedrock US-East-1"
+
+  - destination: "bedrock-runtime.us-west-2.amazonaws.com"
+    port: 443
+    protocol: tcp
+    description: "AWS Bedrock US-West-2"
+
+  - destination: "bedrock-runtime.eu-west-1.amazonaws.com"
+    port: 443
+    protocol: tcp
+    description: "AWS Bedrock EU-West-1"
+
+  - destination: "*.openai.azure.com"
+    port: 443
+    protocol: tcp
+    description: "Azure OpenAI Service (wildcard; pre-resolve tenant subdomains in prod)"
+
+  - destination: "api.cohere.ai"
+    port: 443
+    protocol: tcp
+    description: "Cohere Inference & Embeddings API"
+
+  - destination: "api-inference.huggingface.co"
+    port: 443
+    protocol: tcp
+    description: "Hugging Face Inference API"
+
+  - destination: "api.mistral.ai"
+    port: 443
+    protocol: tcp
+    description: "Mistral AI API"
+
+  # --- Package Registries & Version Control ---
+  - destination: "pypi.org"
+    port: 443
+    protocol: tcp
+    description: "PyPI package index"
+
+  - destination: "files.pythonhosted.org"
+    port: 443
+    protocol: tcp
+    description: "PyPI package artifact CDN"
+
+  - destination: "registry.npmjs.org"
+    port: 443
+    protocol: tcp
+    description: "NPM package registry (TypeScript sandbox)"
+
+  - destination: "github.com"
+    port: 443
+    protocol: tcp
+    description: "GitHub HTTPS git clone and repository access"
+
+  - destination: "api.github.com"
+    port: 443
+    protocol: tcp
+    description: "GitHub REST/GraphQL API"
+
+  - destination: "ghcr.io"
+    port: 443
+    protocol: tcp
+    description: "GitHub Container Registry"
+
+  # --- Internal Observability & Secrets Infrastructure ---
+  - destination: "o11y.company.internal"
+    port: 443
+    protocol: tcp
+    description: "Internal OpenTelemetry observability collector endpoint"
+
+  - destination: "vault.company.internal"
+    port: 443
+    protocol: tcp
+    description: "Internal secrets broker endpoint"
+
+  # --- DNS Resolvers & Loopback ---
+  - destination: "8.8.8.8"
+    port: 53
+    protocol: udp
+    description: "Google Public DNS"
+
+  - destination: "1.1.1.1"
+    port: 53
+    protocol: udp
+    description: "Cloudflare Public DNS"
+
+  - destination: "127.0.0.1"
+    port: "any"
+    protocol: any
+    description: "Loopback interface for local sandbox IPC"

@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +33,7 @@ from product_value_system.adapters.model_adapter import (
     ToolCall,
     Usage,
 )
+from product_value_system.secrets.vault_client import resolve_secret
 from product_value_system.security.secret_detection import SecretDetector
 
 if TYPE_CHECKING:
@@ -77,12 +77,16 @@ class GeminiModelAdapter:
         cache: PromptCache | None = None,
         cache_max_temperature: float = 0.3,
     ) -> None:
-        resolved_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get(
-            "GOOGLE_API_KEY"
+        resolved_key = resolve_secret(
+            vault_path="product-value-system/gemini",
+            key="api_key",
+            env_vars=("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+            explicit=api_key,
         )
         if not resolved_key and client is None:
             raise ValueError(
-                "Gemini API key required (set GEMINI_API_KEY or GOOGLE_API_KEY env var)"
+                "Gemini API key required (configure HashiCorp Vault or set "
+                "GEMINI_API_KEY / GOOGLE_API_KEY env var)"
             )
 
         self.api_key = resolved_key or ""

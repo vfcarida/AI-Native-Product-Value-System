@@ -112,6 +112,9 @@ cedar = [
 postgres = [
     "asyncpg>=0.29",
 ]
+vault = [
+    "hvac>=1.2.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",

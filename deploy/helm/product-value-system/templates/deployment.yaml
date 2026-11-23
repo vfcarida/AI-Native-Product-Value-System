@@ -24,6 +24,16 @@ spec:
         {{- if and .Values.secrets.create (not .Values.secrets.existingSecret) }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- if and .Values.vault.enabled .Values.vault.agentInject }}
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
+        {{- if .Values.vault.namespace }}
+        vault.hashicorp.com/namespace: {{ .Values.vault.namespace | quote }}
+        {{- end }}
+        {{- range .Values.vault.injectSecrets }}
+        vault.hashicorp.com/agent-inject-secret-{{ . }}: {{ printf "%s/%s" $.Values.vault.secretPath . | quote }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -37,8 +47,13 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and .Values.vault.enabled .Values.vault.createDedicatedServiceAccount }}
+      serviceAccountName: {{ include "pvs.fullname" . }}-vault-auth
+      automountServiceAccountToken: true
+      {{- else }}
       serviceAccountName: {{ include "pvs.serviceAccountName" . }}
-      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      automountServiceAccountToken: {{ if .Values.vault.enabled }}true{{ else }}{{ .Values.serviceAccount.automountServiceAccountToken }}{{ end }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -67,6 +82,19 @@ spec:
                 name: {{ include "pvs.secretName" . }}
                 optional: true
             {{- end }}
+          {{- if .Values.vault.enabled }}
+          env:
+            - name: VAULT_ADDR
+              value: {{ .Values.vault.address | quote }}
+            - name: VAULT_AUTH_METHOD
+              value: {{ .Values.vault.authMethod | quote }}
+            - name: VAULT_ROLE
+              value: {{ .Values.vault.role | quote }}
+            {{- if .Values.vault.namespace }}
+            - name: VAULT_NAMESPACE
+              value: {{ .Values.vault.namespace | quote }}
+            {{- end }}
+          {{- end }}
           startupProbe:
             httpGet:
               path: {{ .Values.probes.startup.path }}

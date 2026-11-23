@@ -1,0 +1,23 @@
+# Hardened Python Sandbox Container with iptables Egress Filtering (PROD-003)
+FROM python:3.12-slim
+
+# Install iptables for default-deny egress allowlist enforcement
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        iptables \
+        ca-certificates \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install minimal HTTP clients for sandboxed agent code execution
+RUN pip install --no-cache-dir requests httpx
+
+# Non-root user (UID 1000) prevents user code from mutating iptables rules after startup
+RUN useradd -m -u 1000 -s /bin/bash sandbox && \
+    mkdir -p /sandbox && \
+    chown -R sandbox:sandbox /sandbox
+
+USER sandbox
+WORKDIR /sandbox
+
+CMD ["/bin/bash"]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import urllib.parse
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -70,6 +71,57 @@ class PostgresDatabase:
         self.max_size = max(self.min_size, int(max_size))
         self.command_timeout = float(command_timeout)
         self._pool: Any | None = pool
+        self._vault_client: Any | None = None
+        self._vault_lease_id: str | None = None
+
+    @classmethod
+    def from_vault(
+        cls,
+        *,
+        role: str = "product-value-system-rw",
+        database_secret_path: str = "product-value-system/database",
+        vault_client: Any | None = None,
+        auto_renew: bool = True,
+        migrations_dir: Path | str = "migrations/postgres",
+        min_size: int = 2,
+        max_size: int = 10,
+        command_timeout: float = 30.0,
+        pool: Any | None = None,
+    ) -> PostgresDatabase:
+        """Instantiate ``PostgresDatabase`` using dynamic short-lived Vault credentials."""
+        from product_value_system.secrets import get_vault_client
+
+        vault = vault_client or get_vault_client()
+        creds = vault.get_database_credentials(role=role)
+        db_cfg = vault.get_secret(database_secret_path) or {}
+        host = str(db_cfg.get("host", "localhost")) if isinstance(db_cfg, dict) else "localhost"
+        port = int(db_cfg.get("port", 5432)) if isinstance(db_cfg, dict) else 5432
+        db_name = (
+            str(db_cfg.get("name", "product_value_system"))
+            if isinstance(db_cfg, dict)
+            else "product_value_system"
+        )
+
+        user_q = urllib.parse.quote(str(creds["username"]), safe="")
+        pass_q = urllib.parse.quote(str(creds["password"]), safe="")
+        dsn = f"postgresql://{user_q}:{pass_q}@{host}:{port}/{db_name}"
+
+        instance = cls(
+            dsn=dsn,
+            migrations_dir=migrations_dir,
+            min_size=min_size,
+            max_size=max_size,
+            command_timeout=command_timeout,
+            pool=pool,
+        )
+        instance._vault_client = vault
+        instance._vault_lease_id = str(creds.get("lease_id", "")) or None
+        if auto_renew and instance._vault_lease_id and creds.get("lease_duration"):
+            vault.start_lease_renewal(
+                instance._vault_lease_id,
+                int(creds["lease_duration"]),
+            )
+        return instance
 
     @property
     def is_connected(self) -> bool:
@@ -98,7 +150,11 @@ class PostgresDatabase:
         )
 
     async def close(self) -> None:
-        """Close the connection pool cleanly."""
+        """Close the connection pool and stop any Vault dynamic credential lease renewals."""
+        if self._vault_client is not None:
+            self._vault_client.stop_lease_renewals()
+            self._vault_client = None
+            self._vault_lease_id = None
         if self._pool is not None:
             await self._pool.close()
             self._pool = None

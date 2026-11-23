@@ -206,6 +206,22 @@ grafanaDashboards:
   label: grafana_dashboard
   labelValue: "1"
 
+# HashiCorp Vault enterprise secrets integration & Agent Injector sidecar (PROD-004)
+vault:
+  enabled: false
+  address: "https://vault.vault.svc.cluster.local:8200"
+  authMethod: "kubernetes"
+  role: "product-value-system"
+  namespace: ""
+  agentInject: true
+  secretPath: "secret/data/product-value-system"
+  injectSecrets:
+    - openai
+    - anthropic
+    - database
+  createDedicatedServiceAccount: false
+  serviceAccountAnnotations: {}
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

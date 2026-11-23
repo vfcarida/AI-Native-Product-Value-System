@@ -25,6 +25,7 @@ from product_value_system.adapters.model_adapter import (
     Tool,
     ToolCall,
 )
+from product_value_system.secrets.vault_client import resolve_secret
 from product_value_system.security.secret_detection import SecretDetector
 
 if TYPE_CHECKING:
@@ -107,11 +108,16 @@ class AnthropicAdapter:
             transport: Optional custom httpx transport (e.g. httpx.MockTransport for testing)
             client: Optional pre-configured httpx.AsyncClient
         """
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.api_key = resolve_secret(
+            vault_path="product-value-system/anthropic",
+            key="api_key",
+            env_vars=("ANTHROPIC_API_KEY",),
+            explicit=api_key,
+        )
         if not self.api_key:
             raise ValueError(
-                "Anthropic API key required. Set ANTHROPIC_API_KEY env var "
-                "or pass api_key parameter."
+                "Anthropic API key required. Configure HashiCorp Vault, "
+                "set ANTHROPIC_API_KEY env var, or pass api_key parameter."
             )
         if not self.api_key.startswith("sk-ant-"):
             logger.warning(
