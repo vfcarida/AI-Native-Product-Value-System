@@ -201,7 +201,10 @@ _CODE_EXPR_RE = re.compile(
 )
 
 _FILESYSTEM_PATH_RE = re.compile(
-    r"^(?:\.{0,2}/)?[a-z][a-z0-9_-]*(?:/[a-z][a-z0-9_.-]*){2,}$"
+    r"^(?:\.{0,2}/)?\.?[a-z][a-z0-9_-]*(?:"
+    r"(?:/(?:[a-z][a-z0-9_.-]*|[A-Z][A-Z0-9_.-]{2,})){2,}"
+    r"|/[A-Z][A-Z0-9_-]{3,}(?:\.[a-z0-9]{1,5})?"
+    r")$"
 )
 _PASCAL_CASE_IDENT_RE = re.compile(r"^[A-Z]{1,4}[a-z]{2,}(?:[A-Z]{1,4}[a-z]{2,}){2,}$")
 _PYTHON_KWARG_CONST_RE = re.compile(

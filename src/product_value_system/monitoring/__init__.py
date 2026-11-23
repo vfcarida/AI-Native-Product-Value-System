@@ -14,6 +14,18 @@ from product_value_system.monitoring.error_budget import (
     ErrorBudgetPolicy,
     ErrorBudgetStatus,
 )
+from product_value_system.monitoring.incident_manager import (
+    SEVERITY_POLICIES,
+    ActionItem,
+    IncidentManager,
+    IncidentRecord,
+    IncidentSeverity,
+    IncidentStatus,
+    SeverityPolicy,
+    TimelineEvent,
+    classify_alert_severity,
+    sanitize_incident_text,
+)
 from product_value_system.monitoring.metrics import PVSMetrics, get_metrics, reset_metrics
 from product_value_system.monitoring.rollback import ProductionMonitor, RollbackEvent
 from product_value_system.monitoring.sli import (
@@ -49,6 +61,7 @@ __all__ = [
     "AI_SLIS",
     "AVAILABILITY_SLI",
     "AVAILABILITY_SLO",
+    "ActionItem",
     "Alert",
     "AlertRoutingEngine",
     "AlertRuleEvaluation",
@@ -63,6 +76,10 @@ __all__ = [
     "ErrorBudgetStatus",
     "HALLUCINATION_FREE_SLI",
     "HALLUCINATION_SLO",
+    "IncidentManager",
+    "IncidentRecord",
+    "IncidentSeverity",
+    "IncidentStatus",
     "LATENCY_P95_SLI",
     "LATENCY_SLO",
     "PVSMetrics",
@@ -73,15 +90,20 @@ __all__ = [
     "SAFETY_SLI",
     "SAFETY_SLO",
     "SATURATION_SLI",
+    "SEVERITY_POLICIES",
     "SLI",
     "SLO",
     "SLOEvaluator",
     "SLIType",
+    "SeverityPolicy",
     "Silence",
     "SilenceMatcher",
     "THROUGHPUT_SLI",
     "TRADITIONAL_SLIS",
+    "TimelineEvent",
+    "classify_alert_severity",
     "get_metrics",
     "reset_metrics",
     "sanitize_alert_payload",
+    "sanitize_incident_text",
 ]

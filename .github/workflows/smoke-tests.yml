@@ -1,0 +1,68 @@
+name: Post-Deployment Smoke Tests
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment name (staging or production)'
+        required: true
+        type: string
+      target_url:
+        description: 'Base URL of deployed service'
+        required: true
+        type: string
+      max_latency_seconds:
+        description: 'Maximum acceptable smoke test response time'
+        required: false
+        type: string
+        default: '2.0'
+    secrets:
+      api_token:
+        required: false
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - production
+      target_url:
+        description: 'Base URL of deployed service (leave blank to use environment secret)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-tests:
+    name: Smoke Tests (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Execute post-deployment smoke tests
+        run: bash scripts/deployment/smoke-tests.sh --results-dir test-results
+        env:
+          TARGET_URL: ${{ inputs.target_url || secrets.STAGING_URL }}
+          API_TOKEN: ${{ secrets.api_token || secrets.STAGING_API_TOKEN }}
+          MAX_LATENCY_SECONDS: ${{ inputs.max_latency_seconds || '2.0' }}
+
+      - name: Upload smoke test results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-tests-${{ inputs.environment }}-${{ github.run_id }}
+          path: test-results/smoke-tests.json
+          retention-days: 30

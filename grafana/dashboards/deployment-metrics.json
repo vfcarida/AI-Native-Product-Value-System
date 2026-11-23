@@ -1,0 +1,153 @@
+{
+  "uid": "pvs-deployment-metrics",
+  "title": "Product Value System - CI/CD Deployment Metrics",
+  "description": "Track deployment success rate (>98% target), deployment frequency, duration (<20m target), automatic rollbacks, and security gate blocks (PROD-014).",
+  "tags": ["pvs", "cicd", "deployments", "dora", "rollback", "security"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Deployment Success Rate (30d)",
+      "description": "Percentage of production deployments passing validation without rollback (Target >= 98%).",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(increase(pvs_deployments_total{environment=\"production\",status=\"success\"}[30d])) / clamp_min(sum(increase(pvs_deployments_total{environment=\"production\"}[30d])), 1e-9)) * 100",
+          "legendFormat": "Success %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 95},
+              {"color": "green", "value": 98}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Automatic Rollbacks (30d)",
+      "description": "Count of production deployments automatically rolled back by post-deploy validation gates.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(pvs_deployment_rollbacks_total{environment=\"production\"}[30d]))",
+          "legendFormat": "Rollbacks"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 2},
+              {"color": "red", "value": 5}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Security Gate Blocks (Trivy / Snyk / SAST)",
+      "description": "Vulnerable releases blocked before staging or production deployment.",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(pvs_security_gate_blocks_total[30d]))",
+          "legendFormat": "Blocked Releases"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Deployment Frequency by Environment",
+      "description": "Daily deployment volume across staging and production environments.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (environment) (increase(pvs_deployments_total[1d]))",
+          "legendFormat": "{{environment}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Deployment Pipeline Duration (p95)",
+      "description": "End-to-end hardened pipeline duration (Target < 1200s / 20 minutes).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(pvs_deployment_duration_seconds_bucket[7d])) by (le, environment))",
+          "legendFormat": "{{environment}} p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 900},
+              {"color": "red", "value": 1200}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Rollback Recovery Duration (p95)",
+      "description": "Time required for scripts/deployment/auto-rollback.sh to restore healthy pods (Target < 180s / 3 min).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(pvs_rollback_duration_seconds_bucket[30d])) by (le))",
+          "legendFormat": "Rollback p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 120},
+              {"color": "red", "value": 180}
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

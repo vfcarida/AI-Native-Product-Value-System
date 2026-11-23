@@ -1,0 +1,133 @@
+{
+  "uid": "pvs-incident-metrics",
+  "title": "Product Value System - Incident Metrics",
+  "description": "Track incident frequency, MTTR by severity (P0-P4), top incident categories, postmortem completion rate, and 30-day MTTR improvement trends (PROD-013).",
+  "tags": ["pvs", "incidents", "mttr", "postmortem", "sre", "operations"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Incidents by Severity (Last 30 Days)",
+      "description": "Distribution of production incidents across P0, P1, P2, P3, and P4 severity levels.",
+      "type": "piechart",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity) (increase(incidents_total[30d]))",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Mean Time To Resolution (MTTR) by Severity",
+      "description": "Median resolution time by severity level vs P0 (<15m) and P1 (<1h) SLA targets.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum(rate(incident_duration_seconds_bucket[7d])) by (le, severity))",
+          "legendFormat": "{{severity}} p50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 900},
+              {"color": "red", "value": 3600}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Incident Frequency Trend",
+      "description": "Daily incident volume over time to track reliability stabilization.",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(incidents_total[1d]))",
+          "legendFormat": "Incidents/day"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Top Incident Categories",
+      "description": "Most frequent root-cause categories over the past 30 days (database, latency, llm, security, capacity).",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (category) (increase(incidents_total[30d])))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Postmortem Completion Rate",
+      "description": "Percentage of P0/P1 incidents with published blameless postmortems (Target >= 95%).",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(postmortems_completed_total) / clamp_min(sum(incidents_total{severity=~\"P0|P1\"}), 1e-9)) * 100",
+          "legendFormat": "Completion %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 80},
+              {"color": "green", "value": 95}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "MTTR Improvement Over Time",
+      "description": "7-day rolling median MTTR over a 30-day lookback window (target: downward trend).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg_over_time(histogram_quantile(0.5, sum(rate(incident_duration_seconds_bucket[7d])) by (le))[30d:7d])",
+          "legendFormat": "7-day rolling average MTTR"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    }
+  ]
+}

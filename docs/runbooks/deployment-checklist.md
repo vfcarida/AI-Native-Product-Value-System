@@ -8,11 +8,13 @@
 
 ## Pre-Deployment (15 minutes)
 
-1. **Code & Quality Gates**
-   - [ ] All PRs approved (`>= 2` reviewers) and CI green (`make lint`, `make test`, `security-scan.yml`, `performance-regression.yml`).
+1. **Code & Automated CI/CD Gates** (see [Hardened Deployment Process](../operations/deployment-process.md))
+   - [ ] All PRs approved (`>= 2` Code Owner reviewers per [.github/branch-protection.json](../../.github/branch-protection.json)) and CI green (`make lint`, `make test`, `security-scan.yml` Trivy + Snyk + CodeQL SAST, `performance-regression.yml`).
    - [ ] `python -W error -m product_value_system doctor --repo-root .` reports `HEALTHY`.
+   - [ ] Staging deployment and `bash scripts/deployment/smoke-tests.sh` passed in [.github/workflows/deploy-hardened.yml](../../.github/workflows/deploy-hardened.yml).
    - [ ] Database migrations tested idempotently in staging (`migrations/postgres/` or `alembic upgrade head`).
 2. **Communication & Freeze Check**
+   - [ ] `bash scripts/deployment/check-freeze.sh` exits `0` ([Deployment Freeze Calendar](../operations/deployment-freeze-calendar.md)).
    - [ ] Announced in `#deployments` with release tag and rollback owner.
    - [ ] Confirm no active P0/P1 incidents in `#incidents` and SLO error budget remaining `> 25%` ([SLO Dashboard](../operations/slos.md)).
 3. **Backup & Rollback Preparation**
@@ -66,7 +68,9 @@ kubectl logs -n product-value-system -l app.kubernetes.io/name=product-value-sys
 
 ## Immediate Rollback Triggers
 
-Initiate [Rollback Procedure](rollback-procedure.md) immediately if ANY trigger fires:
+In automated releases, [.github/workflows/deploy-hardened.yml](../../.github/workflows/deploy-hardened.yml) runs `bash scripts/deployment/deployment-validation.sh` and `bash scripts/deployment/smoke-tests.sh`, and automatically executes `bash scripts/deployment/auto-rollback.sh` on failure.
+
+Initiate [Rollback Procedure](rollback-procedure.md) manually if ANY trigger fires outside automated gates:
 - 5xx error rate `> 2%` (2x SLO budget)
 - API p99 latency `> 5s`
 - Any pod enters `CrashLoopBackOff` (`> 3` restarts in 10 minutes)

@@ -51,6 +51,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P2
             slo: availability
             tier: control-plane
           annotations:
@@ -71,6 +72,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            incident_severity: P0
             slo: availability
             tier: control-plane
             team: platform
@@ -104,6 +106,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            incident_severity: P0
             slo: availability
             tier: control-plane
             team: platform
@@ -125,6 +128,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P2
             slo: latency
             tier: control-plane
             team: platform
@@ -143,6 +147,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            incident_severity: P1
             slo: latency
             tier: control-plane
             team: platform
@@ -158,6 +163,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            incident_severity: P2
             slo: latency
             tier: control-plane
             team: platform
@@ -180,6 +186,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P2
             slo: error_rate
             tier: control-plane
             team: platform
@@ -199,6 +206,7 @@ spec:
           for: 2m
           labels:
             severity: critical
+            incident_severity: P1
             slo: error_rate
             tier: control-plane
             team: platform
@@ -221,6 +229,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            incident_severity: P2
             slo: agent_success
             tier: agent-plane
             team: platform
@@ -240,6 +249,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            incident_severity: P1
             slo: agent_success
             tier: agent-plane
             team: platform
@@ -262,6 +272,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P2
             slo: saturation
             tier: infrastructure
             team: platform
@@ -278,6 +289,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P2
             slo: saturation
             tier: infrastructure
             team: platform
@@ -296,6 +308,7 @@ spec:
           for: 5m
           labels:
             severity: critical
+            incident_severity: P1
             slo: durability
             tier: infrastructure
             team: platform
@@ -311,6 +324,7 @@ spec:
           for: 10m
           labels:
             severity: warning
+            incident_severity: P3
             slo: durability
             tier: infrastructure
             team: platform
@@ -326,6 +340,7 @@ spec:
           for: 5m
           labels:
             severity: warning
+            incident_severity: P3
             slo: durability
             tier: infrastructure
             team: platform

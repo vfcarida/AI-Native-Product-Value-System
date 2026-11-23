@@ -27,6 +27,19 @@ schedules:
           - email: "senior1@example.com"
           - email: "senior2@example.com"
 
+  - name: "Product Value System - Incident Commander (IC)"
+    time_zone: "America/New_York"
+    description: "Dedicated Incident Commander rotation for P0/P1 coordination (PROD-013)"
+    layers:
+      - name: "Weekly IC rotation"
+        start: "2026-11-23T09:00:00"
+        rotation_virtual_start: "2026-11-23T09:00:00"
+        rotation_turn_length_seconds: 604800
+        users:
+          - email: "senior1@example.com"
+          - email: "senior2@example.com"
+          - email: "engineering-manager@example.com"
+
 escalation_policies:
   - name: "Product Value System - Standard Escalation"
     description: "Primary -> Backup (15m) -> Engineering Manager (30m)"

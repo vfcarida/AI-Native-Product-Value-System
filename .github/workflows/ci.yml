@@ -52,7 +52,7 @@ jobs:
       - name: Install dependencies
         run: make install
 
-      - name: Run pvs doctor (12 YAML configs, Cedar policies, JSON schemas)
+      - name: Run pvs doctor (16 YAML configs, Cedar policies, JSON schemas)
         run: python -W error -m product_value_system doctor --repo-root .
 
       - name: Verify Cedar / Python policy sync (100% parity)
@@ -61,8 +61,8 @@ jobs:
       - name: Run Hybrid ML secret scan on src/, config/, and deploy/
         run: python -m product_value_system.security.detect_secrets src/ config/ deploy/
 
-      - name: Run OWASP & AST security posture audit suite
-        run: pytest tests/security/ -v
+      - name: Run OWASP, vulnerability & AST security posture audit suite
+        run: pytest tests/security/ tests/operations/ -m "not integration_real" -v
 
   helm-and-supply-chain:
     name: Helm Chart Lint, Kubeconform & Supply-Chain Audit

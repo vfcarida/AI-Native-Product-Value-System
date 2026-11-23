@@ -1,0 +1,52 @@
+# GitHub Projects / SRE Kaizen Board Configuration (PROD-015)
+# Continuous improvement backlog connecting postmortems, GameDays, toil reduction & DORA trends.
+---
+name: "SRE Kaizen Board"
+description: "Continuous improvement backlog for reliability, automation, observability, and operational excellence"
+
+columns:
+  - name: "Backlog"
+    description: "Improvement ideas collected from postmortems, GameDays, toil audits, and team suggestions"
+  - name: "Prioritized"
+    description: "Triaged and sized improvements ready for sprint pull"
+  - name: "In Progress"
+    description: "Actively being engineered, automated, or documented"
+  - name: "Validating"
+    description: "Deployed to staging/production; verifying metric or GameDay effectiveness"
+  - name: "Done"
+    description: "Completed, verified against objective acceptance criteria, and closed"
+
+issue_labels:
+  - "improvement"
+  - "tech-debt"
+  - "reliability"
+  - "performance"
+  - "observability"
+  - "automation"
+
+priority_tiers:
+  - id: "P0"
+    sla: "48 hours"
+    description: "Critical reliability improvement or mandatory P0/P1 postmortem recurrence fix"
+  - id: "P1"
+    sla: "2 weeks"
+    description: "High-impact DORA/MTTR improvement or failed GameDay remediation"
+  - id: "P2"
+    sla: "30 days"
+    description: "Medium-impact toil automation, runbook polish, or alert threshold tuning"
+  - id: "P3"
+    sla: "1 quarter"
+    description: "Nice-to-have ergonomic, documentation, or long-term capacity improvement"
+
+intake_sources:
+  - "Incident postmortems (100% of P0/P1 action items)"
+  - "Monthly Chaos Engineering GameDay findings"
+  - "Monthly toil measurement automation candidates (target < 30% toil)"
+  - "Quarterly DR drill findings (RTO < 1h / RPO < 15m)"
+  - "Bottom-up engineer proposals & tech debt"
+
+review_cadence:
+  triage: "Weekly (Monday Incident Retrospective)"
+  metrics_review: "Weekly (Friday DORA Review)"
+  toil_audit: "Monthly (Last Monday)"
+  okr_alignment: "Quarterly"

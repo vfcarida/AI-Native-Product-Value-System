@@ -1,0 +1,190 @@
+{
+  "uid": "pvs-improvement-metrics",
+  "title": "DORA Metrics - Continuous Improvement",
+  "description": "DevOps Research and Assessment (DORA) metrics, lead-time trend, and Chaos GameDay success rate for continuous reliability improvement (PROD-015).",
+  "tags": ["pvs", "dora", "continuous-improvement", "gameday", "sre", "space"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Deployment Frequency",
+      "description": "Production deployments per day (Elite: >=1/day, High: weekly-monthly, Medium: monthly-6mo).",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(deployments_total{environment=\"production\"}[7d])) / 7",
+          "legendFormat": "Deployments/day"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.14},
+              {"color": "green", "value": 1}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Lead Time for Changes",
+      "description": "Median commit-to-production lead time in hours (Elite: <1h, High: <24h, Medium: <168h).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 6, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum(rate(deployment_lead_time_seconds_bucket[7d])) by (le)) / 3600",
+          "legendFormat": "p50 (hours)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "orange", "value": 24},
+              {"color": "red", "value": 168}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Change Failure Rate",
+      "description": "Percentage of production deployments causing rollbacks or incidents (Elite: 0-15%, High: 16-30%).",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(increase(deployments_total{result=\"failed\"}[30d])) / clamp_min(sum(increase(deployments_total[30d])), 1e-9)) * 100",
+          "legendFormat": "Failure rate %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 15},
+              {"color": "red", "value": 30}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Mean Time To Recovery (MTTR)",
+      "description": "Median P0/P1 incident recovery time in minutes (Elite: <60m, High: <1440m).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum(rate(incident_duration_seconds_bucket{severity=~\"P0|P1\"}[30d])) by (le)) / 60",
+          "legendFormat": "p50 (minutes)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 60},
+              {"color": "orange", "value": 1440},
+              {"color": "red", "value": 10080}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "DORA Performance Category",
+      "description": "Overall DORA performance benchmark classification (Elite, High, Medium, or Low).",
+      "type": "table",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "dora_category",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "GameDay Success Rate",
+      "description": "Percentage of monthly Chaos Engineering GameDay scenarios passed (Target >= 85%).",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(gameday_success_total) / clamp_min(sum(gameday_total), 1e-9)) * 100",
+          "legendFormat": "Pass Rate %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 85},
+              {"color": "green", "value": 95}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Improvement Trend (Lead Time)",
+      "description": "7-day rolling median lead time across 90 days (target: steady downward trend).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg_over_time(histogram_quantile(0.5, sum(rate(deployment_lead_time_seconds_bucket[7d])) by (le))[90d:7d]) / 3600",
+          "legendFormat": "7-day rolling average (hours)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h"
+        }
+      }
+    }
+  ]
+}

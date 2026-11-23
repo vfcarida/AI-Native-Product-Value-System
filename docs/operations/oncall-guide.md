@@ -20,6 +20,7 @@ As the active on-call engineer, you are responsible for:
 Defined declaratively in [config/pagerduty-schedule.yaml](../../config/pagerduty-schedule.yaml):
 - **Primary On-Call**: 3+ engineers on a weekly rotation (`604,800s`, Mon 09:00 ET -> Mon 09:00 ET).
 - **Backup On-Call**: 2+ senior engineers on a weekly rotation.
+- **Incident Commander (IC) Rotation**: Dedicated senior IC schedule (`Product Value System - Incident Commander (IC)`) coordinating P0/P1 response per [Incident Commander Guide](incident-commander-guide.md).
 - **Escalation Chain** (`num_loops: 2`):
   1. `0 min` -> Primary On-Call Schedule
   2. `15 min` -> Backup On-Call Schedule
@@ -75,6 +76,18 @@ Use [scripts/silence-alert.sh](../../scripts/silence-alert.sh) to create audited
 
 ## Related Documentation
 
+- [SRE Team Rituals & Culture](team-rituals.md)
+- [Improvement Metrics (DORA & SPACE)](improvement-metrics.md)
+- [Chaos GameDay Facilitation Guide](gameday-facilitation-guide.md)
+- [Chaos GameDay Scenarios (15)](gameday-scenarios/README.md)
+- [Weekly Retrospective Template](retrospective-template.md)
+- [Quarterly DR Drill Procedures](dr-drill-procedures.md)
+- [Incident Management Process](incident-management.md)
+- [Incident Severity Classification Guide (P0–P4)](incident-severity-guide.md)
+- [Incident Commander (IC) Guide](incident-commander-guide.md)
+- [Blameless Postmortem Template](postmortem-template.md)
+- [Incident Communication Templates](communication-templates.md)
+- [Incident Issue Template](../../.github/ISSUE_TEMPLATE/incident-report.md)
 - [On-Call Quick Reference (All 20 Runbooks)](../runbooks/oncall-quick-reference.md)
 - [Troubleshooting Flowchart](../runbooks/troubleshooting-flowchart.md)
 - [Production Deployment Checklist](../runbooks/deployment-checklist.md)

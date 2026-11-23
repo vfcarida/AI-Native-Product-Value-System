@@ -1,0 +1,295 @@
+name: Deploy (Hardened)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - production
+      emergency_hotfix:
+        description: 'Bypass deployment freeze for P0 emergency hotfix (audited)'
+        required: false
+        type: boolean
+        default: false
+      hotfix_reason:
+        description: 'Incident ID & justification when emergency_hotfix is true'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+  HELM_CHART: ./deploy/helm/product-value-system
+  K8S_NAMESPACE: product-value-system
+  HELM_RELEASE: product-value-system
+
+jobs:
+  # Gate 1: Security Scan (Trivy + Snyk/pip-audit + CodeQL SAST + SBOM + License)
+  security-gate:
+    name: Security Gate (Trivy + Snyk + CodeQL SAST)
+    uses: ./.github/workflows/security-scan.yml
+    secrets: inherit
+
+  # Stage 1: Build and Push Multi-Stage Non-Root Docker Image
+  build:
+    name: Build & Push Docker Image
+    needs: [security-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226  # v3.0.0
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push immutable SHA-tagged image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/product-value-system:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/product-value-system:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Stage 2: Deploy to Staging (automatic on main, no manual approval)
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure staging kubeconfig
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG_STAGING }}
+
+      - name: Deploy release to staging with Helm
+        run: |
+          helm upgrade --install "${{ env.HELM_RELEASE }}" "${{ env.HELM_CHART }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --create-namespace \
+            --set image.tag="${{ env.IMAGE_TAG }}" \
+            --wait \
+            --timeout=10m
+
+      - name: Wait for staging rollout
+        run: |
+          kubectl rollout status "deployment/${{ env.HELM_RELEASE }}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            --timeout=5m
+
+  # Stage 3: Post-Deploy Smoke Tests (Staging)
+  smoke-test-staging:
+    name: Smoke Test Staging
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Run staging smoke test suite
+        run: bash scripts/deployment/smoke-tests.sh --results-dir test-results
+        env:
+          TARGET_URL: ${{ secrets.STAGING_URL }}
+          API_TOKEN: ${{ secrets.STAGING_API_TOKEN }}
+
+      - name: Upload staging smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-staging-${{ github.sha }}
+          path: test-results/
+          retention-days: 30
+
+  # Stage 4: Deploy to Production (requires 2 Code Owner approvals in GitHub Environment)
+  deploy-production:
+    name: Deploy to Production
+    needs: [smoke-test-staging]
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://pvs.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Verify no active deployment freeze window
+        run: bash scripts/deployment/check-freeze.sh
+        env:
+          DEPLOYMENT_FREEZE_OVERRIDE: ${{ inputs.emergency_hotfix || false }}
+          FREEZE_OVERRIDE_REASON: ${{ inputs.hotfix_reason || '' }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure production kubeconfig
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG_PRODUCTION }}
+
+      - name: Record current live revision for rollback audit trail
+        run: |
+          CURRENT_TAG="$(kubectl get deployment "${{ env.HELM_RELEASE }}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null | cut -d: -f2 || echo 'none')"
+          echo "PREVIOUS_TAG=${CURRENT_TAG}" >> "${GITHUB_ENV}"
+          echo "Recorded previous live tag: ${CURRENT_TAG}"
+
+      - name: Deploy release to production with Helm
+        run: |
+          helm upgrade --install "${{ env.HELM_RELEASE }}" "${{ env.HELM_CHART }}" \
+            --namespace "${{ env.K8S_NAMESPACE }}" \
+            --create-namespace \
+            --set image.tag="${{ env.IMAGE_TAG }}" \
+            --wait \
+            --timeout=10m
+
+      - name: Wait for production rollout
+        run: |
+          kubectl rollout status "deployment/${{ env.HELM_RELEASE }}" \
+            -n "${{ env.K8S_NAMESPACE }}" \
+            --timeout=5m
+
+  # Stage 5: Post-Deploy Validation & Smoke Tests (Production)
+  validate-production:
+    name: Validate Production Deployment
+    needs: [deploy-production]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Configure production kubeconfig
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG_PRODUCTION }}
+
+      - name: Run Prometheus SLO & pod readiness validation
+        run: bash scripts/deployment/deployment-validation.sh
+        env:
+          TARGET_URL: ${{ secrets.PRODUCTION_URL }}
+          PROMETHEUS_URL: ${{ secrets.PROMETHEUS_URL }}
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          DEPLOYMENT: ${{ env.HELM_RELEASE }}
+
+      - name: Run production smoke test suite
+        run: bash scripts/deployment/smoke-tests.sh --results-dir test-results
+        env:
+          TARGET_URL: ${{ secrets.PRODUCTION_URL }}
+          API_TOKEN: ${{ secrets.PRODUCTION_API_TOKEN }}
+
+      - name: Upload production validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-production-${{ github.sha }}
+          path: test-results/
+          retention-days: 90
+
+  # Stage 6: Automatic Rollback & Incident Creation on Validation Failure
+  rollback-production:
+    name: Automatic Rollback Production
+    needs: [deploy-production, validate-production]
+    if: always() && needs.deploy-production.result == 'success' && needs.validate-production.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1 commit sha
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure production kubeconfig
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG_PRODUCTION }}
+
+      - name: Execute automatic rollback & verify health
+        run: bash scripts/deployment/auto-rollback.sh
+        env:
+          NAMESPACE: ${{ env.K8S_NAMESPACE }}
+          DEPLOYMENT: ${{ env.HELM_RELEASE }}
+          HELM_RELEASE: ${{ env.HELM_RELEASE }}
+
+      - name: Notify on-call Slack channel
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.27.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "text": "Production deployment FAILED validation and was automatically rolled back",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Automatic Production Rollback Executed*\n*Commit:* `${{ github.sha }}`\n*Actor:* `${{ github.actor }}`\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                }
+              ]
+            }
+
+      - name: Open P1 incident tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[INCIDENT][P1] Production Deployment Rolled Back (${context.sha.slice(0, 8)})`,
+              body: [
+                'Production deployment failed post-deploy validation and was automatically rolled back.',
+                '',
+                `- **Commit**: \`${context.sha}\``,
+                `- **Actor**: \`${context.actor}\``,
+                `- **Workflow Run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- **Runbook**: `docs/runbooks/rollback-procedure.md`',
+              ].join('\n'),
+              labels: ['incident', 'deployment-failure', 'severity:P1']
+            });

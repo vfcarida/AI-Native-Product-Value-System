@@ -1,0 +1,17 @@
+# Code Owners for Protected Branch & Production Deployment Approvals (PROD-014)
+# Applies when branch-protection.json enforces require_code_owner_reviews: true.
+
+# Default repository owners
+* @vfcarida
+
+# Security, policy & compliance critical paths
+/src/product_value_system/security/ @vfcarida
+/src/product_value_system/compliance/ @vfcarida
+/policies/ @vfcarida
+/config/ @vfcarida
+
+# Deployment, CI/CD & Kubernetes manifests
+/.github/ @vfcarida
+/deploy/ @vfcarida
+/scripts/deployment/ @vfcarida
+/Dockerfile @vfcarida
