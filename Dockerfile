@@ -4,7 +4,7 @@
 # ==========================================
 # Stage 1: Builder (isolated virtualenv)
 # ==========================================
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ RUN python -m venv /opt/venv && \
 # ==========================================
 # Stage 2: Runtime (non-root hardened)
 # ==========================================
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
