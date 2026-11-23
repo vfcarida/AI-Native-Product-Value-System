@@ -392,6 +392,29 @@ class Harness:
             model=response.model or "unknown",
         )
 
+        from product_value_system.compliance.audit_logger import (
+            AuditEventType,
+            log_audit_event_safe,
+        )
+
+        await log_audit_event_safe(
+            event_type=AuditEventType.MODEL_CALLED,
+            action=f"Model {response.model or adapter_model} invoked by {self.context.agent_name}",
+            resource_type="model",
+            resource_id=response.model or adapter_model,
+            result="success",
+            user_id=getattr(self.context, "user_id", None),
+            session_id=self.context.run_id,
+            metadata={
+                "agent": self.context.agent_name,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": actual_tokens,
+                "cost_usd": round(actual_cost, 6),
+                "latency_ms": round(elapsed_sec * 1000.0, 2),
+            },
+        )
+
         self.memory.add_message("assistant", response.content)
 
         if capture_active:

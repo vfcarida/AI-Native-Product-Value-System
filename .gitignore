@@ -58,3 +58,10 @@ runs/
 .cache/
 *.db
 *.sqlite
+
+# Vulnerability scanning & SBOM reports (PROD-005)
+sbom/
+*.sarif
+trivy-report.json
+snyk-report.json
+licenses.json

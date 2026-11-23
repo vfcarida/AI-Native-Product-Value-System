@@ -6,6 +6,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2F855A?style=for-the-badge)](LICENSE)
 [![Status: v1.0 Reference](https://img.shields.io/badge/status-v1.0%20Reference-2F855A?style=for-the-badge)](#roadmap)
 [![Cedar Policy Sync](https://img.shields.io/badge/Cedar%20Policy%20Sync-100%25%20(25%2F25)-6B46C1?style=for-the-badge)](docs/POLICY_SYNC.md)
+[![Security Scanning](https://img.shields.io/badge/Security%20Scan-Trivy%20%2B%20Snyk%20%2B%20SBOM-2B6CB0?style=for-the-badge)](docs/security/vulnerability-management.md)
 [![Test Suite](https://img.shields.io/badge/tests-900%2B%204--Tier%20Suite-009688?style=for-the-badge)](tests/README.md)
 
 **A research-backed, production-hardened reference implementation for governed, FinOps-optimized, AI-native software delivery — from problem discovery to verified release and post-launch outcome learning.**
@@ -149,7 +150,7 @@ from product_value_system import (
     validate_all_configs,
 )
 
-# 1. Fail-fast startup validation across all 14 config/*.yaml contracts
+# 1. Fail-fast startup validation across all 15 config/*.yaml contracts
 report = validate_all_configs("config", expand_env=True)
 assert report.is_valid, report.errors
 
@@ -166,7 +167,7 @@ Sample output from `pvs doctor`:
 ```text
 PVS Doctor v1.0.0 — HEALTHY
   [OK] python_runtime: Python 3.12.10
-  [OK] yaml_config_contracts: 14 configs valid
+  [OK] yaml_config_contracts: 15 configs valid
   [OK] cedar_policy_engine: Loaded agent_authorization.cedar (cached=False)
   [OK] json_schemas: 8 schema file(s) in schemas
   [OK] llm_provider_credentials: No live API keys set (offline mock mode ready at $0 cost)
@@ -219,7 +220,7 @@ AI-Native-Product-Value-System/
 ├── src/product_value_system/   # 30 public packages (agents, orchestrator, harness, policy,
 │                               #   caching, routing, evaluation, sandbox, security, brownfield,
 │                               #   metrics, monitoring, observability, contracts, api, cli, ...)
-├── config/                     # 14 strictly validated YAML configs (StrictConfigModel)
+├── config/                     # 15 strictly validated YAML configs (StrictConfigModel)
 ├── schemas/                    # 8 JSON Schema 2020-12 artifact contracts
 ├── policies/                   # Declarative Cedar authorization schema & policies
 ├── examples/                   # Greenfield, brownfield, progressive delivery & $0 showcases
@@ -241,7 +242,7 @@ AI-Native-Product-Value-System/
 | **Architecture & ADRs** | [Architecture Guide](docs/ARCHITECTURE.md) · [C4 & Sequence Diagrams](docs/architecture/DIAGRAMS.md) · [ADR Index (`ADR-0001`–`0006`)](docs/adr/README.md) · [Empirical Benchmarks](docs/BENCHMARKS.md) |
 | **API, Config & CLI** | [Reference Index](docs/reference/README.md) · [All 21 `pvs` CLI Commands](docs/reference/cli/commands.md) · [How-To Guides](docs/howto/README.md) · [Zero-Cost Showcases](examples/showcases/README.md) |
 | **FinOps & Orchestration** | [Token Caching](docs/token-caching.md) · [Model Routing](docs/model-routing.md) · [Batch Evaluations](docs/batch-evaluations.md) · [Parallel Execution](docs/parallel-execution.md) · [Cost Management](docs/COST_MANAGEMENT.md) |
-| **Security & Governance** | [Threat Model (OWASP LLM/Agentic)](docs/THREAT_MODEL.md) · [Secret Detection (Presidio ML)](docs/security/secret-detection.md) · [Sandbox Security (iptables)](docs/security/sandbox-security.md) · [HashiCorp Vault](docs/security/vault-integration.md) · [Emergency Revocation Runbook](docs/operations/runbooks/emergency-secret-revocation.md) · [Network Egress Filtering](docs/network-filtering.md) · [Policy Sync](docs/POLICY_SYNC.md) · [Secret Management](docs/SECRET_MANAGEMENT.md) · [Security Testing](docs/SECURITY_TESTING.md) |
+| **Security & Governance** | [Threat Model (OWASP LLM/Agentic)](docs/THREAT_MODEL.md) · [SOC2 Controls](docs/compliance/soc2-controls.md) · [GDPR Compliance](docs/compliance/gdpr-compliance.md) · [Retention Policy](docs/compliance/retention-policy.md) · [Vulnerability Management](docs/security/vulnerability-management.md) · [Secret Detection (Presidio ML)](docs/security/secret-detection.md) · [Sandbox Security (iptables)](docs/security/sandbox-security.md) · [HashiCorp Vault](docs/security/vault-integration.md) · [Emergency Revocation Runbook](docs/operations/runbooks/emergency-secret-revocation.md) · [Network Egress Filtering](docs/network-filtering.md) · [Policy Sync](docs/POLICY_SYNC.md) · [Secret Management](docs/SECRET_MANAGEMENT.md) · [Security Testing](docs/SECURITY_TESTING.md) |
 | **Brownfield & Engineering** | [Git History Analysis](docs/git-history-analysis.md) · [Strangler Fig Modernization](docs/strangler-fig-modernization.md) · [Drift Detection](docs/drift-detection.md) · [Spec-Kit Patterns](docs/spec-kit-guide.md) |
 | **Observability, SLOs & DevX** | [OTel GenAI Conventions](docs/otel-genai-conventions.md) · [DevX SPACE/DORA Metrics](docs/devx-metrics.md) · [Production SLOs & Alerting](docs/operations/slos.md) · [SLOs & Rollback](docs/slo-guide.md) · [Progressive Delivery](docs/progressive-delivery.md) · [Grafana Dashboards](docs/dashboards.md) · [Kubernetes Helm Chart](deploy/helm/product-value-system/README.md) |
 | **Discovery & Validation** | [Evidence Synthesis](docs/evidence-synthesis.md) · [Interview Synthesis](docs/interview-synthesis.md) · [Experiment Design](docs/experiment-design.md) · [Baseline Validation](docs/baseline-validation.md) · [Golden Datasets](golden_datasets/README.md) |

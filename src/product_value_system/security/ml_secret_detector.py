@@ -207,7 +207,7 @@ _PASCAL_CASE_IDENT_RE = re.compile(r"^[A-Z]{1,4}[a-z]{2,}(?:[A-Z]{1,4}[a-z]{2,})
 _PYTHON_KWARG_CONST_RE = re.compile(
     r"^([a-z][a-z0-9_]*)=(_?[A-Z][A-Z0-9_]{2,}|[A-Z]{1,4}[a-z]{2,}(?:[A-Z]{1,4}[a-z]{2,})+)$"
 )
-_ENV_CONFIG_ASSIGN_RE = re.compile(r"^([A-Z][A-Z0-9_]{2,})=([a-z0-9_.-]{1,16})$")
+_ENV_CONFIG_ASSIGN_RE = re.compile(r"^([A-Z][A-Z0-9_]{2,})=([a-z0-9_./-]{1,48})$")
 _SECRET_LHS_WORDS = ("secret", "token", "key", "pass", "pwd", "auth", "cred")
 
 

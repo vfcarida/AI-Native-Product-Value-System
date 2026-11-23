@@ -1,0 +1,133 @@
+{{- if .Values.compliance.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pvs.fullname" . }}-audit-archival-job
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: audit-archival-job
+spec:
+  schedule: {{ .Values.compliance.retention.archivalSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.compliance.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.compliance.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "pvs.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: audit-archival-job
+        spec:
+          serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: audit-archival
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python3
+                - -m
+                - product_value_system.compliance.retention_policy
+                - --mode
+                - archive
+              envFrom:
+                - configMapRef:
+                    name: {{ include "pvs.fullname" . }}-config
+                {{- if or .Values.secrets.existingSecret .Values.secrets.create }}
+                - secretRef:
+                    name: {{ include "pvs.secretName" . }}
+                    optional: true
+                {{- end }}
+              env:
+                - name: AUDIT_S3_BUCKET
+                  value: {{ .Values.compliance.s3.bucket | quote }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.compliance.s3.region | quote }}
+                - name: AUDIT_HOT_STORAGE_DAYS
+                  value: {{ .Values.compliance.retention.hotStorageDays | quote }}
+                - name: AUDIT_COLD_STORAGE_DAYS
+                  value: {{ .Values.compliance.retention.coldStorageDays | quote }}
+              resources:
+                {{- toYaml .Values.compliance.cronjob.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 128Mi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pvs.fullname" . }}-audit-deletion-job
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: audit-deletion-job
+spec:
+  schedule: {{ .Values.compliance.retention.deletionSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.compliance.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.compliance.cronjob.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "pvs.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: audit-deletion-job
+        spec:
+          serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+          automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: audit-deletion
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python3
+                - -m
+                - product_value_system.compliance.retention_policy
+                - --mode
+                - delete
+              envFrom:
+                - configMapRef:
+                    name: {{ include "pvs.fullname" . }}-config
+                {{- if or .Values.secrets.existingSecret .Values.secrets.create }}
+                - secretRef:
+                    name: {{ include "pvs.secretName" . }}
+                    optional: true
+                {{- end }}
+              env:
+                - name: AUDIT_S3_BUCKET
+                  value: {{ .Values.compliance.s3.bucket | quote }}
+                - name: AWS_DEFAULT_REGION
+                  value: {{ .Values.compliance.s3.region | quote }}
+                - name: AUDIT_HOT_STORAGE_DAYS
+                  value: {{ .Values.compliance.retention.hotStorageDays | quote }}
+                - name: AUDIT_COLD_STORAGE_DAYS
+                  value: {{ .Values.compliance.retention.coldStorageDays | quote }}
+              resources:
+                {{- toYaml .Values.compliance.cronjob.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 128Mi
+{{- end }}

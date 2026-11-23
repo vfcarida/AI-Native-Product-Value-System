@@ -89,7 +89,8 @@ jobs:
             --set serviceMonitor.enabled=true \
             --set slo.enabled=true \
             --set grafanaDashboards.enabled=true \
-            --set vault.enabled=true > /tmp/rendered-k8s.yaml
+            --set vault.enabled=true \
+            --set compliance.enabled=true > /tmp/rendered-k8s.yaml
 
       - name: Validate rendered Kubernetes manifests with kubeconform
         run: |

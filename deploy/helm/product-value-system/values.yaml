@@ -222,6 +222,30 @@ vault:
   createDedicatedServiceAccount: false
   serviceAccountAnnotations: {}
 
+# Compliance Audit Trail, S3 Glacier Archival & Retention CronJobs (PROD-006)
+compliance:
+  enabled: false
+  retention:
+    hotStorageDays: 90
+    coldStorageDays: 2555
+    archivalSchedule: "0 2 * * *"
+    deletionSchedule: "0 3 1 * *"
+  s3:
+    bucket: "pvs-audit-archive"
+    region: "us-east-1"
+    storageClass: "GLACIER"
+    encryption: "AES256"
+  cronjob:
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

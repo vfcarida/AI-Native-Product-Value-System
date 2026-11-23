@@ -159,7 +159,9 @@ class DockerSandbox:
                     filter_latency_ms,
                 )
 
-            return self._execute_in_container(container, code, lang, timeout)
+            result = self._execute_in_container(container, code, lang, timeout)
+            self._audit_code_execution(lang, result)
+            return result
         finally:
             if container is not None:
                 try:
@@ -207,6 +209,45 @@ class DockerSandbox:
             stderr="" if int(exit_code) == 0 else decoded,
             duration_seconds=duration,
         )
+
+    @staticmethod
+    def _audit_code_execution(language: str, result: ExecutionResult) -> None:
+        """Emit a best-effort ``CODE_EXECUTED`` compliance event if AuditLogger is active."""
+        import asyncio
+        from datetime import UTC, datetime
+
+        from product_value_system.compliance.audit_logger import (
+            AuditEvent,
+            AuditEventType,
+            get_audit_logger_optional,
+        )
+
+        active = get_audit_logger_optional()
+        if active is None or not active.enabled:
+            return
+        event = AuditEvent(
+            event_type=AuditEventType.CODE_EXECUTED,
+            timestamp=datetime.now(UTC),
+            user_id=None,
+            subject_id=None,
+            action=f"Executed {language} code in Docker sandbox",
+            resource_type="sandbox",
+            resource_id=f"sandbox-{language}",
+            result="success" if result.exit_code == 0 else "failure",
+            metadata={
+                "language": language,
+                "exit_code": result.exit_code,
+                "duration_seconds": round(result.duration_seconds, 4),
+            },
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(active.log(event))
+        except RuntimeError:
+            try:
+                asyncio.run(active.log(event))
+            except Exception as exc:  # pragma: no cover
+                logger.debug("Sandbox audit hook suppressed error: %s", exc)
 
 
 __all__ = ["DockerSandbox", "DockerSandboxProvider"]

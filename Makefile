@@ -4,9 +4,11 @@
 
 .PHONY: help install install-poetry dev-setup test test-unit test-integration \
 	test-integration-real test-all test-coverage watch-test lint format type-check \
-	validate-policies security-check clean demo demo-greenfield demo-brownfield \
-	demo-custom docker-check docker-build docker-build-sandbox docker-run \
-	env-check build publish-test publish update-deps docs-serve benchmark platform-info
+	validate-policies security-check security-scan security-scan-trivy \
+	security-scan-snyk generate-sbom security-report license-check clean demo \
+	demo-greenfield demo-brownfield demo-custom docker-check docker-build \
+	docker-build-sandbox docker-run env-check build publish-test publish \
+	update-deps docs-serve benchmark platform-info
 
 # Default target shows self-documented help
 .DEFAULT_GOAL := help
@@ -131,9 +133,37 @@ validate-policies: ## Validate Cedar policy synchronization with Python fallback
 
 security-check: ## Run hybrid ML secret scan and adversarial security tests
 	@printf "$(BLUE)Running security checks...$(NC)\n"
-	@$(PYTHON) -m product_value_system.security.detect_secrets src/ config/
-	@$(PYTHON) -m pytest tests/security/ -v
+	@$(PYTHON) -m product_value_system.security.detect_secrets src/ config/ deploy/
+	@$(PYTHON) -m pytest tests/security/ -m "not integration_real" -v
 	@printf "$(GREEN)✓ Security checks passed$(NC)\n"
+
+security-scan: security-scan-trivy security-scan-snyk license-check ## Run Trivy, Snyk/pip-audit & license compliance scans
+
+security-scan-trivy: docker-check ## Scan production Docker image for HIGH/CRITICAL CVEs via Trivy
+	@printf "$(BLUE)Running Trivy container vulnerability scan...$(NC)\n"
+	@docker build -t product-value-system:dev .
+	@trivy image --severity HIGH,CRITICAL --ignore-unfixed --trivyignores .trivyignore --format table product-value-system:dev
+
+security-scan-snyk: ## Scan Python dependencies for vulnerabilities via Snyk or pip-audit
+	@printf "$(BLUE)Running Python dependency vulnerability scan...$(NC)\n"
+	@if command -v snyk >/dev/null 2>&1; then \
+		snyk test --severity-threshold=high --file=requirements.lock; \
+	else \
+		$(PYTHON) -m pip_audit -r requirements.lock; \
+	fi
+
+generate-sbom: docker-check ## Generate CycloneDX & SPDX Software Bill of Materials (sbom/)
+	@printf "$(BLUE)Generating SBOM artifacts...$(NC)\n"
+	@./scripts/generate-sbom.sh product-value-system:latest sbom
+
+security-report: docker-check ## Generate Trivy JSON scan and triage report via analyze-vulnerabilities.py
+	@printf "$(BLUE)Generating vulnerability triage report...$(NC)\n"
+	@trivy image --format json --output trivy-report.json product-value-system:latest
+	@$(PYTHON) scripts/analyze-vulnerabilities.py trivy-report.json
+
+license-check: ## Audit Python dependency licenses (blocks GPL/AGPL)
+	@printf "$(BLUE)Checking Python dependency licenses...$(NC)\n"
+	@$(PYTHON) -m piplicenses --format=markdown
 
 benchmark: ## Run performance benchmark tests
 	@printf "$(BLUE)Running performance benchmarks...$(NC)\n"

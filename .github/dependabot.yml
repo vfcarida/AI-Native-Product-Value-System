@@ -1,0 +1,81 @@
+# Automated Dependency & Security Patch PRs (PROD-005)
+version: 2
+updates:
+  # Python dependencies (pyproject.toml / requirements.lock)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy"
+          - "hypothesis"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Main application Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # Sandbox Dockerfiles (Python & TypeScript)
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # Agent sandbox Dockerfile
+  - package-ecosystem: "docker"
+    directory: "/docker/agent-sandbox"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    labels:
+      - "ci"
+      - "dependencies"
+    commit-message:
+      prefix: "ci(deps)"

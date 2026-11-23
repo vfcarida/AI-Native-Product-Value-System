@@ -1,0 +1,38 @@
+# Compliance Audit Trail, GDPR DSAR & Retention Policy Configuration (PROD-006)
+# Validated strictly by ComplianceConfigFile in contracts/config_schemas.py.
+---
+compliance:
+  # Immutable audit logging
+  audit:
+    enabled: true
+    async_mode: true
+    queue_size: 10000
+    signing_key_env: AUDIT_SIGNING_KEY
+
+  # Retention policies (90-day hot DB / 7-year cold S3 Glacier)
+  retention:
+    hot_storage_days: 90
+    cold_storage_days: 2555
+    archival_schedule: "0 2 * * *"
+    deletion_schedule: "0 3 1 * *"
+
+  # GDPR Data Subject Rights (Articles 15 & 17)
+  gdpr:
+    enabled: true
+    dsar_sla_days: 30
+    deletion_sla_days: 30
+    export_format: "json"
+    retention_after_deletion: 90
+
+  # SOC2 Trust Service Criteria controls
+  soc2:
+    enabled: true
+    quarterly_access_review: true
+    control_mapping_file: "docs/compliance/soc2-controls.md"
+
+  # S3 encrypted cold archival
+  s3:
+    bucket: "pvs-audit-archive"
+    region: "us-east-1"
+    storage_class: "GLACIER"
+    encryption: "AES256"

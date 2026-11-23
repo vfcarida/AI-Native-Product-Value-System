@@ -8,6 +8,7 @@ from typing import Any
 from jsonschema import ValidationError
 
 from product_value_system.agents.agent import AgentResult
+from product_value_system.compliance.audit_logger import AuditEventType, log_audit_event_safe
 from product_value_system.harness.context import ExecutionContext
 from product_value_system.harness.harness import Harness
 from product_value_system.observability.tracing import traced
@@ -108,6 +109,16 @@ class BaseAgent:
             )
 
         harness.budget.start()
+        await log_audit_event_safe(
+            event_type=AuditEventType.AGENT_STARTED,
+            action=f"Agent {self.name} started",
+            resource_type="agent",
+            resource_id=self.name,
+            result="started",
+            user_id=context.user_id if hasattr(context, "user_id") else None,
+            session_id=context.run_id,
+            metadata={"agent_version": self.version},
+        )
         started_trajectory = False
         if (
             harness.trajectory_capture.enabled
@@ -132,6 +143,24 @@ class BaseAgent:
                     error=result.error,
                 )
 
+            await log_audit_event_safe(
+                event_type=(
+                    AuditEventType.AGENT_COMPLETED
+                    if result.success
+                    else AuditEventType.AGENT_FAILED
+                ),
+                action=f"Agent {self.name} finished",
+                resource_type="agent",
+                resource_id=self.name,
+                result="success" if result.success else "failure",
+                user_id=context.user_id if hasattr(context, "user_id") else None,
+                session_id=context.run_id,
+                metadata={
+                    "iterations": result.iterations,
+                    "cost_usd": result.cost_usd,
+                    "duration_seconds": round(result.duration_seconds, 4),
+                },
+            )
             return result
 
         except Exception as e:
@@ -142,6 +171,16 @@ class BaseAgent:
                     success=False,
                     error=str(e),
                 )
+            await log_audit_event_safe(
+                event_type=AuditEventType.AGENT_FAILED,
+                action=f"Agent {self.name} raised unhandled error",
+                resource_type="agent",
+                resource_id=self.name,
+                result="failure",
+                user_id=context.user_id if hasattr(context, "user_id") else None,
+                session_id=context.run_id,
+                metadata={"error_type": type(e).__name__},
+            )
             return AgentResult(
                 success=False,
                 output_artifact={},

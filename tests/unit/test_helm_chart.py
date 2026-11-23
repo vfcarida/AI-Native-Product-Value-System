@@ -89,6 +89,7 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
     expected_templates = {
         "_helpers.tpl",
         "configmap.yaml",
+        "cronjob-archive.yaml",
         "deployment.yaml",
         "grafana-dashboards-configmap.yaml",
         "hpa.yaml",

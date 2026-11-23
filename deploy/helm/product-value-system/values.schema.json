@@ -186,6 +186,41 @@
         "serviceAccountAnnotations": { "type": "object" }
       }
     },
+    "compliance": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "retention": {
+          "type": "object",
+          "properties": {
+            "hotStorageDays": { "type": "integer", "minimum": 1 },
+            "coldStorageDays": { "type": "integer", "minimum": 1 },
+            "archivalSchedule": { "type": "string", "minLength": 9 },
+            "deletionSchedule": { "type": "string", "minLength": 9 }
+          }
+        },
+        "s3": {
+          "type": "object",
+          "properties": {
+            "bucket": { "type": "string", "minLength": 3 },
+            "region": { "type": "string", "minLength": 2 },
+            "storageClass": {
+              "type": "string",
+              "enum": ["STANDARD", "STANDARD_IA", "GLACIER", "GLACIER_IR", "DEEP_ARCHIVE"]
+            },
+            "encryption": { "type": "string", "enum": ["AES256", "aws:kms"] }
+          }
+        },
+        "cronjob": {
+          "type": "object",
+          "properties": {
+            "successfulJobsHistoryLimit": { "type": "integer", "minimum": 1 },
+            "failedJobsHistoryLimit": { "type": "integer", "minimum": 1 },
+            "resources": { "type": "object" }
+          }
+        }
+      }
+    },
     "config": {
       "type": "object",
       "required": ["logLevel", "devxAggregateOnly", "devxAnonymize"],

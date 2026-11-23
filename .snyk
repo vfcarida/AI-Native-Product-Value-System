@@ -1,0 +1,14 @@
+# Snyk vulnerability policy file (PROD-005)
+# Suppressions require security team PR approval and quarterly expiration dates.
+version: v1.25.0
+
+ignore: {}
+
+patch: {}
+
+failThreshold: high
+
+excludedDirs:
+  - tests/
+  - docs/
+  - examples/

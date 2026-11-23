@@ -84,8 +84,9 @@ Follow our task-oriented [How-To Guides](docs/howto/README.md):
 
 ## Security & Vulnerability Reporting
 
-- **Never commit API keys, tokens, or credentials.** Always use environment variables or synthetic placeholders.
-- To report a security vulnerability, follow the instructions in [SECURITY.md](SECURITY.md).
+- **Never commit API keys, tokens, or credentials.** Always use HashiCorp Vault (production) or environment variables / synthetic placeholders (local dev).
+- **Automated Vulnerability Scanning**: Every PR runs Trivy container scans, `pip-audit`/Snyk dependency checks, SBOM generation, and license compliance (`make security-scan`, `make license-check`). Fixable `CRITICAL`/`HIGH` CVEs block merges unless suppressed with documented justification and expiration in `.trivyignore` / `.snyk`.
+- See [docs/security/vulnerability-management.md](docs/security/vulnerability-management.md) for triage SLAs and [SECURITY.md](SECURITY.md) to report vulnerabilities.
 
 ---
 

@@ -536,6 +536,72 @@ class NetworkAllowlistConfigFile(StrictConfigModel):
 
 
 # ---------------------------------------------------------------------------
+# 14. config/compliance.yaml (PROD-006)
+# ---------------------------------------------------------------------------
+
+_CRON_FIELD_RE = re.compile(r"^(\S+\s+){4}\S+$")
+
+
+class ComplianceAuditSchema(StrictConfigModel):
+    enabled: bool = True
+    async_mode: bool = True
+    queue_size: int = Field(default=10000, ge=1, le=1000000)
+    signing_key_env: str = Field(default="AUDIT_SIGNING_KEY", min_length=1)
+
+
+class ComplianceRetentionSchema(StrictConfigModel):
+    hot_storage_days: int = Field(default=90, ge=1)
+    cold_storage_days: int = Field(default=2555, ge=1)
+    archival_schedule: str = "0 2 * * *"
+    deletion_schedule: str = "0 3 1 * *"
+
+    @model_validator(mode="after")
+    def _validate_retention(self) -> ComplianceRetentionSchema:
+        if self.cold_storage_days < self.hot_storage_days:
+            raise ValueError("cold_storage_days must be >= hot_storage_days")
+        if not _CRON_FIELD_RE.match(self.archival_schedule.strip()):
+            raise ValueError(f"Invalid 5-field cron expression: {self.archival_schedule!r}")
+        if not _CRON_FIELD_RE.match(self.deletion_schedule.strip()):
+            raise ValueError(f"Invalid 5-field cron expression: {self.deletion_schedule!r}")
+        return self
+
+
+class CompliancePrivacySchema(StrictConfigModel):
+    enabled: bool = True
+    dsar_sla_days: int = Field(default=30, ge=1, le=30)
+    deletion_sla_days: int = Field(default=30, ge=1, le=30)
+    export_format: Literal["json", "csv"] = "json"
+    retention_after_deletion: int = Field(default=90, ge=1)
+
+
+class ComplianceControlsSchema(StrictConfigModel):
+    enabled: bool = True
+    quarterly_access_review: bool = True
+    control_mapping_file: str = Field(default="docs/compliance/soc2-controls.md", min_length=1)
+
+
+class ComplianceArchiveSchema(StrictConfigModel):
+    bucket: str = Field(default="pvs-audit-archive", min_length=3)
+    region: str = Field(default="us-east-1", min_length=2)
+    storage_class: Literal[
+        "STANDARD", "STANDARD_IA", "GLACIER", "GLACIER_IR", "DEEP_ARCHIVE"
+    ] = "GLACIER"
+    encryption: Literal["AES256", "aws:kms"] = "AES256"
+
+
+class ComplianceBlockSchema(StrictConfigModel):
+    audit: ComplianceAuditSchema = Field(default_factory=ComplianceAuditSchema)
+    retention: ComplianceRetentionSchema = Field(default_factory=ComplianceRetentionSchema)
+    gdpr: CompliancePrivacySchema = Field(default_factory=CompliancePrivacySchema)
+    soc2: ComplianceControlsSchema = Field(default_factory=ComplianceControlsSchema)
+    s3: ComplianceArchiveSchema = Field(default_factory=ComplianceArchiveSchema)
+
+
+class ComplianceConfigFile(StrictConfigModel):
+    compliance: ComplianceBlockSchema
+
+
+# ---------------------------------------------------------------------------
 # Registry & Unified Validator
 # ---------------------------------------------------------------------------
 
@@ -547,6 +613,7 @@ CONFIG_SCHEMA_REGISTRY: dict[str, type[StrictConfigModel]] = {
     "evaluation.yaml": EvaluationConfigFile,
     "sandbox.yaml": SandboxConfigFile,
     "network_allowlist.yaml": NetworkAllowlistConfigFile,
+    "compliance.yaml": ComplianceConfigFile,
     "brownfield.yaml": BrownfieldConfigFile,
     "metrics.yaml": MetricsConfigFile,
     "budget_limits.yaml": BudgetLimitsConfigFile,

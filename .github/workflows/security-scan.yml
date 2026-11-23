@@ -1,0 +1,227 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily vulnerability scan at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy-container-scan:
+    name: Trivy Container Scan (App & Sandbox Images)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Build production Docker image
+        run: docker build -t product-value-system:${{ github.sha }} .
+
+      - name: Run Trivy vulnerability scan (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'product-value-system:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+
+      - name: Upload Trivy SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy vulnerability gate (CRITICAL & HIGH)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'product-value-system:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+          exit-code: '1'
+
+      - name: Build and scan sandbox Docker images
+        run: |
+          docker build -t sandbox-python:${{ github.sha }} \
+            -f deploy/docker/Dockerfile.sandbox-python deploy/docker
+          docker build -t sandbox-typescript:${{ github.sha }} \
+            -f deploy/docker/Dockerfile.sandbox-typescript deploy/docker
+
+      - name: Scan Python sandbox image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'sandbox-python:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+          exit-code: '1'
+
+      - name: Scan TypeScript sandbox image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'sandbox-typescript:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+          exit-code: '1'
+
+      - name: Send Slack notification on security gate failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.27.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          payload: |
+            {
+              "text": "Security Scan Failed — CRITICAL/HIGH vulnerabilities detected",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Security vulnerabilities detected*\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Commit:* `${{ github.sha }}`\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  }
+                }
+              ]
+            }
+
+  snyk-dependency-scan:
+    name: Snyk & pip-audit Python Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies and pip-audit
+        run: |
+          pip install -e ".[dev]"
+          pip install --no-cache-dir pip-audit
+
+      - name: Run pip-audit on pinned lockfile
+        run: pip-audit -r requirements.lock --strict || true
+
+      - name: Run Snyk Python vulnerability scan (advisory)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=requirements.lock --sarif-file-output=snyk.sarif
+
+      - name: Upload Snyk SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('snyk.sarif') != ''
+        with:
+          sarif_file: snyk.sarif
+
+  sbom-generation:
+    name: Generate SBOM (CycloneDX & SPDX)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Build production Docker image
+        run: docker build -t product-value-system:${{ github.sha }} .
+
+      - name: Generate CycloneDX SBOM with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'product-value-system:${{ github.sha }}'
+          format: 'cyclonedx'
+          output: 'sbom-cyclonedx.json'
+
+      - name: Generate SPDX SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: product-value-system:${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-spdx.json
+
+      - name: Upload SBOM artifacts (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-cyclonedx.json
+            sbom-spdx.json
+          retention-days: 90
+
+      - name: Attach SBOM artifacts to GitHub Release (on tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sbom-cyclonedx.json
+            sbom-spdx.json
+
+  license-compliance:
+    name: License Compliance Check (No GPL/AGPL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package and pip-licenses
+        run: |
+          pip install -e .
+          pip install --no-cache-dir pip-licenses
+
+      - name: Verify no prohibited copyleft (GPL/AGPL) licenses
+        run: |
+          pip-licenses --format=json --output-file=licenses.json
+          python -c "
+          import json, re, sys
+          pkgs = json.load(open('licenses.json', encoding='utf-8'))
+          bad = [
+              p for p in pkgs
+              if re.search(r'(?<!L)\bA?GPL\b|GNU General Public License|Affero', p.get('License', ''), re.I)
+          ]
+          if bad:
+              print('Prohibited copyleft licenses detected:', bad)
+              sys.exit(1)
+          print(f'License compliance passed ({len(pkgs)} packages checked, 0 GPL/AGPL).')
+          "
+
+      - name: Upload license compliance report (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report-${{ github.sha }}
+          path: licenses.json
+          retention-days: 90

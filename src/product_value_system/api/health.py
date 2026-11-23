@@ -8,12 +8,16 @@ Endpoints:
 - ``GET /slos``: Current SLI compliance and error budget remaining across all SLOs
 """
 
+from __future__ import annotations
+
 import hmac
 import inspect
 import json
 import os
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request, Response
 from prometheus_client import generate_latest
@@ -24,6 +28,11 @@ from product_value_system.metrics.space_calculator import SPACECalculator
 from product_value_system.monitoring.metrics import PVSMetrics, get_metrics
 from product_value_system.monitoring.slo import DEFAULT_SLOS, SLO
 from product_value_system.monitoring.slo_evaluator import SLOEvaluator
+
+if TYPE_CHECKING:
+    from product_value_system.api.routes.audit import AuditPrincipal
+    from product_value_system.compliance.audit_logger import AuditLogger
+    from product_value_system.compliance.gdpr_handler import GDPRHandler
 
 CheckCallable = Callable[[], Any]
 
@@ -86,6 +95,11 @@ def create_app(
     llm_check: CheckCallable | None = None,
     metrics_api_key: str | None = None,
     devx_tracker: DevXTracker | None = None,
+    audit_logger: AuditLogger | None = None,
+    gdpr_handler: GDPRHandler | None = None,
+    audit_principals: Mapping[str, AuditPrincipal] | None = None,
+    gdpr_export_dir: Path | None = None,
+    audit_rate_limit_per_hour: int = 100,
 ) -> FastAPI:
     """
     Build the FastAPI monitoring/health application for production deployments.
@@ -153,6 +167,27 @@ def create_app(
         async def prometheus_metrics(request: Request) -> Response:
             """Expose Prometheus scrape endpoint with optional API-key authentication."""
             if not verify_api_key(request, required_key):
+                if audit_logger is not None:
+                    from product_value_system.compliance.audit_logger import (
+                        AuditEvent,
+                        AuditEventType,
+                    )
+
+                    await audit_logger.log(
+                        AuditEvent(
+                            event_type=AuditEventType.USER_LOGIN_FAILED,
+                            timestamp=datetime.now(UTC),
+                            user_id=None,
+                            subject_id=None,
+                            action="Unauthorized /metrics scrape attempt",
+                            resource_type="metrics",
+                            resource_id="/metrics",
+                            result="failure",
+                            metadata={},
+                            client_ip=request.client.host if request.client else None,
+                            user_agent=request.headers.get("user-agent"),
+                        )
+                    )
                 return Response(
                     content=json.dumps({"error": "Unauthorized metrics scrape"}),
                     status_code=401,
@@ -178,6 +213,19 @@ def create_app(
                 "dora_metrics": devx_tracker.get_dora_metrics().to_dict(),
                 "ai_effectiveness": devx_tracker.get_ai_effectiveness(),
             }
+
+    if audit_logger is not None:
+        from product_value_system.api.routes.audit import create_audit_router
+
+        app.include_router(
+            create_audit_router(
+                audit_logger,
+                principals_by_key=audit_principals or {},
+                gdpr_handler=gdpr_handler,
+                gdpr_export_dir=gdpr_export_dir,
+                rate_limit_per_hour=audit_rate_limit_per_hour,
+            )
+        )
 
     return app
 

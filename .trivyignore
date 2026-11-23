@@ -1,0 +1,9 @@
+# Trivy vulnerability suppression file (PROD-005)
+# Every active entry MUST include:
+#   # CVE-YYYY-NNNNN: <Summary>
+#   # Justification: <Why false positive or accepted risk>
+#   # Mitigation: <Compensating control>
+#   # Review date: <YYYY-MM-DD> (mandatory quarterly security review)
+#
+# Example (commented out until an actual vetted exception is approved):
+# CVE-2024-00000

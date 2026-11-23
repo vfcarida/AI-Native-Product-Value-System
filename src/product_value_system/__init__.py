@@ -23,6 +23,14 @@ if TYPE_CHECKING:
     from product_value_system.brownfield.git_analyzer import GitAnalyzer
     from product_value_system.brownfield.strangler_planner import StranglerPlanner
     from product_value_system.caching.prompt_cache import PromptCache
+    from product_value_system.compliance import (
+        AuditEvent,
+        AuditEventType,
+        AuditLogger,
+        GDPRHandler,
+        QuarterlyAccessReviewer,
+        RetentionPolicy,
+    )
     from product_value_system.contracts.config_schemas import validate_all_configs
     from product_value_system.evaluation.batch_runner import BatchEvalRunner
     from product_value_system.evaluation.eval_runner import EvalRunner
@@ -41,6 +49,9 @@ if TYPE_CHECKING:
     from product_value_system.security.hybrid_detector import HybridSecretDetector
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "AuditEvent": ("product_value_system.compliance.audit_logger", "AuditEvent"),
+    "AuditEventType": ("product_value_system.compliance.audit_logger", "AuditEventType"),
+    "AuditLogger": ("product_value_system.compliance.audit_logger", "AuditLogger"),
     "AzureOpenAIModelAdapter": (
         "product_value_system.adapters.azure_openai_adapter",
         "AzureOpenAIModelAdapter",
@@ -50,6 +61,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "CircuitBreaker": ("product_value_system.harness.resilience", "CircuitBreaker"),
     "DevXTracker": ("product_value_system.metrics.devx_tracker", "DevXTracker"),
     "EvalRunner": ("product_value_system.evaluation.eval_runner", "EvalRunner"),
+    "GDPRHandler": ("product_value_system.compliance.gdpr_handler", "GDPRHandler"),
     "GeminiModelAdapter": (
         "product_value_system.adapters.gemini_adapter",
         "GeminiModelAdapter",
@@ -73,6 +85,14 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "PolicyEngine": ("product_value_system.policy.engine", "PolicyEngine"),
     "PostgresDatabase": ("product_value_system.persistence.postgres", "PostgresDatabase"),
     "PromptCache": ("product_value_system.caching.prompt_cache", "PromptCache"),
+    "QuarterlyAccessReviewer": (
+        "product_value_system.compliance.retention_policy",
+        "QuarterlyAccessReviewer",
+    ),
+    "RetentionPolicy": (
+        "product_value_system.compliance.retention_policy",
+        "RetentionPolicy",
+    ),
     "SPACECalculator": ("product_value_system.metrics.space_calculator", "SPACECalculator"),
     "StranglerPlanner": (
         "product_value_system.brownfield.strangler_planner",
@@ -106,12 +126,16 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "AuditEvent",
+    "AuditEventType",
+    "AuditLogger",
     "AzureOpenAIModelAdapter",
     "BatchEvalRunner",
     "BrownfieldAgent",
     "CircuitBreaker",
     "DevXTracker",
     "EvalRunner",
+    "GDPRHandler",
     "GeminiModelAdapter",
     "GitAnalyzer",
     "Harness",
@@ -123,6 +147,8 @@ __all__ = [
     "PolicyEngine",
     "PostgresDatabase",
     "PromptCache",
+    "QuarterlyAccessReviewer",
+    "RetentionPolicy",
     "SPACECalculator",
     "StranglerPlanner",
     "ValueStreamOrchestrator",
