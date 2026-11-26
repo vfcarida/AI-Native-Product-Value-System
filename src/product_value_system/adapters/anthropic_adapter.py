@@ -167,21 +167,25 @@ class AnthropicAdapter:
         max_tokens: int | None = 2000,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Validate messages and build Anthropic /v1/messages JSON payload."""
+        """Validate messages and build Anthropic /v1/messages JSON payload with prompt caching."""
         if not messages:
             raise ValueError("messages list cannot be empty")
 
-        system_messages: list[str] = []
+        response_schema = kwargs.pop("response_schema", None)
+
+        system_entries: list[tuple[str, bool]] = []
         user_messages: list[dict[str, Any]] = []
 
         for msg in messages:
             if isinstance(msg, Message):
                 role_str = msg.role.value
                 content_str = msg.content
+                cache_enabled = bool(msg.cache_control)
             elif isinstance(msg, dict):
                 role_val = msg.get("role")
                 role_str = role_val.value if isinstance(role_val, Role) else str(role_val or "")
                 content_str = str(msg.get("content", ""))
+                cache_enabled = bool(msg.get("cache_control"))
             else:
                 raise ValueError(f"Unsupported message type: {type(msg)}")
 
@@ -189,10 +193,34 @@ class AnthropicAdapter:
                 raise ValueError(f"Invalid message role: '{role_str}'")
 
             if role_str == "system":
-                system_messages.append(content_str)
+                system_entries.append((content_str, cache_enabled))
             else:
                 mapped_role = "user" if role_str == "tool" else role_str
-                user_messages.append({"role": mapped_role, "content": content_str})
+                if cache_enabled:
+                    user_messages.append(
+                        {
+                            "role": mapped_role,
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": content_str,
+                                    "cache_control": {"type": "ephemeral"},
+                                }
+                            ],
+                        }
+                    )
+                else:
+                    user_messages.append({"role": mapped_role, "content": content_str})
+
+        if response_schema is not None:
+            from product_value_system.adapters.model_adapter import schema_to_json_schema
+
+            schema_dict = schema_to_json_schema(response_schema)
+            schema_instruction = (
+                "Respond ONLY with valid JSON strictly matching this JSON Schema:\n"
+                f"{json.dumps(schema_dict, separators=(',', ':'))}"
+            )
+            system_entries.append((schema_instruction, False))
 
         resolved_max_tokens = max_tokens if max_tokens is not None else 2000
         payload: dict[str, Any] = {
@@ -202,8 +230,17 @@ class AnthropicAdapter:
             "temperature": temperature,
         }
 
-        if system_messages:
-            payload["system"] = "\n".join(system_messages)
+        if system_entries:
+            if any(cached for _, cached in system_entries):
+                system_blocks: list[dict[str, Any]] = []
+                for text, cached in system_entries:
+                    block: dict[str, Any] = {"type": "text", "text": text}
+                    if cached:
+                        block["cache_control"] = {"type": "ephemeral"}
+                    system_blocks.append(block)
+                payload["system"] = system_blocks
+            else:
+                payload["system"] = "\n".join(text for text, _ in system_entries)
 
         if tools:
             payload["tools"] = self._convert_tools(tools)
@@ -521,10 +558,14 @@ class AnthropicAdapter:
         usage_data = data.get("usage", {})
         input_tokens = int(usage_data.get("input_tokens", 0))
         output_tokens = int(usage_data.get("output_tokens", 0))
+        cache_read_tokens = int(usage_data.get("cache_read_input_tokens", 0))
+        cache_creation_tokens = int(usage_data.get("cache_creation_input_tokens", 0))
         usage = ModelUsage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
-            total_tokens=input_tokens + output_tokens,
+            total_tokens=input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
         )
 
         # Sanitize response content for accidentally leaked secrets/keys
@@ -533,10 +574,13 @@ class AnthropicAdapter:
         resolved_model = str(data.get("model", self.model))
         cost_usd = self.calculate_cost(usage, resolved_model)
         logger.debug(
-            "Anthropic invocation complete: model=%s input=%d output=%d cost_usd=%.6f",
+            "Anthropic invocation complete: model=%s input=%d output=%d "
+            "cache_read=%d cache_create=%d cost_usd=%.6f",
             resolved_model,
             input_tokens,
             output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
             cost_usd,
         )
 
@@ -603,7 +647,9 @@ class AnthropicAdapter:
 
     def calculate_cost(self, usage: ModelUsage, model: str | None = None) -> float:
         """
-        Calculate cost in USD from token usage.
+        Calculate cost in USD from token usage, accounting for Anthropic prompt caching:
+        - Cache reads billed at 10% of base input rate (90% discount)
+        - Cache creation billed at 125% of base input rate
 
         Args:
             usage: Token usage stats
@@ -619,9 +665,11 @@ class AnthropicAdapter:
         )
 
         input_cost = (usage.prompt_tokens / 1_000_000) * pricing["input"]
+        cache_read_cost = (usage.cache_read_tokens / 1_000_000) * (pricing["input"] * 0.10)
+        cache_create_cost = (usage.cache_creation_tokens / 1_000_000) * (pricing["input"] * 1.25)
         output_cost = (usage.completion_tokens / 1_000_000) * pricing["output"]
 
-        return input_cost + output_cost
+        return input_cost + cache_read_cost + cache_create_cost + output_cost
 
     async def close(self) -> None:
         """Close HTTP client."""

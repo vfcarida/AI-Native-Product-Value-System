@@ -167,6 +167,62 @@ def default_semantic_embeddings(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
+def domain_agnostic_tfidf_embeddings(texts: list[str]) -> list[list[float]]:
+    """
+    Pure domain-agnostic word + character trigram TF-IDF embeddings (EVO-P3-11).
+    Contains zero hardcoded industry/fintech regexes so clustering generalizes
+    across healthcare, SaaS, logistics, e-commerce, and developer tools.
+    """
+    if not texts:
+        return []
+    tokenized = [
+        [tok for tok in re.findall(r"[a-z0-9]{2,}", t.lower()) if tok not in _STOPWORDS]
+        for t in texts
+    ]
+    trigrams_per_doc = [
+        [
+            " ".join(t.lower().split())[i : i + 3]
+            for i in range(max(0, len(" ".join(t.lower().split())) - 2))
+        ]
+        for t in texts
+    ]
+    word_vocab = sorted({tok for tokens in tokenized for tok in tokens})
+    tri_vocab = sorted({tri for tris in trigrams_per_doc for tri in tris})
+    w_idx = {tok: i for i, tok in enumerate(word_vocab)}
+    t_idx = {tri: i for i, tri in enumerate(tri_vocab)}
+    n_docs = len(texts)
+
+    w_df = Counter(tok for tokens in tokenized for tok in set(tokens))
+    t_df = Counter(tri for tris in trigrams_per_doc for tri in set(tris))
+    if not word_vocab and not tri_vocab:
+        return [[1.0] for _ in texts]
+
+    vectors: list[list[float]] = []
+    for tokens, tris in zip(tokenized, trigrams_per_doc, strict=True):
+        w_vec = np.zeros(len(word_vocab), dtype=float)
+        for tok, count in Counter(tokens).items():
+            idf = math.log((1 + n_docs) / (1 + w_df[tok])) + 1.0
+            w_vec[w_idx[tok]] = (1.0 + math.log(count)) * idf
+        w_norm = float(np.linalg.norm(w_vec))
+        if w_norm > 0:
+            w_vec = w_vec / w_norm
+
+        t_vec = np.zeros(len(tri_vocab), dtype=float)
+        for tri, count in Counter(tris).items():
+            idf = math.log((1 + n_docs) / (1 + t_df[tri])) + 1.0
+            t_vec[t_idx[tri]] = (1.0 + math.log(count)) * idf
+        t_norm = float(np.linalg.norm(t_vec))
+        if t_norm > 0:
+            t_vec = t_vec / t_norm
+
+        combined = np.concatenate([0.82 * w_vec, 0.57 * t_vec])
+        norm = float(np.linalg.norm(combined))
+        if norm > 0:
+            combined = combined / norm
+        vectors.append(combined.tolist())
+    return vectors
+
+
 def _cosine_dbscan_numpy(
     embeddings: np.ndarray,
     eps: float,
@@ -247,8 +303,19 @@ class ThemeClusterer:
         self,
         embedding_model: EmbeddingCallable | None = None,
         llm_callable: LLMCallable | None = None,
+        *,
+        embedding_adapter: Any | None = None,
+        domain_agnostic: bool = False,
     ) -> None:
-        self.embedding_model: EmbeddingCallable = embedding_model or default_semantic_embeddings
+        self.domain_agnostic = bool(domain_agnostic)
+        if embedding_adapter is not None:
+            self.embedding_model: EmbeddingCallable = embedding_adapter.embed_batch
+        elif embedding_model is not None:
+            self.embedding_model = embedding_model
+        elif self.domain_agnostic:
+            self.embedding_model = domain_agnostic_tfidf_embeddings
+        else:
+            self.embedding_model = default_semantic_embeddings
         self.llm = llm_callable
 
     async def cluster_pain_points(
@@ -363,16 +430,17 @@ class ThemeClusterer:
             if name:
                 return name
 
-        # Check dominant semantic concept match first
-        combined = " ".join(p.description for p in pain_points)
-        concept_scores: list[tuple[int, str]] = []
-        for concept_name, pattern in _SEMANTIC_CONCEPTS:
-            hits = len(pattern.findall(combined))
-            if hits > 0:
-                concept_scores.append((hits, concept_name))
-        if concept_scores:
-            concept_scores.sort(key=lambda pair: pair[0], reverse=True)
-            return concept_scores[0][1]
+        # Check dominant semantic concept match first (legacy mode only)
+        if not self.domain_agnostic:
+            combined = " ".join(p.description for p in pain_points)
+            concept_scores: list[tuple[int, str]] = []
+            for concept_name, pattern in _SEMANTIC_CONCEPTS:
+                hits = len(pattern.findall(combined))
+                if hits > 0:
+                    concept_scores.append((hits, concept_name))
+            if concept_scores:
+                concept_scores.sort(key=lambda pair: pair[0], reverse=True)
+                return concept_scores[0][1]
 
         # Fallback: top non-stopword tokens
         words = [

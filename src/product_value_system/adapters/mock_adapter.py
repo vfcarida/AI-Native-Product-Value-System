@@ -1,8 +1,12 @@
 """
 Mock model adapter for testing without API calls.
+Supports simulated native prompt caching telemetry and structured output tests.
 """
 
+from __future__ import annotations
+
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -43,6 +47,9 @@ class MockModelAdapter:
         self._default_response = default_response
         self._simulate_latency_ms = simulate_latency_ms
         self._call_count = 0
+        self._cached_prefixes: set[str] = set()
+        self.last_messages: list[Any] = []
+        self.last_kwargs: dict[str, Any] = {}
 
     async def invoke(
         self,
@@ -52,21 +59,44 @@ class MockModelAdapter:
         max_tokens: int | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
-        """Return predefined response."""
+        """Return predefined response with simulated prompt cache accounting."""
         if self._simulate_latency_ms > 0:
             await asyncio.sleep(self._simulate_latency_ms / 1000)
 
         self._call_count += 1
+        self.last_messages = list(messages)
+        self.last_kwargs = dict(kwargs)
 
         if self._responses:
             content = self._responses.pop(0)
         else:
             content = self._default_response
 
-        input_tokens = sum(
-            len((msg.content if isinstance(msg, Message) else str(msg.get("content", ""))).split())
-            for msg in messages
-        )
+        input_tokens = 0
+        cache_read_tokens = 0
+        cache_creation_tokens = 0
+
+        for msg in messages:
+            if isinstance(msg, Message):
+                text = msg.content
+                wants_cache = bool(msg.cache_control)
+            elif isinstance(msg, dict):
+                text = str(msg.get("content", ""))
+                wants_cache = bool(msg.get("cache_control"))
+            else:
+                text = str(msg)
+                wants_cache = False
+
+            tok_count = len(text.split())
+            if wants_cache and tok_count > 0:
+                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+                if digest in self._cached_prefixes:
+                    cache_read_tokens += tok_count
+                else:
+                    self._cached_prefixes.add(digest)
+                    cache_creation_tokens += tok_count
+            input_tokens += tok_count
+
         output_tokens = len(content.split())
 
         return ModelResponse(
@@ -75,6 +105,8 @@ class MockModelAdapter:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 total_tokens=input_tokens + output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
             ),
             finish_reason="stop",
             model="mock-model",

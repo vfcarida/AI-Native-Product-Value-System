@@ -306,6 +306,9 @@ class GeminiModelAdapter:
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Translate unified ``Message``/``Tool`` list into Gemini ``generateContent`` payload."""
+        response_schema = kwargs.pop("response_schema", None)
+        cached_content = kwargs.pop("cached_content", None)
+
         system_parts: list[str] = []
         contents: list[dict[str, Any]] = []
 
@@ -351,6 +354,9 @@ class GeminiModelAdapter:
             generation_config["topP"] = float(kwargs.pop("top_p"))
         if "stop_sequences" in kwargs:
             generation_config["stopSequences"] = list(kwargs.pop("stop_sequences"))
+        if response_schema is not None:
+            generation_config["responseMimeType"] = "application/json"
+            generation_config["responseSchema"] = self._normalize_gemini_schema(response_schema)
 
         payload: dict[str, Any] = {
             "contents": contents,
@@ -358,6 +364,8 @@ class GeminiModelAdapter:
         }
         if system_parts:
             payload["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
+        if cached_content:
+            payload["cachedContent"] = str(cached_content)
 
         if tools:
             declarations: list[dict[str, Any]] = []
@@ -388,8 +396,33 @@ class GeminiModelAdapter:
         payload.update(kwargs)
         return payload
 
+    @classmethod
+    def _normalize_gemini_schema(cls, schema_or_model: Any) -> dict[str, Any]:
+        """Convert Pydantic model or JSON Schema dict into Gemini ``responseSchema`` subset."""
+        if isinstance(schema_or_model, type) and hasattr(schema_or_model, "model_json_schema"):
+            raw = dict(schema_or_model.model_json_schema())
+        elif isinstance(schema_or_model, dict):
+            raw = dict(schema_or_model)
+        else:
+            raise ValueError(f"Unsupported response_schema type: {type(schema_or_model)}")
+        cleaned = cls._strip_unsupported_schema_keys(raw)
+        return dict(cleaned) if isinstance(cleaned, dict) else {}
+
+    @classmethod
+    def _strip_unsupported_schema_keys(cls, node: Any) -> Any:
+        if isinstance(node, dict):
+            cleaned: dict[str, Any] = {}
+            for k, v in node.items():
+                if k in {"additionalProperties", "$schema", "title"}:
+                    continue
+                cleaned[k] = cls._strip_unsupported_schema_keys(v)
+            return cleaned
+        if isinstance(node, list):
+            return [cls._strip_unsupported_schema_keys(item) for item in node]
+        return node
+
     def _parse_response(self, data: dict[str, Any], *, model_name: str) -> ModelResponse:
-        """Parse Gemini ``generateContent`` JSON response into ``ModelResponse``."""
+        """Parse Gemini ``generateContent`` JSON response including context cache telemetry."""
         candidates = data.get("candidates") or []
         text_chunks: list[str] = []
         tool_calls: list[ToolCall] = []
@@ -420,7 +453,13 @@ class GeminiModelAdapter:
             p_tok = int(usage_meta.get("promptTokenCount", 0))
             c_tok = int(usage_meta.get("candidatesTokenCount", 0))
             t_tok = int(usage_meta.get("totalTokenCount", p_tok + c_tok))
-            usage = Usage(input_tokens=p_tok, output_tokens=c_tok, total_tokens=t_tok)
+            cached_tok = int(usage_meta.get("cachedContentTokenCount", 0))
+            usage = Usage(
+                input_tokens=p_tok,
+                output_tokens=c_tok,
+                total_tokens=t_tok,
+                cache_read_tokens=cached_tok,
+            )
 
         finish_reason = (
             "tool_calls"
@@ -436,7 +475,7 @@ class GeminiModelAdapter:
         )
 
     def calculate_cost(self, usage: Usage, model: str | None = None) -> float:
-        """Calculate cost in USD from token usage using Gemini model pricing."""
+        """Calculate cost in USD including 75% Gemini context-cache read discount."""
         resolved = (model or self.model).lower()
         pricing = self.PRICING.get(resolved)
         if pricing is None:
@@ -448,9 +487,13 @@ class GeminiModelAdapter:
         if pricing is None:
             pricing = self.PRICING["gemini-2.5-flash"]
 
-        return (usage.input_tokens / 1_000_000) * pricing["input"] + (
-            usage.output_tokens / 1_000_000
-        ) * pricing["output"]
+        cached_tokens = min(usage.cache_read_tokens, usage.input_tokens)
+        uncached_input = max(0, usage.input_tokens - cached_tokens)
+        return (
+            (uncached_input / 1_000_000) * pricing["input"]
+            + (cached_tokens / 1_000_000) * (pricing["input"] * 0.25)
+            + (usage.output_tokens / 1_000_000) * pricing["output"]
+        )
 
     async def close(self) -> None:
         """Close underlying HTTP client."""

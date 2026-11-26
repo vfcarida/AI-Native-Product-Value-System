@@ -120,7 +120,10 @@ class Harness:
             self.trajectory_capture = TrajectoryCapture(enabled=False)
 
         resolved_policy_engine = policy_engine or PolicyEngine()
-        self.tools = ToolRegistry(resolved_policy_engine)
+        self.tools = ToolRegistry(
+            resolved_policy_engine,
+            output_validator=self.input_validator,
+        )
         self.memory = Memory()
 
         if checkpoint_dir:
@@ -173,14 +176,26 @@ class Harness:
             else:
                 role_str = str(msg.get("role", "user"))
                 content_str = str(msg.get("content", ""))
-                normalized.append(AdapterMessage(role=Role(role_str), content=content_str))
+                normalized.append(
+                    AdapterMessage(
+                        role=Role(role_str),
+                        content=content_str,
+                        name=msg.get("name"),
+                        cache_control=bool(msg.get("cache_control", False)),
+                    )
+                )
                 self.memory.add_message(role_str, content_str)
 
-            if role_str == "user":
+            if role_str in {"user", "tool"}:
                 validation = self.input_validator.validate(content_str)
+                is_indirect = role_str == "tool"
                 if validation.risk_level in {"MEDIUM", "HIGH", "CRITICAL"}:
                     self._log_security_event(
-                        event_type="prompt_injection_detected",
+                        event_type=(
+                            "indirect_prompt_injection_detected"
+                            if is_indirect
+                            else "prompt_injection_detected"
+                        ),
                         risk_level=validation.risk_level,
                         patterns=validation.matched_patterns,
                         categories=validation.categories,
@@ -198,16 +213,22 @@ class Harness:
                             error_type="SecurityError",
                         )
                         if capture_active:
+                            thought_msg = (
+                                "OWASP ASI01 guard blocked indirect prompt injection in tool output"
+                                if is_indirect
+                                else "Input validation blocked suspicious user prompt"
+                            )
                             self.trajectory_capture.log_step(
-                                thought="Input validation blocked suspicious user prompt",
+                                thought=thought_msg,
                                 action=None,
                                 observation=f"BLOCKED: {validation.reason}",
                                 latency_ms=(time.perf_counter() - step_start) * 1000.0,
                                 policy_checked=True,
                                 policy_decision="DENY",
                             )
+                        prefix = "Tool output blocked (ASI01)" if is_indirect else "Input blocked"
                         raise SecurityError(
-                            f"Input blocked: {validation.reason}",
+                            f"{prefix}: {validation.reason}",
                             risk_level=validation.risk_level,
                             matched_patterns=validation.matched_patterns,
                         )
@@ -393,6 +414,15 @@ class Harness:
             current_span.set_attribute("model.tokens.prompt", prompt_tokens)
             current_span.set_attribute("model.tokens.completion", completion_tokens)
             current_span.set_attribute("model.tokens.total", actual_tokens)
+            if response.usage is not None:
+                if response.usage.cache_read_tokens:
+                    current_span.set_attribute(
+                        "model.tokens.cache_read", response.usage.cache_read_tokens
+                    )
+                if response.usage.cache_creation_tokens:
+                    current_span.set_attribute(
+                        "model.tokens.cache_creation", response.usage.cache_creation_tokens
+                    )
             current_span.set_attribute("model.cost.usd", round(actual_cost, 6))
 
         elapsed_sec = time.perf_counter() - step_start
@@ -628,4 +658,67 @@ class Harness:
         return self.checkpoint_mgr.load(
             self.context.run_id,
             self.context.stage_name,
+        )
+
+    @traced("harness.invoke_structured")
+    async def invoke_structured(
+        self,
+        messages: list[AdapterMessage | dict[str, Any]],
+        response_schema: type[Any],
+        *,
+        max_validation_retries: int = 2,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> tuple[Any, ModelResponse]:
+        """
+        Invoke model with native Structured Outputs and self-healing Pydantic validation.
+
+        If the model returns malformed JSON or violates the Pydantic schema, the
+        validation error is fed back to the model for up to ``max_validation_retries``
+        repair attempts before raising ``StructuredOutputError``.
+        """
+        from product_value_system.adapters.model_adapter import (
+            StructuredOutputError,
+            parse_structured_output,
+        )
+
+        conversation: list[AdapterMessage | dict[str, Any]] = list(messages)
+        last_error: Exception | None = None
+        last_content = ""
+        attempts = max(1, int(max_validation_retries) + 1)
+
+        for attempt in range(1, attempts + 1):
+            response = await self.invoke_model(
+                messages=conversation,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_schema=response_schema,
+                **kwargs,
+            )
+            last_content = response.content
+            try:
+                parsed = parse_structured_output(response.content, response_schema)
+                return parsed, response
+            except Exception as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    break
+                conversation.append(
+                    AdapterMessage(role=Role.ASSISTANT, content=response.content)
+                )
+                conversation.append(
+                    AdapterMessage(
+                        role=Role.USER,
+                        content=(
+                            f"Your previous JSON output failed schema validation ({exc}). "
+                            "Respond ONLY with corrected valid JSON matching the required schema."
+                        ),
+                    )
+                )
+
+        raise StructuredOutputError(
+            f"Structured output validation failed after {attempts} attempt(s): {last_error}",
+            raw_output=last_content,
+            attempts=attempts,
         )

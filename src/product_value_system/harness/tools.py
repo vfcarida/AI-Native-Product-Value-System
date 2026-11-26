@@ -2,6 +2,8 @@
 Tool registry and execution wrapper.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -9,6 +11,7 @@ from opentelemetry import trace
 
 from product_value_system.observability.tracing import traced
 from product_value_system.policy.engine import AuthorizationDecision, PolicyEngine
+from product_value_system.security.input_validator import InputValidator
 
 
 @runtime_checkable
@@ -48,18 +51,30 @@ class ToolCall:
 
 class ToolRegistry:
     """
-    Registry of available tools with policy-gated execution.
+    Registry of available tools with policy-gated execution and OWASP ASI01
+    indirect prompt injection validation on tool outputs.
     """
 
-    def __init__(self, policy_engine: PolicyEngine) -> None:
+    def __init__(
+        self,
+        policy_engine: PolicyEngine,
+        *,
+        output_validator: InputValidator | None = None,
+        validate_outputs: bool = True,
+    ) -> None:
         """
         Initialize tool registry.
 
         Args:
             policy_engine: Policy engine for authorization
+            output_validator: Optional InputValidator for scanning tool results (OWASP ASI01)
+            validate_outputs: Enable indirect prompt injection scanning on tool outputs
         """
         self.policy_engine = policy_engine
         self.tools: dict[str, Tool] = {}
+        self._output_validator: InputValidator | None = (
+            (output_validator or InputValidator()) if validate_outputs else None
+        )
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -151,6 +166,22 @@ class ToolRegistry:
 
         try:
             result = await tool.execute(**parameters)
+            if self._output_validator is not None and result is not None:
+                serialized = result if isinstance(result, str) else str(result)
+                check = self._output_validator.validate(serialized)
+                if not check.is_valid:
+                    error_msg = (
+                        f"Tool output blocked (OWASP ASI01 indirect injection): {check.reason}"
+                    )
+                    span.set_attribute("tool.status", "blocked_indirect_injection")
+                    span.set_attribute("error.message", error_msg)
+                    return ToolCall(
+                        tool_name=tool_name,
+                        parameters=parameters,
+                        result=None,
+                        authorized=True,
+                        error=error_msg,
+                    )
             span.set_attribute("tool.status", "success")
 
             return ToolCall(

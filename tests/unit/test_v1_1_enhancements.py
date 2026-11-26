@@ -137,9 +137,27 @@ class _FakeAsyncPGConn:
         yield self
 
     async def execute(self, sql: str, *args: Any) -> str:
+        import re
+
         norm = " ".join(sql.split()).upper()
-        if "CREATE TABLE" in norm and "SCHEMA_MIGRATIONS" in norm:
-            self.store["migration_version"] = 1
+        if "SCHEMA_MIGRATIONS" in norm:
+            versions = [
+                int(v)
+                for v in re.findall(
+                    r"INSERT INTO SCHEMA_MIGRATIONS\s*\(VERSION\)\s*VALUES\s*\((\d+)\)",
+                    norm,
+                )
+            ]
+            if versions:
+                self.store["migration_version"] = max(
+                    self.store.get("migration_version", 0),
+                    max(versions),
+                )
+            elif "CREATE TABLE" in norm:
+                self.store["migration_version"] = max(
+                    self.store.get("migration_version", 0),
+                    1,
+                )
             return "CREATE TABLE"
         if norm.startswith("INSERT INTO VALUE_STREAM_RUNS"):
             self.store["runs"][args[0]] = {
@@ -221,16 +239,18 @@ async def test_postgres_database_repository_migrations_and_factory(tmp_path: Pat
     assert isinstance(sqlite_db, Database)
 
     pool = _FakeAsyncPGPool()
+    pg_migrations_dir = REPO_ROOT / "migrations" / "postgres"
     pg_db = create_database(
         "postgresql://pvs:pass@localhost:5432/pvs",
-        migrations_dir=REPO_ROOT / "migrations" / "postgres",
+        migrations_dir=pg_migrations_dir,
         pool=pool,
     )
     assert isinstance(pg_db, PostgresDatabase)
     assert await pg_db.health_check() is True
 
+    expected_migrations = len(list(pg_migrations_dir.glob("*.sql")))
     applied = await pg_db.migrate()
-    assert applied == 1
+    assert applied == expected_migrations
     assert await pg_db.migrate() == 0  # Idempotent second pass
 
     repo = PostgresValueStreamRepository(pg_db)

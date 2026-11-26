@@ -65,6 +65,36 @@ devx_deployments_total = Counter(
     "Deployments tracked for DORA deployment frequency and change failure rate",
     ["success"],
 )
+devx_ai_code_churn_ratio = Gauge(
+    "devx_ai_code_churn_ratio",
+    "14-day code rework/churn ratio (reworked lines / added lines)",
+    ["assisted"],
+)
+devx_pr_queue_wait_seconds = Histogram(
+    "devx_pr_queue_wait_seconds",
+    "Pull request waiting time in review queue before first human review",
+    buckets=_PR_REVIEW_BUCKETS,
+)
+devx_first_pass_acceptance_ratio = Gauge(
+    "devx_first_pass_acceptance_ratio",
+    "Fraction of pull requests accepted on first pass without rework",
+    ["assisted"],
+)
+devx_dora_ai_capability_score = Gauge(
+    "devx_dora_ai_capability_score",
+    "DORA AI Capabilities self-assessment score (0.0-1.0) per capability",
+    ["capability"],
+)
+
+DORA_AI_CAPABILITIES: tuple[str, ...] = (
+    "clear_ai_stance",
+    "healthy_data_ecosystems",
+    "ai_accessible_internal_data",
+    "strong_version_control",
+    "small_batch_sizes",
+    "user_centric_focus",
+    "quality_internal_platforms",
+)
 
 
 def load_devx_config(path: Path | str) -> dict[str, Any]:
@@ -162,6 +192,10 @@ class DevXTracker:
             self.space_score = devx_space_score
             self.pr_review_turnaround = devx_pr_review_turnaround_seconds
             self.deployments_total = devx_deployments_total
+            self.ai_code_churn_ratio = devx_ai_code_churn_ratio
+            self.pr_queue_wait_seconds = devx_pr_queue_wait_seconds
+            self.first_pass_acceptance_ratio = devx_first_pass_acceptance_ratio
+            self.dora_ai_capability_score = devx_dora_ai_capability_score
         else:
             self.tasks_started = Counter(
                 "devx_tasks_started_total",
@@ -212,6 +246,30 @@ class DevXTracker:
                 ["success"],
                 registry=registry,
             )
+            self.ai_code_churn_ratio = Gauge(
+                "devx_ai_code_churn_ratio",
+                "14-day code rework/churn ratio (reworked lines / added lines)",
+                ["assisted"],
+                registry=registry,
+            )
+            self.pr_queue_wait_seconds = Histogram(
+                "devx_pr_queue_wait_seconds",
+                "Pull request waiting time in review queue before first human review",
+                buckets=_PR_REVIEW_BUCKETS,
+                registry=registry,
+            )
+            self.first_pass_acceptance_ratio = Gauge(
+                "devx_first_pass_acceptance_ratio",
+                "Fraction of pull requests accepted on first pass without rework",
+                ["assisted"],
+                registry=registry,
+            )
+            self.dora_ai_capability_score = Gauge(
+                "devx_dora_ai_capability_score",
+                "DORA AI Capabilities self-assessment score (0.0-1.0) per capability",
+                ["capability"],
+                registry=registry,
+            )
 
         self.cycle_time_tracker = CycleTimeTracker(raw)
         self.active_tasks: dict[str, TaskEvent] = {}
@@ -219,6 +277,9 @@ class DevXTracker:
         self.ai_events: list[AIUsageEvent] = []
         self.satisfaction_scores: dict[str, list[float]] = {}
         self.pr_review_turnarounds: list[float] = []
+        self.pr_queue_waits: list[float] = []
+        self._churn_totals: dict[bool, list[tuple[int, int]]] = {True: [], False: []}
+        self._first_pass_outcomes: dict[bool, list[bool]] = {True: [], False: []}
         self._opted_out_hashes: set[str] = set()
 
     @classmethod
@@ -411,8 +472,133 @@ class DevXTracker:
         )
         self.deployments_total.labels(success=str(success)).inc()
 
+    def record_code_churn(
+        self,
+        *,
+        lines_added: int,
+        lines_reworked_within_14d: int,
+        ai_assisted: bool = True,
+    ) -> float:
+        """Record non-punitive aggregate 14-day code rework/churn ratio (EVO-P3-16)."""
+        if not self.enabled:
+            return 0.0
+        added = max(0, int(lines_added))
+        reworked = max(0, min(added, int(lines_reworked_within_14d))) if added > 0 else 0
+        bucket = self._churn_totals[bool(ai_assisted)]
+        bucket.append((added, reworked))
+        total_added = sum(a for a, _ in bucket)
+        total_reworked = sum(r for _, r in bucket)
+        ratio = (total_reworked / total_added) if total_added > 0 else 0.0
+        self.ai_code_churn_ratio.labels(assisted=str(bool(ai_assisted))).set(round(ratio, 4))
+        return round(ratio, 4)
+
+    def record_pr_queue_wait(self, wait_seconds: float) -> None:
+        """Record time a PR waited in queue prior to first human review (EVO-P3-16)."""
+        if not self.enabled:
+            return
+        val = max(0.0, float(wait_seconds))
+        self.pr_queue_waits.append(val)
+        self.pr_queue_wait_seconds.observe(val)
+
+    def record_pr_first_pass(
+        self,
+        accepted_first_pass: bool,
+        *,
+        ai_assisted: bool = True,
+    ) -> float:
+        """Record whether a PR passed review on first pass without rework (EVO-P3-16)."""
+        if not self.enabled:
+            return 0.0
+        bucket = self._first_pass_outcomes[bool(ai_assisted)]
+        bucket.append(bool(accepted_first_pass))
+        ratio = sum(1 for ok in bucket if ok) / len(bucket)
+        self.first_pass_acceptance_ratio.labels(assisted=str(bool(ai_assisted))).set(
+            round(ratio, 4)
+        )
+        return round(ratio, 4)
+
+    def evaluate_dora_ai_capabilities(
+        self,
+        *,
+        capability_signals: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Compute automated self-assessment across the 7 DORA AI Capabilities (EVO-P3-16).
+
+        Combines live observed telemetry (first-pass acceptance, rework stability,
+        DORA change failure rate) with optional explicit capability signals in [0.0, 1.0].
+        """
+        signals = dict(capability_signals or {})
+        eff = self.get_ai_effectiveness()
+        dora = self.get_dora_metrics()
+
+        rework = eff["ai_14d_rework_rate"]
+        first_pass = eff["first_pass_acceptance_rate"]
+        cfr_health = max(0.0, 1.0 - min(1.0, dora.change_failure_rate))
+
+        defaults: dict[str, float] = {
+            "clear_ai_stance": 0.85 if self.aggregate_only and self.anonymize else 0.50,
+            "healthy_data_ecosystems": round(max(0.4, 1.0 - rework), 4),
+            "ai_accessible_internal_data": round(min(1.0, 0.5 + 0.5 * eff["ai_adoption_rate"]), 4),
+            "strong_version_control": round(max(0.5, cfr_health), 4),
+            "small_batch_sizes": round(first_pass if first_pass > 0 else 0.65, 4),
+            "user_centric_focus": round(
+                min(1.0, statistics.mean(
+                    [s for vals in self.satisfaction_scores.values() for s in vals]
+                ) / 5.0)
+                if self.satisfaction_scores
+                else 0.70,
+                4,
+            ),
+            "quality_internal_platforms": round(
+                0.5 * cfr_health + 0.5 * max(0.0, 1.0 - rework),
+                4,
+            ),
+        }
+
+        scores: dict[str, float] = {}
+        for cap in DORA_AI_CAPABILITIES:
+            raw_val = signals.get(cap, defaults[cap])
+            clamped = round(max(0.0, min(1.0, float(raw_val))), 4)
+            scores[cap] = clamped
+            self.dora_ai_capability_score.labels(capability=cap).set(clamped)
+
+        overall = round(statistics.mean(scores.values()), 4)
+        if overall >= 0.85:
+            tier = "elite"
+        elif overall >= 0.70:
+            tier = "advanced"
+        elif overall >= 0.50:
+            tier = "emerging"
+        else:
+            tier = "foundational"
+
+        return {
+            "capabilities": scores,
+            "overall_score": overall,
+            "maturity_tier": tier,
+            "ai_14d_rework_rate": rework,
+            "first_pass_acceptance_rate": first_pass,
+            "median_pr_queue_wait_seconds": eff["median_pr_queue_wait_seconds"],
+        }
+
     def get_ai_effectiveness(self) -> dict[str, float]:
-        """Compute aggregate AI assist adoption, acceptance, correction, and cost metrics."""
+        """Compute aggregate AI assist adoption, acceptance, rework/churn, and PR queue metrics."""
+        ai_churn = self._churn_totals[True]
+        total_added = sum(a for a, _ in ai_churn)
+        total_reworked = sum(r for _, r in ai_churn)
+        rework_rate = round(total_reworked / total_added, 4) if total_added > 0 else 0.0
+
+        fp_ai = self._first_pass_outcomes[True]
+        first_pass_rate = (
+            round(sum(1 for ok in fp_ai if ok) / len(fp_ai), 4) if fp_ai else 0.0
+        )
+        median_queue_wait = (
+            round(float(statistics.median(self.pr_queue_waits)), 2)
+            if self.pr_queue_waits
+            else 0.0
+        )
+
         total = len(self.ai_events)
         completed_tasks = len(self.cycle_time_tracker.completed_timings)
         if total == 0:
@@ -423,6 +609,9 @@ class DevXTracker:
                 "ai_adoption_rate": 0.0,
                 "avg_cost_per_invocation_usd": 0.0,
                 "total_time_saved_seconds": 0.0,
+                "ai_14d_rework_rate": rework_rate,
+                "first_pass_acceptance_rate": first_pass_rate,
+                "median_pr_queue_wait_seconds": median_queue_wait,
             }
 
         accepted_cnt = sum(1 for e in self.ai_events if e.accepted)
@@ -437,6 +626,9 @@ class DevXTracker:
             "ai_adoption_rate": round(adoption, 4),
             "avg_cost_per_invocation_usd": round(avg_cost, 6),
             "total_time_saved_seconds": round(time_saved, 2),
+            "ai_14d_rework_rate": rework_rate,
+            "first_pass_acceptance_rate": first_pass_rate,
+            "median_pr_queue_wait_seconds": median_queue_wait,
         }
 
     def get_dora_metrics(self, *, window_days: float = 7.0) -> DORAMetrics:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from product_value_system.adapters.model_adapter import Message
+from product_value_system.routing.bandit_router import ContextualBanditRouter
 from product_value_system.routing.complexity_classifier import (
     ComplexityClassifier,
     ComplexityLevel,
@@ -42,6 +43,7 @@ class RoutingDecision:
     primary_spec: ModelSpec | None = None
     is_override: bool = False
     is_shadow: bool = False
+    bandit_context_key: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -54,6 +56,7 @@ class RoutingDecision:
             "reasoning": self.reasoning,
             "is_override": self.is_override,
             "is_shadow": self.is_shadow,
+            "bandit_context_key": self.bandit_context_key,
         }
 
 
@@ -66,6 +69,7 @@ class ModelRouter:
         *,
         policy: RoutingPolicy | None = None,
         config_path: Path | str | None = None,
+        bandit: ContextualBanditRouter | None = None,
     ) -> None:
         self._config_path: Path | None = Path(config_path) if config_path else None
         if policy is not None:
@@ -78,6 +82,7 @@ class ModelRouter:
         self.config: dict[str, Any] = self.policy.raw_config
         self.classifier = ComplexityClassifier(self.config)
         self.models_by_tier = self.policy.models_by_tier
+        self.bandit: ContextualBanditRouter | None = bandit
 
         self._lock = threading.RLock()
         self._decisions_by_tier: Counter[str] = Counter()
@@ -127,18 +132,38 @@ class ModelRouter:
         effective_tier = self.policy.force_tier or complexity.level
 
         primary, fallback_specs = self.policy.select_models(effective_tier)
+        bandit_ctx: str | None = None
+        reasoning = complexity.reasoning
+
+        if self.bandit is not None:
+            all_specs = [primary, *fallback_specs]
+            spec_by_model = {spec.model: spec for spec in all_specs}
+            bandit_ctx = self.bandit.make_context_key(effective_tier.value, task_type)
+            selection = self.bandit.select_model(bandit_ctx, list(spec_by_model.keys()))
+            primary = spec_by_model[selection.selected_model]
+            fallback_specs = [
+                spec_by_model[m]
+                for m in selection.ranked_models
+                if m != selection.selected_model
+            ]
+            reasoning = (
+                f"{complexity.reasoning} | bandit({bandit_ctx}) -> "
+                f"{primary.model} (ucb={selection.ucb_scores.get(primary.model)})"
+            )
+
         decision = RoutingDecision(
             provider=primary.provider,
             model=primary.model,
             complexity_level=effective_tier,
             complexity_score=complexity.score,
-            reasoning=complexity.reasoning,
+            reasoning=reasoning,
             estimated_cost_per_1k_tokens=primary.cost_per_1m_input / 1000.0,
             fallback_models=[fb.model for fb in fallback_specs],
             fallback_specs=fallback_specs,
             primary_spec=primary,
             is_override=self.policy.force_tier is not None,
             is_shadow=self.policy.shadow_mode,
+            bandit_context_key=bandit_ctx,
         )
         self._record_decision(decision)
         logger.debug(
@@ -150,6 +175,28 @@ class ModelRouter:
             decision.fallback_models,
         )
         return decision
+
+    def record_quality_feedback(
+        self,
+        *,
+        tier: str,
+        model_id: str,
+        quality_score: float,
+        cost_usd: float,
+        task_type: str | None = None,
+        latency_ms: float = 0.0,
+    ) -> None:
+        """Feed validated quality & cost outcomes back into the contextual bandit."""
+        if self.bandit is None:
+            return
+        ctx_key = self.bandit.make_context_key(tier, task_type)
+        self.bandit.record_outcome(
+            ctx_key,
+            model_id,
+            quality_score=quality_score,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+        )
 
     def _create_decision_from_override(self, model_id: str) -> RoutingDecision:
         found = self.policy.find_model(model_id)
@@ -233,4 +280,5 @@ class ModelRouter:
                 "cost_savings_usd": round(savings, 6),
                 "cost_savings_pct": round(savings_pct, 2),
                 "alert_triggered": self._routed_cost_usd > self.policy.alert_threshold_usd,
+                "bandit_stats": self.bandit.get_stats() if self.bandit is not None else {},
             }

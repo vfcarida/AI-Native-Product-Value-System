@@ -41,11 +41,11 @@ securityContext:
     drop:
       - ALL
 
-# Command overrides default Dockerfile CMD (`pvs doctor`) to run the FastAPI health/metrics server
+# Runs the production ASGI composition root with lifespan-managed DB, Audit, DevX & Control Plane
 command:
   - uvicorn
 args:
-  - product_value_system.api.health:app
+  - product_value_system.api.app_factory:app
   - --host
   - "0.0.0.0"
   - --port

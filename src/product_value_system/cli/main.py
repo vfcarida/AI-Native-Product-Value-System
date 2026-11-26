@@ -30,8 +30,10 @@ from product_value_system.cli.commands_p2 import (
     brownfield_command,
     devx_command,
     doctor_command,
+    governance_command,
     register_p2_subparsers,
     route_command,
+    serve_command,
 )
 
 
@@ -1213,6 +1215,8 @@ def main(argv: list[str] | None = None) -> int:
         "route": route_command,
         "brownfield": brownfield_command,
         "devx": devx_command,
+        "serve": serve_command,
+        "governance": governance_command,
     }
 
     try:

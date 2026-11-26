@@ -1,11 +1,20 @@
 """
-Model adapter protocol and shared types.
+Model adapter protocol, shared types, Structured Outputs helpers, and native
+Prompt Caching token accounting (EVO-P3-08).
 """
 
+from __future__ import annotations
+
+import json
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
+
+from pydantic import BaseModel
+
+TModel = TypeVar("TModel", bound=BaseModel)
 
 
 class Role(str, Enum):
@@ -19,11 +28,12 @@ class Role(str, Enum):
 
 @dataclass
 class Message:
-    """Conversation message."""
+    """Conversation message with optional native prompt caching control."""
 
     role: Role
     content: str
     name: str | None = None  # For tool messages
+    cache_control: bool = False
 
 
 @dataclass
@@ -62,7 +72,10 @@ class ToolCall:
 
 
 class Usage:
-    """Token usage statistics supporting both input/output and prompt/completion naming."""
+    """
+    Token usage statistics supporting input/output, prompt/completion naming,
+    and native LLM provider prompt caching metrics.
+    """
 
     def __init__(
         self,
@@ -72,6 +85,8 @@ class Usage:
         *,
         prompt_tokens: int | None = None,
         completion_tokens: int | None = None,
+        cache_read_tokens: int = 0,
+        cache_creation_tokens: int = 0,
     ) -> None:
         resolved_input = (
             input_tokens
@@ -88,6 +103,8 @@ class Usage:
         self.total_tokens: int = (
             total_tokens if total_tokens is not None else resolved_input + resolved_output
         )
+        self.cache_read_tokens: int = max(0, int(cache_read_tokens))
+        self.cache_creation_tokens: int = max(0, int(cache_creation_tokens))
 
     @property
     def prompt_tokens(self) -> int:
@@ -99,6 +116,21 @@ class Usage:
         """Alias for output_tokens."""
         return self.output_tokens
 
+    @property
+    def cache_hit_ratio(self) -> float:
+        """Fraction of prompt tokens served from provider prompt cache (0.0..1.0)."""
+        if self.cache_read_tokens <= 0:
+            return 0.0
+        if self.total_tokens >= self.input_tokens + self.output_tokens + self.cache_read_tokens:
+            prompt_total = (
+                self.input_tokens + self.cache_read_tokens + self.cache_creation_tokens
+            )
+        else:
+            prompt_total = max(self.input_tokens, self.cache_read_tokens)
+        if prompt_total <= 0:
+            return 0.0
+        return min(1.0, self.cache_read_tokens / prompt_total)
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Usage):
             return NotImplemented
@@ -106,14 +138,22 @@ class Usage:
             self.input_tokens == other.input_tokens
             and self.output_tokens == other.output_tokens
             and self.total_tokens == other.total_tokens
+            and self.cache_read_tokens == other.cache_read_tokens
+            and self.cache_creation_tokens == other.cache_creation_tokens
         )
 
     def __repr__(self) -> str:
-        return (
+        base = (
             f"Usage(input_tokens={self.input_tokens}, "
             f"output_tokens={self.output_tokens}, "
-            f"total_tokens={self.total_tokens})"
+            f"total_tokens={self.total_tokens}"
         )
+        if self.cache_read_tokens or self.cache_creation_tokens:
+            base += (
+                f", cache_read_tokens={self.cache_read_tokens}, "
+                f"cache_creation_tokens={self.cache_creation_tokens}"
+            )
+        return base + ")"
 
 
 ModelUsage = Usage
@@ -248,3 +288,54 @@ class RateLimitError(ModelError):
 
 class NetworkError(ModelError):
     """Network connectivity or request timeout error."""
+
+
+class StructuredOutputError(ModelError):
+    """Raised when model output cannot be parsed or validated against a target schema."""
+
+    def __init__(self, message: str, *, raw_output: str = "", attempts: int = 1) -> None:
+        super().__init__(message)
+        self.raw_output = raw_output
+        self.attempts = attempts
+
+
+def schema_to_json_schema(schema_or_model: type[BaseModel] | dict[str, Any]) -> dict[str, Any]:
+    """Return a JSON Schema dictionary from a Pydantic BaseModel subclass or dict."""
+    if isinstance(schema_or_model, type) and issubclass(schema_or_model, BaseModel):
+        return dict(schema_or_model.model_json_schema())
+    if isinstance(schema_or_model, dict):
+        return dict(schema_or_model)
+    raise TypeError(f"Expected Pydantic BaseModel subclass or dict, got {type(schema_or_model)}")
+
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def extract_json_payload(raw_text: str) -> str:
+    """Extract raw JSON object/array text from a model response (stripping markdown fences)."""
+    text = raw_text.strip()
+    if not text:
+        return text
+
+    fence_match = _JSON_FENCE_RE.search(text)
+    if fence_match:
+        candidate = fence_match.group(1).strip()
+        if candidate:
+            return candidate
+
+    if text[0] in "{[":
+        return text
+
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start = text.find(open_ch)
+        end = text.rfind(close_ch)
+        if start != -1 and end > start:
+            return text[start : end + 1].strip()
+    return text
+
+
+def parse_structured_output(raw_text: str, schema: type[TModel]) -> TModel:
+    """Parse and validate raw model output against a Pydantic ``BaseModel`` schema."""
+    payload = extract_json_payload(raw_text)
+    parsed_obj = json.loads(payload)
+    return schema.model_validate(parsed_obj)

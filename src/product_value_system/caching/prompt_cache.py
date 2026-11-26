@@ -158,6 +158,7 @@ class PromptCache:
         *,
         semantic_max_temperature: float = 0.3,
         embedding_func: EmbeddingFunc | None = None,
+        embedding_adapter: Any | None = None,
         invalidate_on_model_change: bool = True,
     ) -> None:
         self.backend: CacheBackend = backend or MemoryCacheBackend()
@@ -166,7 +167,11 @@ class PromptCache:
         self.enable_semantic_matching = enable_semantic_matching
         self.semantic_max_temperature = float(semantic_max_temperature)
         self.invalidate_on_model_change = invalidate_on_model_change
-        self.similarity_matcher = SimilarityMatcher(embedding_func=embedding_func)
+        resolved_embed_fn: EmbeddingFunc | None = embedding_func
+        if resolved_embed_fn is None and embedding_adapter is not None:
+            resolved_embed_fn = embedding_adapter.embed
+        self.embedding_adapter = embedding_adapter
+        self.similarity_matcher = SimilarityMatcher(embedding_func=resolved_embed_fn)
 
         # Telemetry metrics
         self.hits = 0
@@ -229,6 +234,8 @@ class PromptCache:
         tools: Sequence[Tool | dict[str, Any]] | None = None,
         *,
         model_version: str | None = None,
+        prompt_version: str | None = None,
+        tenant_id: str | None = None,
     ) -> str:
         """Compute deterministic xxhash64 cache key from normalized request parameters."""
         temp = float(temperature)
@@ -243,6 +250,10 @@ class PromptCache:
         }
         if self.invalidate_on_model_change and model_version:
             key_data["model_version"] = model_version
+        if prompt_version:
+            key_data["prompt_version"] = prompt_version
+        if tenant_id:
+            key_data["tenant_id"] = tenant_id
         serialized = json.dumps(key_data, sort_keys=True, separators=(",", ":"), allow_nan=False)
         return _fast_hash(serialized.encode("utf-8"))
 
@@ -255,15 +266,25 @@ class PromptCache:
         tools: Sequence[Tool | dict[str, Any]] | None = None,
         *,
         model_version: str | None = None,
+        prompt_version: str | None = None,
+        tenant_id: str | None = None,
+        now: datetime | None = None,
     ) -> dict[str, Any] | None:
-        """Look up exact match first, then optional semantic match for deterministic calls."""
+        """Look up exact match first, then temporal/tenant/version-scoped semantic match."""
         cache_key = self.compute_cache_key(
-            messages, model, temperature, max_tokens, tools, model_version=model_version
+            messages,
+            model,
+            temperature,
+            max_tokens,
+            tools,
+            model_version=model_version,
+            prompt_version=prompt_version,
+            tenant_id=tenant_id,
         )
         cached = await self.backend.get(cache_key)
 
         if cached is not None:
-            if cached.is_expired():
+            if cached.is_expired(now=now):
                 await self.backend.delete(cache_key)
             else:
                 cached.hit_count += 1
@@ -271,12 +292,18 @@ class PromptCache:
                 self._record_saved_tokens(cached.response)
                 return cached.response
 
-        # Semantic similarity fallback for deterministic calls (temp < 0.3)
+        # Temporal + version + tenant-scoped semantic similarity fallback
         if self.enable_semantic_matching and temperature < self.semantic_max_temperature:
-            semantic_key = await self._find_similar_prompt(messages, model)
+            semantic_key = await self._find_similar_prompt(
+                messages,
+                model,
+                prompt_version=prompt_version or "",
+                tenant_id=tenant_id or "",
+                now=now,
+            )
             if semantic_key is not None:
                 sem_cached = await self.backend.get(semantic_key)
-                if sem_cached is not None and not sem_cached.is_expired():
+                if sem_cached is not None and not sem_cached.is_expired(now=now):
                     sem_cached.hit_count += 1
                     self.semantic_hits += 1
                     self.hits += 1
@@ -296,10 +323,20 @@ class PromptCache:
         tools: Sequence[Tool | dict[str, Any]] | None = None,
         *,
         model_version: str | None = None,
+        prompt_version: str | None = None,
+        tenant_id: str | None = None,
+        valid_until: datetime | None = None,
     ) -> None:
-        """Store response in backend with prompt hash and optional semantic embedding."""
+        """Store response with prompt hash, temporal/version metadata, and semantic embedding."""
         cache_key = self.compute_cache_key(
-            messages, model, temperature, max_tokens, tools, model_version=model_version
+            messages,
+            model,
+            temperature,
+            max_tokens,
+            tools,
+            model_version=model_version,
+            prompt_version=prompt_version,
+            tenant_id=tenant_id,
         )
         prompt_text = self._messages_to_text(messages)
         prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
@@ -319,6 +356,9 @@ class PromptCache:
             hit_count=0,
             embedding=embedding,
             prompt_text=prompt_text,
+            prompt_version=prompt_version or "",
+            tenant_id=tenant_id or "",
+            valid_until=valid_until,
         )
         await self.backend.set(cache_key, entry)
 
@@ -334,11 +374,19 @@ class PromptCache:
         self,
         messages: Sequence[Message | dict[str, Any]],
         model: str,
+        *,
+        prompt_version: str = "",
+        tenant_id: str = "",
+        now: datetime | None = None,
     ) -> str | None:
         entries = await self.backend.list_entries(model=model)
         candidates: list[tuple[str, list[float]]] = []
         for entry in entries:
-            if entry.is_expired() or not entry.embedding:
+            if entry.is_expired(now=now) or not entry.embedding:
+                continue
+            if prompt_version and entry.prompt_version != prompt_version:
+                continue
+            if tenant_id and entry.tenant_id != tenant_id:
                 continue
             candidates.append((entry.cache_key, entry.embedding))
         if not candidates:

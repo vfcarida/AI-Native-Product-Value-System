@@ -118,6 +118,59 @@ def register_p2_subparsers(subparsers: argparse._SubParsersAction[argparse.Argum
         help="Emit machine-readable JSON snapshot",
     )
 
+    # 5. pvs serve (Production ASGI Control Plane server — EVO-P3-01)
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Run the production ASGI Control Plane, Health, Metrics, Audit & DevX API server",
+    )
+    serve_parser.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000)")
+    serve_parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of Uvicorn worker processes (default: 1)",
+    )
+    serve_parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable auto-reload for local development",
+    )
+
+    # 6. pvs governance export (EU AI Act + NIST AI RMF Governance Pack — EVO-P3-20)
+    gov_parser = subparsers.add_parser(
+        "governance",
+        help="Generate EU AI Act + NIST AI RMF compliance & risk audit packs (EVO-P3-20)",
+    )
+    gov_sub = gov_parser.add_subparsers(dest="governance_action")
+    gov_export = gov_sub.add_parser(
+        "export",
+        help="Export quarterly AI Governance Audit Pack (JSON or Markdown)",
+    )
+    gov_export.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
+        help="Output format (default: json)",
+    )
+    gov_export.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional file path to write the governance pack (defaults to stdout)",
+    )
+    gov_export.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path("."),
+        help="Repository root directory to inspect (default: current directory)",
+    )
+    gov_export.add_argument(
+        "--include-redteam",
+        action="store_true",
+        help="Execute live OWASP ASI01-ASI10 red-team gate and embed results",
+    )
+
 
 def doctor_command(args: argparse.Namespace) -> int:
     """Execute ``pvs doctor`` diagnostics."""
@@ -248,4 +301,67 @@ def devx_command(args: argparse.Namespace) -> int:
         print(f"  Anonymize PII  : {payload['anonymize']}")
         print(f"  SPACE Overall  : {space_scores.get('overall', 0.0):.2f}")
         print(f"  DORA Tier      : {dora_dict.get('performance_tier', 'unknown')}")
+    return EXIT_OK
+
+
+def serve_command(args: argparse.Namespace) -> int:
+    """Execute ``pvs serve`` to launch the production ASGI Control Plane server."""
+    import sys
+
+    try:
+        import uvicorn
+    except ImportError:
+        print(
+            "ERROR: uvicorn is required to run 'pvs serve'. "
+            "Install with: pip install 'product-value-system[monitoring]'",
+            file=sys.stderr,
+        )
+        return 1
+
+    uvicorn.run(
+        "product_value_system.api.app_factory:app",
+        host=args.host,
+        port=args.port,
+        workers=args.workers,
+        reload=args.reload,
+    )
+    return EXIT_OK
+
+
+def governance_command(args: argparse.Namespace) -> int:
+    """Execute ``pvs governance export`` for EU AI Act & NIST AI RMF packs."""
+    import sys
+
+    action = getattr(args, "governance_action", None)
+    if action != "export":
+        print(
+            "Usage: pvs governance export [--format json|markdown] [--output PATH]",
+            file=sys.stderr,
+        )
+        return 1
+
+    from product_value_system.compliance.ai_governance import (
+        EnterpriseGovernancePackGenerator,
+    )
+    from product_value_system.security.agentic_guardrails import AgenticRedTeamRunner
+
+    async def _run() -> str:
+        rt_report = (
+            await AgenticRedTeamRunner().run_all()
+            if getattr(args, "include_redteam", False)
+            else None
+        )
+        gen = EnterpriseGovernancePackGenerator(repo_root=args.repo_root)
+        pack = await gen.generate(redteam_report=rt_report)
+        if args.format == "markdown":
+            return pack.render_markdown()
+        return json.dumps(pack.to_dict(), indent=2)
+
+    rendered = asyncio.run(_run())
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered, encoding="utf-8")
+        print(f"Governance audit pack written to {args.output}")
+    else:
+        print(rendered)
     return EXIT_OK

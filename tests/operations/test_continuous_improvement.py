@@ -211,7 +211,7 @@ def test_dora_improvement_dashboard_and_kaizen_board_valid() -> None:
     dash = json.loads(DORA_DASHBOARD_PATH.read_text(encoding="utf-8"))
     assert dash["uid"] == "pvs-improvement-metrics"
     assert dash["schemaVersion"] >= 36
-    assert len(dash["panels"]) == 7
+    assert len(dash["panels"]) >= 7
 
     titles = " ".join(p["title"] for p in dash["panels"])
     for expected in (

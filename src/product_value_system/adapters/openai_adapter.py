@@ -318,17 +318,26 @@ class OpenAIModelAdapter:
         max_tokens: int | None,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """Build OpenAI API request payload."""
+        """Build OpenAI API request payload with native Structured Outputs & prompt caching."""
+        import hashlib
+
+        response_schema = kwargs.pop("response_schema", None)
+        prompt_cache_key = kwargs.pop("prompt_cache_key", None)
+
         formatted_messages: list[dict[str, Any]] = []
+        cached_segments: list[str] = []
         for msg in messages:
             if isinstance(msg, Message):
                 formatted_messages.append({"role": msg.role.value, "content": msg.content})
+                if msg.cache_control:
+                    cached_segments.append(f"{msg.role.value}:{msg.content}")
             elif isinstance(msg, dict):
                 role_val = msg.get("role", "user")
                 role_str = role_val.value if isinstance(role_val, Role) else str(role_val)
-                formatted_messages.append(
-                    {"role": role_str, "content": str(msg.get("content", ""))}
-                )
+                content_str = str(msg.get("content", ""))
+                formatted_messages.append({"role": role_str, "content": content_str})
+                if msg.get("cache_control"):
+                    cached_segments.append(f"{role_str}:{content_str}")
             else:
                 raise ValueError(f"Unsupported message type: {type(msg)}")
 
@@ -340,6 +349,23 @@ class OpenAIModelAdapter:
 
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+
+        if response_schema is not None and "response_format" not in kwargs:
+            schema_name, json_schema = self._normalize_response_schema(response_schema)
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": json_schema,
+                },
+            }
+
+        if prompt_cache_key:
+            payload["prompt_cache_key"] = str(prompt_cache_key)
+        elif cached_segments:
+            prefix_hash = hashlib.sha256("\n".join(cached_segments).encode("utf-8")).hexdigest()
+            payload["prompt_cache_key"] = f"pvs-cache-{prefix_hash[:16]}"
 
         if tools:
             formatted_tools: list[dict[str, Any]] = []
@@ -362,8 +388,21 @@ class OpenAIModelAdapter:
         payload.update(kwargs)
         return payload
 
+    @staticmethod
+    def _normalize_response_schema(schema_or_model: Any) -> tuple[str, dict[str, Any]]:
+        """Convert Pydantic BaseModel subclass or JSON Schema dict to OpenAI strict schema."""
+        if isinstance(schema_or_model, type) and hasattr(schema_or_model, "model_json_schema"):
+            raw = dict(schema_or_model.model_json_schema())
+            raw.setdefault("additionalProperties", False)
+            return schema_or_model.__name__, raw
+        if isinstance(schema_or_model, dict):
+            raw = dict(schema_or_model)
+            raw.setdefault("additionalProperties", False)
+            return str(raw.get("title", "StructuredResponse")), raw
+        raise ValueError(f"Unsupported response_schema type: {type(schema_or_model)}")
+
     def _parse_response(self, data: dict[str, Any]) -> ModelResponse:
-        """Parse OpenAI API response."""
+        """Parse OpenAI API response including native cached token usage."""
         choice = data["choices"][0]
         message = choice["message"]
 
@@ -383,10 +422,17 @@ class OpenAIModelAdapter:
         usage = None
         if "usage" in data:
             u = data["usage"]
+            prompt_details = u.get("prompt_tokens_details") or {}
+            cached_tokens = int(
+                prompt_details.get("cached_tokens", 0)
+                if isinstance(prompt_details, dict)
+                else 0
+            )
             usage = Usage(
                 input_tokens=u["prompt_tokens"],
                 output_tokens=u["completion_tokens"],
                 total_tokens=u["total_tokens"],
+                cache_read_tokens=cached_tokens,
             )
 
         return ModelResponse(
@@ -399,7 +445,7 @@ class OpenAIModelAdapter:
 
     def calculate_cost(self, usage: Usage, model: str | None = None) -> float:
         """
-        Calculate cost in USD from token usage.
+        Calculate cost in USD from token usage, including 50% OpenAI prompt cache discount.
 
         Args:
             usage: Token usage stats
@@ -411,9 +457,12 @@ class OpenAIModelAdapter:
         resolved_model = model or self.model
         pricing = self.PRICING.get(resolved_model, self.PRICING["gpt-4"])
 
-        input_cost = (usage.prompt_tokens / 1_000_000) * pricing["input"]
+        cached_tokens = min(usage.cache_read_tokens, usage.prompt_tokens)
+        uncached_prompt_tokens = max(0, usage.prompt_tokens - cached_tokens)
+        input_cost = (uncached_prompt_tokens / 1_000_000) * pricing["input"]
+        cached_cost = (cached_tokens / 1_000_000) * (pricing["input"] * 0.50)
         output_cost = (usage.completion_tokens / 1_000_000) * pricing["output"]
-        return input_cost + output_cost
+        return input_cost + cached_cost + output_cost
 
     async def close(self) -> None:
         """Close underlying HTTP client."""

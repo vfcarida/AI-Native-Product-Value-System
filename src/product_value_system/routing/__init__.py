@@ -6,6 +6,11 @@ schema & LLM-judge quality validation, automatic higher-tier fallback,
 and FinOps cost-savings metrics.
 """
 
+from product_value_system.routing.bandit_router import (
+    ArmStats,
+    BanditSelection,
+    ContextualBanditRouter,
+)
 from product_value_system.routing.complexity_classifier import (
     ComplexityClassifier,
     ComplexityLevel,
@@ -32,9 +37,12 @@ from product_value_system.routing.routing_policy import (
 
 __all__ = [
     "AdapterFactory",
+    "ArmStats",
+    "BanditSelection",
     "ComplexityClassifier",
     "ComplexityLevel",
     "ComplexityScore",
+    "ContextualBanditRouter",
     "DEFAULT_ROUTING_CONFIG",
     "FallbackHandler",
     "ModelRouter",

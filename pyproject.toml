@@ -156,3 +156,8 @@ ignore_missing_imports = true
 module = ["docker", "docker.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
+
+[tool.mutmut]
+paths_to_mutate = "src/product_value_system/policy/,src/product_value_system/security/,src/product_value_system/compliance/"
+tests_dir = "tests/security/ tests/compliance/"
+runner = "pytest -q -m 'not integration_real'"

@@ -21,10 +21,10 @@ flowchart TB
 
     subgraph ControlPlane["Deterministic Control Plane"]
         Orch["ValueStreamOrchestrator + ParallelExecutor (DAG)"]
-        Contracts["StrictConfigModel (12 YAML) + JSON Schemas (8)"]
-        Harness["Harness: Budget + Guardrails + CircuitBreaker"]
-        Policy["Cedar PolicyEngine (mtime-cached, 100% sync)"]
-        Persist["WAL SQLite Persistence & Checkpoints"]
+        Contracts["StrictConfigModel (16 YAML) + JSON Schemas (8)"]
+        Harness["Harness: Budget + ASI01 Guardrails + CircuitBreaker"]
+        Policy["Cedar PolicyEngine (cedarpy / CLI / Python, 100% sync)"]
+        Persist["PostgreSQL HA + PgBouncer + Durable HITL RunStore + Alembic"]
     end
 
     subgraph FinOps["FinOps & Resilience Layer"]

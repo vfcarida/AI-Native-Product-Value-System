@@ -185,6 +185,85 @@
           "unit": "h"
         }
       }
+    },
+    {
+      "id": 8,
+      "title": "AI 14-Day Code Rework & Churn Rate",
+      "description": "Non-punitive aggregate ratio of AI-assisted lines reworked within 14 days (EVO-P3-16; lower is healthier).",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "devx_ai_code_churn_ratio{assisted=\"True\"} * 100",
+          "legendFormat": "AI 14d Rework %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 15},
+              {"color": "red", "value": 30}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "PR Review Queue Wait Time (p50 / p95)",
+      "description": "Time PRs wait before first human review (tracks AI-era review bottleneck).",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 24},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum(rate(devx_pr_queue_wait_seconds_bucket[7d])) by (le)) / 60",
+          "legendFormat": "p50 queue wait (min)"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(devx_pr_queue_wait_seconds_bucket[7d])) by (le)) / 60",
+          "legendFormat": "p95 queue wait (min)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "DORA AI 7-Capabilities Scorecard & First-Pass Acceptance",
+      "description": "Automated self-assessment across the 7 DORA AI Capabilities plus first-pass PR acceptance ratio.",
+      "type": "bargauge",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "devx_dora_ai_capability_score",
+          "legendFormat": "{{capability}}"
+        },
+        {
+          "refId": "B",
+          "expr": "devx_first_pass_acceptance_ratio{assisted=\"True\"}",
+          "legendFormat": "first_pass_acceptance"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
     }
   ]
 }

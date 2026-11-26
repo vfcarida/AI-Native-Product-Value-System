@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CachedResponse:
-    """Cached LLM response with TTL, usage tracking, and optional semantic embedding."""
+    """Cached LLM response with TTL, temporal validity, prompt version, and semantic embedding."""
 
     response: dict[str, Any]
     cache_key: str
@@ -37,9 +37,20 @@ class CachedResponse:
     hit_count: int = 0
     embedding: list[float] | None = None
     prompt_text: str = ""
+    prompt_version: str = ""
+    tenant_id: str = ""
+    valid_until: datetime | None = None
 
     def is_expired(self, *, now: datetime | None = None) -> bool:
         ref = now or datetime.now(UTC)
+        if self.valid_until is not None:
+            vu_utc = (
+                self.valid_until.astimezone(UTC)
+                if self.valid_until.tzinfo is not None
+                else self.valid_until.replace(tzinfo=UTC)
+            )
+            if ref > vu_utc:
+                return True
         cached_utc = (
             self.cached_at.astimezone(UTC)
             if self.cached_at.tzinfo is not None
@@ -59,10 +70,14 @@ class CachedResponse:
             "hit_count": self.hit_count,
             "embedding": self.embedding,
             "prompt_text": self.prompt_text,
+            "prompt_version": self.prompt_version,
+            "tenant_id": self.tenant_id,
+            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CachedResponse:
+        raw_vu = data.get("valid_until")
         return cls(
             response=dict(data["response"]),
             cache_key=str(data["cache_key"]),
@@ -74,6 +89,9 @@ class CachedResponse:
             hit_count=int(data.get("hit_count", 0)),
             embedding=data.get("embedding"),
             prompt_text=str(data.get("prompt_text", "")),
+            prompt_version=str(data.get("prompt_version", "")),
+            tenant_id=str(data.get("tenant_id", "")),
+            valid_until=datetime.fromisoformat(str(raw_vu)) if raw_vu else None,
         )
 
 
