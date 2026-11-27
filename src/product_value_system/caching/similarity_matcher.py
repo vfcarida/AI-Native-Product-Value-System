@@ -14,8 +14,6 @@ import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
 
-import numpy as np
-
 EmbeddingFunc = Callable[[str], Awaitable[list[float]] | list[float]]
 
 _WORD_RE = re.compile(r"[a-z0-9_]+")
@@ -28,7 +26,7 @@ def local_prompt_embedding(text: str, dim: int = _DIM) -> list[float]:
     if not cleaned:
         return [0.0] * dim
 
-    vec = np.zeros(dim, dtype=float)
+    vec = [0.0] * dim
     words = [w for w in _WORD_RE.findall(cleaned) if len(w) >= 2]
     word_counts = Counter(words)
     for word, count in word_counts.items():
@@ -47,10 +45,10 @@ def local_prompt_embedding(text: str, dim: int = _DIM) -> list[float]:
             sign = 1.0 if ((h >> 16) & 1) == 0 else -1.0
             vec[idx] += 0.15 * sign * (1.0 + math.log1p(count))
 
-    norm = float(np.linalg.norm(vec))
+    norm = math.sqrt(sum(x * x for x in vec))
     if norm > 0.0:
-        vec = vec / norm
-    return [float(x) for x in vec]
+        return [x / norm for x in vec]
+    return vec
 
 
 def _stable_hash(value: str) -> int:
@@ -65,13 +63,13 @@ def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """Compute cosine similarity in [-1.0, 1.0] safely guarding against zero vectors."""
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
-    a = np.asarray(vec_a, dtype=float)
-    b = np.asarray(vec_b, dtype=float)
-    norm_a = float(np.linalg.norm(a))
-    norm_b = float(np.linalg.norm(b))
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=True))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
-    return float(np.clip(np.dot(a, b) / (norm_a * norm_b), -1.0, 1.0))
+    raw = dot / (norm_a * norm_b)
+    return max(-1.0, min(1.0, raw))
 
 
 class SimilarityMatcher:

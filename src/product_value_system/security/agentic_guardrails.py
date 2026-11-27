@@ -30,15 +30,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from product_value_system.adapters.mock_adapter import MockModelAdapter
-from product_value_system.adapters.model_adapter import Message, Role
-from product_value_system.harness.budget import Budget, BudgetExceededError, BudgetExhausted
-from product_value_system.harness.context import ExecutionContext
-from product_value_system.harness.context_manager import ContextManager, MemoryIntegrityError
-from product_value_system.harness.guardrails import GuardrailViolation
-from product_value_system.harness.harness import Harness
-from product_value_system.harness.tools import ToolRegistry
-from product_value_system.policy.engine import PolicyEngine
 from product_value_system.security.input_validator import InputValidator, SecurityError
 from product_value_system.security.secret_detection import SecretDetector
 
@@ -353,6 +344,11 @@ class AgenticRedTeamRunner:
         )
 
     async def _probe_asi01_indirect_injection(self) -> RedTeamResult:
+        from product_value_system.adapters.mock_adapter import MockModelAdapter
+        from product_value_system.adapters.model_adapter import Message, Role
+        from product_value_system.harness.context import ExecutionContext
+        from product_value_system.harness.harness import Harness
+
         harness = Harness(
             context=ExecutionContext(run_id="rt-asi01"),
             model_adapter=MockModelAdapter(default_response="ok"),
@@ -378,6 +374,8 @@ class AgenticRedTeamRunner:
             )
 
     async def _probe_asi02_tool_misuse_cedar(self) -> RedTeamResult:
+        from product_value_system.policy.engine import PolicyEngine
+
         engine = PolicyEngine()
         decision = engine.authorize(
             principal={"type": "Agent", "name": "build"},
@@ -392,6 +390,9 @@ class AgenticRedTeamRunner:
         )
 
     async def _probe_asi03_privilege_escalation(self) -> RedTeamResult:
+        from product_value_system.harness.tools import ToolRegistry
+        from product_value_system.policy.engine import PolicyEngine
+
         registry = ToolRegistry(PolicyEngine())
         decision = registry.authorize_call(
             agent_name="architecture_review",
@@ -440,6 +441,11 @@ class AgenticRedTeamRunner:
         )
 
     async def _probe_asi06_memory_poisoning(self) -> RedTeamResult:
+        from product_value_system.harness.context_manager import (
+            ContextManager,
+            MemoryIntegrityError,
+        )
+
         cm = ContextManager()
         poison_blocked = False
         tamper_detected = False
@@ -493,6 +499,13 @@ class AgenticRedTeamRunner:
         )
 
     async def _probe_asi08_runaway_budget_cascade(self) -> RedTeamResult:
+        from product_value_system.adapters.mock_adapter import MockModelAdapter
+        from product_value_system.adapters.model_adapter import Message, Role
+        from product_value_system.harness.budget import Budget, BudgetExceededError, BudgetExhausted
+        from product_value_system.harness.context import ExecutionContext
+        from product_value_system.harness.guardrails import GuardrailViolation
+        from product_value_system.harness.harness import Harness
+
         budget = Budget(max_cost_usd=Decimal("0.0001"), max_iterations=1)
         harness = Harness(
             context=ExecutionContext(run_id="rt-asi08"),
@@ -523,6 +536,12 @@ class AgenticRedTeamRunner:
         )
 
     async def _probe_asi10_rogue_agent_kill_switch(self) -> RedTeamResult:
+        from product_value_system.adapters.mock_adapter import MockModelAdapter
+        from product_value_system.adapters.model_adapter import Message, Role
+        from product_value_system.harness.context import ExecutionContext
+        from product_value_system.harness.guardrails import GuardrailViolation
+        from product_value_system.harness.harness import Harness
+
         harness = Harness(
             context=ExecutionContext(run_id="rt-asi10"),
             model_adapter=MockModelAdapter(default_response="rogue"),

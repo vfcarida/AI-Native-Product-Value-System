@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(50), nullable=False, index=True),
         sa.Column("resource_id", sa.String(200)),
         sa.Column("result", sa.String(20), nullable=False),
-        sa.Column("metadata", JSONB),
+        sa.Column("metadata", sa.JSON().with_variant(JSONB(), "postgresql")),
         sa.Column("client_ip", sa.String(45)),
         sa.Column("user_agent", sa.Text()),
         sa.Column("session_id", sa.String(100), index=True),
@@ -42,18 +42,19 @@ def upgrade() -> None:
     op.create_index("idx_audit_type_timestamp", "audit_logs", ["event_type", "timestamp"])
     op.create_index("idx_audit_session", "audit_logs", ["session_id", "timestamp"])
 
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pvs_user') THEN
-                GRANT SELECT, INSERT ON audit_logs TO pvs_user;
-                REVOKE DELETE, UPDATE, TRUNCATE ON audit_logs FROM pvs_user;
-            END IF;
-        END
-        $$;
-        """
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pvs_user') THEN
+                    GRANT SELECT, INSERT ON audit_logs TO pvs_user;
+                    REVOKE DELETE, UPDATE, TRUNCATE ON audit_logs FROM pvs_user;
+                END IF;
+            END
+            $$;
+            """
+        )
 
 
 def downgrade() -> None:

@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
+from product_value_system.__version__ import __version__
 from product_value_system.persistence.run_store import (
     ApprovalRecord,
     DurableRunRecord,
@@ -104,7 +105,7 @@ class AgentCard:
     name: str
     description: str
     url: str
-    version: str = "1.2.0"
+    version: str = __version__
     protocol_version: str = A2A_PROTOCOL_VERSION
     capabilities: AgentCapabilities = field(default_factory=AgentCapabilities)
     authentication: AgentAuthentication = field(default_factory=AgentAuthentication)
@@ -268,7 +269,7 @@ _DEFAULT_SPECIALIST_SPECS: tuple[dict[str, Any], ...] = (
 class A2ARegistry:
     """Registry generating standard A2A Agent Cards for PVS and its specialist agents."""
 
-    def __init__(self, *, version: str = "1.2.0") -> None:
+    def __init__(self, *, version: str = __version__) -> None:
         self.version = version
         self._specs: dict[str, dict[str, Any]] = {
             spec["name"]: spec for spec in _DEFAULT_SPECIALIST_SPECS

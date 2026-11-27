@@ -160,3 +160,32 @@ async def test_continuous_discovery_pipeline_correlates_regression_and_sanitizes
     assert trigger.delta_pct < -25.0
     assert trigger.corroborating_feedback_ids == ["zd-101"]
     await ph.close()
+
+
+@pytest.mark.asyncio
+async def test_amplitude_adapter_safely_json_encodes_metric_names_with_quotes() -> None:
+    """Metric names with quotes or braces are serialized via json.dumps, never interpolated."""
+    end = datetime.now(UTC)
+    start = end - timedelta(days=2)
+    tricky_metric = 'checkout"completed,injected:"1'
+    captured_e: list[str] = []
+
+    def _amp_handler(request: httpx.Request) -> httpx.Response:
+        captured_e.append(str(request.url.params.get("e", "")))
+        return httpx.Response(
+            200,
+            json={"data": {"xValues": ["2026-11-26"], "series": [[42]]}},
+        )
+
+    amp = AmplitudeAnalyticsAdapter(
+        api_key="amp-key",
+        secret_key="amp-secret",
+        transport=httpx.MockTransport(_amp_handler),
+    )
+    res = await amp.query_metric(tricky_metric, start, end)
+    await amp.close()
+
+    assert res.value == 42.0
+    assert len(captured_e) == 1
+    parsed = json.loads(captured_e[0])
+    assert parsed == {"event_type": tricky_metric}

@@ -7,6 +7,7 @@ DiscoveryAgent`` loop (EVO-P3-15).
 from __future__ import annotations
 
 import base64
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -218,7 +219,7 @@ class AmplitudeAnalyticsAdapter:
         resp = await self._client.get(
             "/api/2/events/segmentation",
             params={
-                "e": f'{{"event_type":"{metric_name}"}}',
+                "e": json.dumps({"event_type": metric_name}),
                 "start": start_date.strftime("%Y%m%d"),
                 "end": end_date.strftime("%Y%m%d"),
                 "i": str(interval),

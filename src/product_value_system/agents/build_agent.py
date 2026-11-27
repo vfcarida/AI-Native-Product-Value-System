@@ -5,8 +5,10 @@ Build agent: Specification -> Iterative ReAct Code + Tests + Structured Diffs
 
 from __future__ import annotations
 
+import base64
 import difflib
 import json
+import re
 import shlex
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -230,17 +232,17 @@ class BuildAgent(BaseAgent):
         test_filename: str,
         test_code: str,
     ) -> None:
-        """Write implementation and test files cleanly into the sandbox workspace."""
+        """Write implementation and test files cleanly into the sandbox via base64 encoding."""
+        impl_b64 = base64.b64encode(implementation_code.encode("utf-8")).decode("ascii")
+        test_b64 = base64.b64encode(test_code.encode("utf-8")).decode("ascii")
+        impl_path = shlex.quote(f"/workspace/src/{impl_filename}")
+        test_path = shlex.quote(f"/workspace/tests/{test_filename}")
         await self.sandbox_provider.execute(
             sandbox,
-            f"""
-            cat > /workspace/src/{impl_filename} << 'EOF'
-{implementation_code}
-EOF
-            cat > /workspace/tests/{test_filename} << 'EOF'
-{test_code}
-EOF
-            """,
+            (
+                f"printf '%s' {shlex.quote(impl_b64)} | base64 -d > {impl_path} && "
+                f"printf '%s' {shlex.quote(test_b64)} | base64 -d > {test_path}"
+            ),
             timeout_seconds=10,
         )
 
@@ -509,13 +511,20 @@ If tests also need updates, add a second ```python block after `# --- TESTS ---`
             return self._extract_code(impl_part), self._extract_code(test_part)
         return self._extract_code(response), None
 
+    @staticmethod
+    def _sanitize_req_id(req_id: str) -> str:
+        """Sanitize requirement ID to a safe lowercase identifier (no path traversal)."""
+        cleaned = re.sub(r"[^a-z0-9_]", "_", req_id.lower())
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+        return cleaned or "req"
+
     def _get_implementation_filename(self, req_id: str) -> str:
         """Get implementation filename for requirement."""
-        return f"{req_id.lower().replace('-', '_')}.py"
+        return f"{self._sanitize_req_id(req_id)}.py"
 
     def _get_test_filename(self, req_id: str) -> str:
         """Get test filename for requirement."""
-        return f"test_{req_id.lower().replace('-', '_')}.py"
+        return f"test_{self._sanitize_req_id(req_id)}.py"
 
     async def _run_tests(self, sandbox: Any, test_filename: str) -> dict[str, Any]:
         """Run tests in sandbox."""

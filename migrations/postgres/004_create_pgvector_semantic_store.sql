@@ -57,14 +57,22 @@ BEGIN
         WHERE tablename = 'semantic_cache_entries' AND policyname = 'tenant_isolation_sem_cache'
     ) THEN
         CREATE POLICY tenant_isolation_sem_cache ON semantic_cache_entries
-            USING (tenant_id = current_setting('app.current_tenant_id', true));
+            USING (
+                current_setting('app.current_tenant', true) IS NULL
+                OR current_setting('app.current_tenant', true) = ''
+                OR tenant_id = current_setting('app.current_tenant', true)
+            );
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_policies
         WHERE tablename = 'semantic_memory_chunks' AND policyname = 'tenant_isolation_sem_memory'
     ) THEN
         CREATE POLICY tenant_isolation_sem_memory ON semantic_memory_chunks
-            USING (tenant_id = current_setting('app.current_tenant_id', true));
+            USING (
+                current_setting('app.current_tenant', true) IS NULL
+                OR current_setting('app.current_tenant', true) = ''
+                OR tenant_id = current_setting('app.current_tenant', true)
+            );
     END IF;
 END
 $$;

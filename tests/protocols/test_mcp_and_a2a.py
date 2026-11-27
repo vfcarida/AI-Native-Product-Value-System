@@ -23,6 +23,7 @@ from product_value_system.harness.tools import ToolRegistry
 from product_value_system.policy.engine import PolicyEngine
 from product_value_system.protocols.mcp import (
     ERR_FORBIDDEN,
+    ERR_INVALID_PARAMS,
     ERR_METHOD_NOT_FOUND,
     ERR_PARSE_ERROR,
     MCPClient,
@@ -390,3 +391,64 @@ async def test_mcp_client_over_http_asgi_transport(tmp_path: Path) -> None:
             assert "pdlc" in output
         finally:
             await mcp_client.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_schema_validation_rbac_agent_header_and_rfc9728_metadata(
+    tmp_path: Path,
+) -> None:
+    """Verify MCP JSON Schema validation, X-Agent-Name RBAC allowlist, and RFC 9728 discovery."""
+    # 1. JSON Schema argument validation -> JSON-RPC -32602
+    registry = ToolRegistry(PolicyEngine())
+    registry.register(_DummyTool("knowledge_base", {"ok": True}))
+    server = MCPServer(registry)
+
+    bad_args = await server.handle_jsonrpc(
+        {
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": {"name": "knowledge_base", "arguments": {"query": 12345}},
+        },
+        agent_name="discovery",
+        tenant_id="tenant-a",
+    )
+    assert bad_args["error"]["code"] == ERR_INVALID_PARAMS
+    assert "Invalid tool arguments" in bad_args["error"]["message"]
+
+    # 2. HTTP ASGI RBAC blocks non-admin X-Agent-Name escalation (developer -> build = 403)
+    app = _build_app(tmp_path / "mcp-rbac.db")
+    with TestClient(app) as client:
+        escalate = client.post(
+            "/api/v1/mcp",
+            headers={"X-API-Key": TENANT_A_DEV_KEY, "X-Agent-Name": "build"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 100,
+                "method": "tools/call",
+                "params": {"name": "knowledge_base", "arguments": {"query": "ok"}},
+            },
+        )
+        assert escalate.status_code == 403
+        assert "not authorized to invoke MCP as agent 'build'" in escalate.json()["detail"]
+
+        # Admin passes HTTP RBAC (downstream Cedar still governs tool access)
+        admin_call = client.post(
+            "/api/v1/mcp",
+            headers={"X-API-Key": TENANT_B_ADMIN_KEY, "X-Agent-Name": "build"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 101,
+                "method": "tools/list",
+            },
+        )
+        assert admin_call.status_code == 200
+
+        # 3. RFC 9728 OAuth 2.1 Protected Resource Metadata discovery
+        meta_resp = client.get("/.well-known/oauth-protected-resource")
+        assert meta_resp.status_code == 200
+        meta = meta_resp.json()
+        assert meta["resource"].endswith("/api/v1/mcp")
+        assert isinstance(meta["authorization_servers"], list) and meta["authorization_servers"]
+        assert "header" in meta["bearer_methods_supported"]
+        assert "runs:write" in meta["scopes_supported"]

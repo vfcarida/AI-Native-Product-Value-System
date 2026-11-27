@@ -11,6 +11,7 @@ from opentelemetry import trace
 
 from product_value_system.observability.tracing import traced
 from product_value_system.policy.engine import AuthorizationDecision, PolicyEngine
+from product_value_system.security.agentic_guardrails import ToolOutputSanitizer
 from product_value_system.security.input_validator import InputValidator
 
 
@@ -74,6 +75,11 @@ class ToolRegistry:
         self.tools: dict[str, Tool] = {}
         self._output_validator: InputValidator | None = (
             (output_validator or InputValidator()) if validate_outputs else None
+        )
+        self._output_sanitizer: ToolOutputSanitizer | None = (
+            ToolOutputSanitizer(input_validator=self._output_validator)
+            if validate_outputs
+            else None
         )
 
     def register(self, tool: Tool) -> None:
@@ -166,12 +172,14 @@ class ToolRegistry:
 
         try:
             result = await tool.execute(**parameters)
-            if self._output_validator is not None and result is not None:
+            if self._output_sanitizer is not None and result is not None:
                 serialized = result if isinstance(result, str) else str(result)
-                check = self._output_validator.validate(serialized)
-                if not check.is_valid:
+                sanitized = self._output_sanitizer.sanitize(serialized)
+                if not sanitized.allowed:
+                    reason = "; ".join(sanitized.findings)
                     error_msg = (
-                        f"Tool output blocked (OWASP ASI01 indirect injection): {check.reason}"
+                        f"Tool output blocked (OWASP ASI01/ASI04 indirect injection / "
+                        f"tool poisoning): {reason}"
                     )
                     span.set_attribute("tool.status", "blocked_indirect_injection")
                     span.set_attribute("error.message", error_msg)
@@ -182,6 +190,8 @@ class ToolRegistry:
                         authorized=True,
                         error=error_msg,
                     )
+                if isinstance(result, str) and sanitized.findings:
+                    result = sanitized.sanitized_text
             span.set_attribute("tool.status", "success")
 
             return ToolCall(

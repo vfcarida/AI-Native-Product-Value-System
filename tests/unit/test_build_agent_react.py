@@ -206,3 +206,45 @@ async def test_build_agent_respects_max_iterations_when_tests_keep_failing() -> 
     assert summary["total_iterations"] == 2
     assert sandbox.pytest_runs == 2
     assert len(sandbox.commits) == 0
+
+
+@pytest.mark.asyncio
+async def test_build_agent_prevents_heredoc_eof_breakout_and_path_traversal() -> None:
+    """Generated code containing literal EOF cannot break out of shell write; req_id is safe."""
+    import base64
+
+    sandbox = _SimulatedSandboxProvider(fail_times=0)
+    tricky_code = (
+        'def parse_heredoc() -> str:\n'
+        '    return """line1\n'
+        'EOF\n'
+        'rm -rf /workspace\n'
+        '"""\n'
+    )
+    mock_llm = MockModelAdapter(
+        responses=[
+            f"```python\n{tricky_code}```",
+            "```python\ndef test_parse():\n    assert True\n```",
+        ]
+    )
+    spec = _sample_spec()
+    spec["functional_requirements"][0]["id"] = "../../etc/passwd; rm -rf /"
+    harness = Harness(
+        context=ExecutionContext(run_id="run-safe-write", agent_name="build-agent"),
+        model_adapter=mock_llm,
+    )
+    agent = BuildAgent(_NoOpSchemaValidator(), sandbox, max_iterations=1)
+
+    summary = await agent.execute(spec, harness, harness.context)
+
+    req_res = summary["build_results"][0]
+    assert ".." not in req_res["implementation_file"]
+    assert "/" not in req_res["implementation_file"]
+    assert req_res["implementation_file"] == "etc_passwd_rm_rf.py"
+    assert req_res["test_file"] == "test_etc_passwd_rm_rf.py"
+
+    write_cmds = [cmd for cmd in sandbox.commands if "base64 -d" in cmd]
+    assert len(write_cmds) == 1
+    assert "<< 'EOF'" not in write_cmds[0]
+    expected_b64 = base64.b64encode(tricky_code.strip().encode("utf-8")).decode("ascii")
+    assert expected_b64 in write_cmds[0]

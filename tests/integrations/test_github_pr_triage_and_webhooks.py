@@ -275,3 +275,29 @@ async def test_build_approval_block_kit_renders_buttons(tmp_path: Path) -> None:
     assert len(msg["blocks"]) == 4
     action_ids = [el["action_id"] for el in msg["blocks"][3]["elements"]]
     assert action_ids == ["pvs_approve_run", "pvs_reject_run"]
+
+
+def test_webhooks_reject_oversized_payloads_with_http_413(tmp_path: Path) -> None:
+    """Both GitHub and Slack webhooks enforce the 1 MiB body ceiling before signature/JSON work."""
+    from product_value_system.api.routes.integrations import MAX_WEBHOOK_BODY_BYTES
+
+    settings = ProductionSettings(
+        database_url=f"sqlite:///{tmp_path / 'dos-cap.db'}",
+        enable_devx=False,
+        enable_audit=False,
+        enable_tracing=False,
+        enable_control_plane=True,
+        enable_protocols=False,
+        enable_integrations=True,
+        github_webhook_secret=GITHUB_SECRET,
+        slack_signing_secret=SLACK_SECRET,
+    )
+    app = create_production_app(settings)
+    oversized = b"x" * (MAX_WEBHOOK_BODY_BYTES + 64)
+
+    with TestClient(app) as client:
+        gh_resp = client.post("/api/v1/webhooks/github/pr-triage", content=oversized)
+        assert gh_resp.status_code == 413
+
+        slack_resp = client.post("/api/v1/webhooks/slack/interactions", content=oversized)
+        assert slack_resp.status_code == 413

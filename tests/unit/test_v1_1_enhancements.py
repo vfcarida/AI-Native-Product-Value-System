@@ -58,8 +58,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.mark.unit
 def test_package_version_synced_to_1_0_0_and_ks_2samp_emits_zero_warnings() -> None:
-    """Package version is 1.0.0 and ks_2samp on tied ratings emits zero RuntimeWarnings."""
-    assert product_value_system.__version__ == "1.0.0"
+    """Package version matches pyproject.toml and ks_2samp emits zero RuntimeWarnings."""
+    import tomllib
+
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert product_value_system.__version__ == pyproject["project"]["version"]
+    assert product_value_system.__version__ == "2.5.1"
 
     validator = SimulationValidator()
     with warnings.catch_warnings(record=True) as caught:

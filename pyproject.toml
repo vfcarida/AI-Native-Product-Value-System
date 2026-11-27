@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "product-value-system"
-version = "1.0.0"
+version = "2.5.1"
 description = "AI-native Product Value System reference implementation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -111,6 +111,9 @@ cedar = [
 ]
 postgres = [
     "asyncpg>=0.29",
+    "alembic>=1.13",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
 ]
 vault = [
     "hvac>=1.2.0",
@@ -143,7 +146,7 @@ select = ["E", "F", "I", "N", "W"]
 ignore = []
 
 [tool.ruff.lint.isort]
-known-third-party = ["docker"]
+known-third-party = ["docker", "alembic"]
 
 [tool.mypy]
 python_version = "3.12"

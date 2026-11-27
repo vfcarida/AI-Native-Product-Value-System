@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from product_value_system.__version__ import __version__
 from product_value_system.compliance.audit_logger import AuditLogger
 from product_value_system.evaluation.prompt_registry import PromptRegistry
 from product_value_system.persistence.run_store import DurableRunStore
@@ -184,7 +185,7 @@ class EnterpriseGovernancePackGenerator:
         repo_root: Path | str = ".",
         *,
         organization: str = "AI-Native Product Value System",
-        platform_version: str = "2.5.0",
+        platform_version: str = __version__,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.organization = organization

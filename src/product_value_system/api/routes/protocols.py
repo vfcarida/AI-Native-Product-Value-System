@@ -31,6 +31,17 @@ from product_value_system.protocols.a2a import (
 )
 from product_value_system.protocols.mcp import MCPServer
 
+_ROLE_ALLOWED_MCP_AGENTS: dict[str, frozenset[str] | None] = {
+    "viewer": frozenset({"discovery", "specification", "architecture_review", "security_review"}),
+    "developer": frozenset(
+        {"discovery", "specification", "architecture_review", "security_review"}
+    ),
+    "approver": frozenset(
+        {"discovery", "specification", "architecture_review", "security_review", "measurement"}
+    ),
+    "admin": None,  # Unrestricted (still subject to Cedar PolicyEngine)
+}
+
 
 class A2ASendTaskRequest(BaseModel):
     """Accepts direct A2A task send payloads or JSON-RPC 2.0 envelopes."""
@@ -82,6 +93,22 @@ def create_protocols_router(
         """Standard public A2A Agent Card discovery endpoint."""
         base_url = str(request.base_url).rstrip("/")
         return a2a_registry.get_platform_card(base_url).to_dict()
+
+    @router.get("/.well-known/oauth-protected-resource")
+    async def well_known_oauth_protected_resource(request: Request) -> dict[str, Any]:
+        """RFC 9728 OAuth 2.1 Protected Resource Metadata for MCP 2025/2026 clients."""
+        base_url = str(request.base_url).rstrip("/")
+        issuer = getattr(authenticator, "_jwt_issuer", None) or getattr(
+            authenticator, "jwt_issuer", None
+        )
+        auth_servers = [str(issuer)] if issuer else [f"{base_url}/oauth"]
+        return {
+            "resource": f"{base_url}/api/v1/mcp",
+            "authorization_servers": auth_servers,
+            "bearer_methods_supported": ["header"],
+            "scopes_supported": ["runs:read", "runs:write", "runs:approve", "agents:read"],
+            "resource_documentation": f"{base_url}/docs",
+        }
 
     @router.get("/api/v1/a2a/agents")
     async def list_a2a_agents(request: Request, response: Response) -> dict[str, Any]:
@@ -181,11 +208,21 @@ def create_protocols_router(
         request: Request,
         response: Response,
     ) -> dict[str, Any]:
-        """Authenticated, Cedar-governed MCP JSON-RPC 2.0 endpoint."""
+        """Authenticated, RBAC + Cedar-governed MCP JSON-RPC 2.0 endpoint."""
         method = str(payload.get("method", ""))
         required_perm = "runs:write" if method == "tools/call" else "agents:read"
         ctx = await _require(request, response, required_perm)
         agent_name = (request.headers.get("x-agent-name") or "discovery").strip() or "discovery"
+        allowed_agents = _ROLE_ALLOWED_MCP_AGENTS.get(
+            ctx.role, _ROLE_ALLOWED_MCP_AGENTS["viewer"]
+        )
+        if allowed_agents is not None and agent_name not in allowed_agents:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Role '{ctx.role}' is not authorized to invoke MCP as agent '{agent_name}'"
+                ),
+            )
         return await mcp_server.handle_jsonrpc(
             payload,
             agent_name=agent_name,

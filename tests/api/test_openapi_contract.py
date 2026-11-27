@@ -71,6 +71,7 @@ def test_production_asgi_openapi_contract_schema_and_routes(tmp_path: Path) -> N
         "/api/v1/agents": {"get"},
         "/api/v1/mcp": {"post"},
         "/.well-known/agent.json": {"get"},
+        "/.well-known/oauth-protected-resource": {"get"},
         "/api/v1/a2a/agents": {"get"},
         "/api/v1/a2a/tasks/send": {"post"},
         "/api/v1/a2a/tasks/{task_id}": {"get"},

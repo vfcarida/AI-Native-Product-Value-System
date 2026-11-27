@@ -148,9 +148,11 @@ def test_cli_governance_export_json_and_markdown_zero_warnings(tmp_path: Path) -
         text=True,
         check=False,
     )
+    import product_value_system
+
     assert json_proc.returncode == 0, json_proc.stderr
     parsed = json.loads(json_proc.stdout)
-    assert parsed["platform_version"] == "2.5.0"
+    assert parsed["platform_version"] == product_value_system.__version__
     assert parsed["redteam_summary"]["passed_gate"] is True
     assert len(parsed["agent_risk_cards"]) == 7
 

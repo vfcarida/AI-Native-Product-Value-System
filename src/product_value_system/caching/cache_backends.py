@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -312,15 +312,37 @@ class SQLiteCacheBackend(CacheBackend):
         except Exception:
             pass
 
-    def _flush_touches_locked(self, conn: sqlite3.Connection) -> None:
+    @staticmethod
+    def _next_monotonic_iso(candidate: datetime, floor_iso: str | None) -> str:
+        """Return a fixed-width microsecond ISO timestamp strictly greater than ``floor_iso``."""
+        if floor_iso:
+            try:
+                floor_dt = datetime.fromisoformat(floor_iso)
+                if candidate <= floor_dt:
+                    candidate = floor_dt + timedelta(microseconds=1)
+            except ValueError:
+                pass
+        return candidate.isoformat(timespec="microseconds")
+
+    def _flush_touches_locked(self, conn: sqlite3.Connection) -> str | None:
+        row = conn.execute("SELECT MAX(last_accessed) FROM llm_cache").fetchone()
+        max_iso: str | None = str(row[0]) if row and row[0] else None
         if not self._pending_touches:
-            return
-        items = [(ts, k) for k, ts in self._pending_touches.items()]
+            return max_iso
+        items: list[tuple[str, str]] = []
+        for k, raw_ts in self._pending_touches.items():
+            try:
+                cand = datetime.fromisoformat(raw_ts)
+            except ValueError:
+                cand = datetime.now(UTC)
+            max_iso = self._next_monotonic_iso(cand, max_iso)
+            items.append((max_iso, k))
         self._pending_touches.clear()
         conn.executemany(
             "UPDATE llm_cache SET last_accessed = ?, hit_count = hit_count + 1 WHERE cache_key = ?",
             items,
         )
+        return max_iso
 
     def _quarantine_corrupt_db(self, reason: Exception) -> None:
         """Quarantine a corrupt SQLite cache file (and WAL/SHM sidecars) for clean rebuild."""
@@ -412,15 +434,15 @@ class SQLiteCacheBackend(CacheBackend):
             if row is None:
                 return None
             # Defer LRU timestamp write to next write/eviction transaction (zero write on read)
-            self._pending_touches[key] = datetime.now(UTC).isoformat()
+            self._pending_touches[key] = datetime.now(UTC).isoformat(timespec="microseconds")
             return self._row_to_entry(row)
 
     def _set_sync(self, key: str, value: CachedResponse) -> None:
         self._init_sync()
-        now_iso = datetime.now(UTC).isoformat()
         with self._connect() as conn:
-            self._flush_touches_locked(conn)
+            max_iso = self._flush_touches_locked(conn)
             self._pending_touches.pop(key, None)
+            now_iso = self._next_monotonic_iso(datetime.now(UTC), max_iso)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO llm_cache (

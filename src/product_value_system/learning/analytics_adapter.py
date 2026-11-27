@@ -14,10 +14,10 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from statistics import NormalDist
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
-from scipy import stats
 
 
 @dataclass
@@ -88,7 +88,13 @@ def _compute_mean_ci(
         return None
     alpha = 1.0 - confidence
     sem = stddev / math.sqrt(sample_size)
-    margin = float(stats.t.ppf(1.0 - alpha / 2.0, sample_size - 1)) * sem
+    try:
+        from scipy import stats
+
+        critical = float(stats.t.ppf(1.0 - alpha / 2.0, sample_size - 1))
+    except ImportError:
+        critical = float(NormalDist().inv_cdf(1.0 - alpha / 2.0))
+    margin = critical * sem
     return (round(mean - margin, 4), round(mean + margin, 4))
 
 

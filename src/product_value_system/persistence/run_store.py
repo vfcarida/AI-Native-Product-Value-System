@@ -417,15 +417,17 @@ class SQLiteDurableRunStore:
             if row is None:
                 return None
             now = datetime.now(UTC)
-            conn.execute(
+            cur = conn.execute(
                 """
                 UPDATE run_approvals
                 SET status = ?, decided_by = ?, decided_at = ?, comment = ?
-                WHERE approval_id = ? AND tenant_id = ?
+                WHERE approval_id = ? AND tenant_id = ? AND status = 'pending'
                 """,
                 (decision, decided_by, now.isoformat(), comment, row["approval_id"], tenant_id),
             )
             conn.commit()
+            if cur.rowcount != 1:
+                return None
             req_at = _dt(row["requested_at"])
             assert req_at is not None
             return ApprovalRecord(
@@ -639,43 +641,43 @@ class PostgresDurableRunStore:
     ) -> ApprovalRecord | None:
         if decision not in {"approved", "rejected"}:
             raise ValueError(f"Invalid approval decision: {decision!r}")
-        row = await self._db.fetchrow(
-            """
-            SELECT * FROM run_approvals
-            WHERE run_id = $1 AND tenant_id = $2 AND status = 'pending'
-            ORDER BY requested_at ASC LIMIT 1
-            """,
-            run_id,
-            tenant_id,
-        )
-        if row is None:
-            return None
         now = datetime.now(UTC)
-        await self._db.execute(
+        row = await self._db.fetchrow(
             """
             UPDATE run_approvals
             SET status = $1, decided_by = $2, decided_at = $3, comment = $4
-            WHERE approval_id = $5 AND tenant_id = $6
+            WHERE approval_id = (
+                SELECT approval_id FROM run_approvals
+                WHERE run_id = $5 AND tenant_id = $6 AND status = 'pending'
+                ORDER BY requested_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            ) AND status = 'pending'
+            RETURNING approval_id, run_id, tenant_id, stage_name, status,
+                      requested_at, decided_by, decided_at, comment
             """,
             decision,
             decided_by,
             now,
             comment,
-            row["approval_id"],
+            run_id,
             tenant_id,
         )
+        if row is None:
+            return None
         req_at = _dt(row["requested_at"])
         assert req_at is not None
+        dec_at = _dt(row["decided_at"]) or now
         return ApprovalRecord(
             approval_id=str(row["approval_id"]),
             run_id=str(row["run_id"]),
             tenant_id=str(row["tenant_id"]),
             stage_name=str(row["stage_name"]),
-            status=decision,
+            status=str(row["status"]),
             requested_at=req_at,
-            decided_by=decided_by,
-            decided_at=now,
-            comment=comment,
+            decided_by=str(row["decided_by"]) if row["decided_by"] is not None else decided_by,
+            decided_at=dec_at,
+            comment=str(row["comment"] or ""),
         )
 
     async def close(self) -> None:

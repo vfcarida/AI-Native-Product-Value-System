@@ -4,12 +4,12 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2F855A?style=for-the-badge)](LICENSE)
-[![Status: v1.0 Reference](https://img.shields.io/badge/status-v1.0%20Reference-2F855A?style=for-the-badge)](#roadmap)
+[![Status: v2.5.1 Enterprise Ready](https://img.shields.io/badge/status-v2.5.1%20Enterprise%20Ready-2F855A?style=for-the-badge)](#roadmap)
 [![Cedar Policy Sync](https://img.shields.io/badge/Cedar%20Policy%20Sync-100%25%20(25%2F25)-6B46C1?style=for-the-badge)](docs/POLICY_SYNC.md)
-[![Security Scanning](https://img.shields.io/badge/Security%20Scan-Trivy%20%2B%20Snyk%20%2B%20SBOM-2B6CB0?style=for-the-badge)](docs/security/vulnerability-management.md)
-[![Test Suite](https://img.shields.io/badge/tests-900%2B%204--Tier%20Suite-009688?style=for-the-badge)](tests/README.md)
+[![Security Scanning](https://img.shields.io/badge/Security%20Scan-OWASP%20ASI01--10%20%2B%20Trivy%20%2B%20SBOM-2B6CB0?style=for-the-badge)](docs/security/vulnerability-management.md)
+[![Test Suite](https://img.shields.io/badge/tests-1%2C170%2B%204--Tier%20Suite-009688?style=for-the-badge)](tests/README.md)
 
-**A research-backed, production-hardened reference implementation for governed, FinOps-optimized, AI-native software delivery — from problem discovery to verified release and post-launch outcome learning.**
+**A research-backed, production-hardened reference implementation for governed, FinOps-optimized, AI-native software delivery — from problem discovery to verified release, enterprise governance, and post-launch outcome learning.**
 
 [Quick Start](#quick-start) • [Architecture](#architecture) • [Empirical Benchmarks](#empirical-benchmarks) • [Limitations & Non-Goals](#known-limitations--non-goals) • [CLI & SDK](#python-sdk--cli-examples) • [Documentation](#documentation)
 
@@ -21,14 +21,14 @@
 
 Most AI coding tools accelerate *code generation* while leaving architecture, governance, security, FinOps cost control, and business outcome verification behind. The **AI-Native Product Value System** demonstrates how to engineer a **deterministic control plane** around **probabilistic AI agents** across the complete product lifecycle:
 
-> `Problem → Discovery & Evidence → Specification → Parallel Multi-Agent Review → Sandboxed Build → Progressive Release → Post-Launch Outcome Learning`
+> `Problem → Discovery & Evidence → Specification → Parallel Multi-Agent Review → Iterative ReAct Build → Progressive Release → Post-Launch Outcome Learning`
 
 ### Why Teams Adopt This Architecture
-- **Deterministic Governance Over Autonomous Agents**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity, optional in-process Rust `cedarpy` PyO3 backend), **16 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, **OWASP ASI01 indirect prompt injection guards** on user and tool outputs, hard per-run/daily/monthly USD caps, and an instant `EMERGENCY_STOP` kill switch.
-- **Measured FinOps & Latency Efficiency**: Combines **tiered exact + semantic prompt caching** (`9.6 µs` L1 memory / `0.28 ms` L2 SQLite WAL hits), **6-feature complexity model routing** (**90.8% cost reduction** vs. always-flagship), **30%–50% discounted batch evaluations**, **AWS Builders' Library circuit breakers & full-jitter retries**, and **NetworkX DAG parallel execution** (**2.0x** speedup on concurrent review layers).
-- **Zero-Trust Defense-in-Depth**: Enforces **default-deny Docker `iptables` egress allowlists**, **hybrid regex + ML/entropy secret detection** (`2.59 ms` p50 on 17K-token documents, 0 FP), **constant-time `hmac.compare_digest` auth**, OWASP security headers, and **handler-attached secret-redacting OpenTelemetry JSON logs**.
-- **Enterprise Brownfield Modernization**: Prioritizes legacy refactoring via read-only **Git temporal forensics** (hotspots, temporal coupling, age, anonymized bus factor), partitions bridged monoliths using **Clauset-Newman-Moore greedy modularity** ($Q = 0.7336$), and generates **shadow-mode Anti-Corruption Layers** with sticky SHA-256 progressive Strangler Fig traffic cutovers (`1% → 100%`).
-- **Non-Punitive SPACE & DORA DevX Telemetry**: Instruments cycle time, AI acceptance rate, deployments, and satisfaction surveys with enforced `aggregate_only: true` and `anonymize: true` privacy contracts exported to Prometheus (`/metrics`), Grafana, and `/devx`.
+- **Production Multi-Tenant ASGI Control Plane & Open Protocols**: Runnable via `pvs serve` (`FastAPI` + `uvicorn` + multi-target non-root `Dockerfile`), providing tenant-isolated durable HITL runs (`PostgreSQL` HA + RLS + atomic `FOR UPDATE SKIP LOCKED` approvals + `Alembic`), **Cedar-governed MCP JSON-RPC 2.0** (`POST /api/v1/mcp` with JSON Schema validation, RBAC agent allowlists, and RFC 9728 `/.well-known/oauth-protected-resource`), and **A2A Agent Cards & Tasks** (`/.well-known/agent.json`, `/api/v1/a2a/*`).
+- **Deterministic Governance & OWASP Agentic Top 10 (ASI01–ASI10)**: Every agent runs inside a governed `Harness` enforcing **Cedar least-privilege policies** (100% verified parity, optional Rust `cedarpy` PyO3 backend), **16 strict Pydantic v2 YAML config contracts**, **8 JSON Schema 2020-12 artifact contracts**, live **`ToolOutputSanitizer` (OWASP ASI01/ASI04)** blocking indirect prompt injection, tool poisoning, and zero-width unicode smuggling, **4-layer SHA-256 tamper-evident `ContextManager` (ASI06)**, **`SignedAgentEnvelope` (ASI07)**, **automated ASI01–ASI10 CI Red-Teaming**, and **EU AI Act (Annex IV / Art. 14) + NIST AI RMF Governance Pack export (`pvs governance export`)**.
+- **Measured FinOps, Bandit Routing & Semantic Intelligence**: Combines **native Structured Outputs & Prompt Caching** across Anthropic/OpenAI/Gemini, **temporal/tenant/version-scoped exact + semantic caching (`L1 Memory` / `L2 SQLite WAL` / `Redis` / `pgvector` HNSW)**, **Thompson Sampling `BanditRouter` + 6-feature complexity routing** (**90.8% cost reduction** vs. flagship), **calibrated LLM-as-a-Judge & automated prompt optimization**, **30%–50% discounted batch evaluations**, and **NetworkX DAG parallel execution** (**2.0x** speedup).
+- **Enterprise PDLC/SDLC Integrations & Iterative ReAct Build**: Includes **HMAC-signed GitHub Pre-Human PR Triage** and **Slack Block Kit HITL approval webhooks** (with 1 MiB body-size DoS caps), **PostHog/Amplitude/BigQuery analytics connectors**, **Jira/Linear/GitHub Issues bidirectional sync**, **iterative ReAct `BuildAgent`** with unified diffs & safe base64 sandbox writes, and **Brownfield Modernization** (Git temporal forensics + Clauset-Newman-Moore modularity $Q = 0.7336$ + shadow ACLs).
+- **Non-Punitive DORA AI 7-Capabilities & SPACE DevX Telemetry**: Tracks AI rework/churn, PR first-pass rate, cycle time, deployments, and satisfaction surveys with enforced `aggregate_only: true` and `anonymize: true` privacy contracts exported to Prometheus (`/metrics`), Grafana (10-panel dashboard), and `/devx`.
 
 ---
 
@@ -36,36 +36,38 @@ Most AI coding tools accelerate *code generation* while leaving architecture, go
 
 ```mermaid
 flowchart TB
-    Dev["Product & Engineering Teams (Make / pvs CLI / Python SDK)"]
+    Dev["Product, Engineering & Enterprise Tools (pvs CLI / Control Plane API / MCP / A2A / Slack / GitHub)"]
 
-    subgraph Control["Deterministic Control Plane"]
-        Orch["ValueStreamOrchestrator + ParallelExecutor (DAG)"]
-        Contracts["14 Strict Pydantic YAML Contracts + 8 JSON Schemas"]
-        Harness["Harness: Hard Budget + Guardrails + CircuitBreaker"]
-        Policy["mtime-Cached Cedar PolicyEngine (cedarpy / CLI / Python)"]
-        DB["WAL SQLite / Async PostgreSQL Persistence & Checkpoints"]
+    subgraph Control["Deterministic Control Plane & ASGI Runtime (pvs serve)"]
+        API["FastAPI ASGI: /api/v1/runs, /mcp, /a2a, /webhooks/*, /health/*, /metrics, /devx"]
+        Orch["ValueStreamOrchestrator + ParallelExecutor (DAG) + 4-Layer ContextManager (ASI06)"]
+        Contracts["16 Strict Pydantic YAML Contracts + 8 JSON Schemas + OpenAPI 3.x"]
+        Harness["Harness: Budget + ASI01/ASI04 ToolOutputSanitizer + CircuitBreaker + Kill-Switch"]
+        Policy["mtime-Cached Cedar PolicyEngine (cedarpy / CLI / Python, 100% sync)"]
+        DB["PostgreSQL HA (RLS + pgvector HNSW) / WAL SQLite + Alembic Migrations"]
     end
 
-    subgraph FinOps["FinOps & Resilience Layer"]
-        Router["Complexity ModelRouter (LOW / MED / HIGH)"]
-        Cache["PromptCache (L1 Memory / L2 SQLite WAL / Redis)"]
-        Batch["BatchEvalRunner (OpenAI/Gemini/Azure 50% / Anthropic 30%)"]
+    subgraph FinOps["FinOps, Intelligence & Continuous Evaluation Layer"]
+        Router["Complexity ModelRouter + Thompson Sampling BanditRouter"]
+        Cache["Temporal/Tenant PromptCache (L1 Memory / L2 SQLite WAL / Redis / pgvector)"]
+        Eval["PromptRegistry + Calibrated Judge + PromptOptimizer + BatchEvalRunner"]
     end
 
-    subgraph Agents["Governed Agent & Modernization Plane"]
-        Pipeline["Discovery | Spec | 4-Perspective Review | Build | Learn"]
+    subgraph Agents["Governed Agent, Integrations & Modernization Plane"]
+        Pipeline["Discovery | Spec | 4-Perspective Review | ReAct Build | Measurement"]
+        Integrations["GitHub PR Triage | Slack HITL | PostHog/Amplitude/BigQuery | Jira/Linear"]
         Brownfield["Brownfield: GitAnalyzer + CNM Modularity Q + Shadow ACL"]
-        Sandbox["Docker Sandbox + iptables Egress Allowlist"]
-        Secret["Hybrid ML Secret Detector (Regex + ML + Entropy)"]
+        Sandbox["Docker Sandbox (base64 writes + iptables Egress) + Hybrid Secret Detector"]
     end
 
-    subgraph Obs["Observability & Non-Punitive DevX"]
+    subgraph Gov["Observability, Compliance & Red-Teaming"]
         OTel["OTel GenAI v1.28-v1.30+ Tracing + Secret-Redacting JSON Logs"]
-        HTTP["FastAPI: /health/live, /health/ready, /slos, /metrics, /devx"]
-        DevX["SPACE & DORA Tracker (aggregate_only=true)"]
+        Compliance["EU AI Act (Art. 14) + NIST AI RMF Pack + OWASP ASI01-ASI10 RedTeam CI"]
+        DevX["DORA AI 7-Capabilities & SPACE Tracker (aggregate_only=true)"]
     end
 
-    Dev --> Orch
+    Dev --> API
+    API --> Orch
     Contracts --> Orch
     Orch --> Harness
     Harness --> Policy
@@ -74,13 +76,14 @@ flowchart TB
     Orch --> Pipeline
     Orch --> DB
     Pipeline --> Sandbox
-    Pipeline --> Secret
+    API --> Integrations
     Dev --> Brownfield
-    Batch --> Pipeline
+    Eval --> Pipeline
     Harness --> OTel
     Orch --> DevX
-    DevX --> HTTP
-    OTel --> HTTP
+    Orch --> Compliance
+    DevX --> API
+    OTel --> API
 ```
 
 Explore full C4 (L1–L3), sequence, trust-boundary, and deployment diagrams in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/architecture/DIAGRAMS.md](docs/architecture/DIAGRAMS.md), and [docs/adr/README.md](docs/adr/README.md) (`ADR-0001` through `ADR-0006`).
@@ -207,7 +210,7 @@ python scripts/run_benchmarks.py --markdown-out docs/BENCHMARKS.md
 - **Graceful Degradation for Heavy Optional Extras**: Microsoft Presidio/spaCy NER (`secret_detection`) and `TinyTroupe` (`simulation`) fall back to deterministic heuristic/entropy implementations when optional extras are not installed.
 
 ### Explicit Non-Goals
-- **Not a Hosted SaaS or Chat GUI**: Designed as a CLI-first, embeddable Python control plane and library; bundled FastAPI apps expose operational `/health/*`, `/metrics`, `/devx`, and feature-flag admin endpoints only.
+- **Not a Hosted SaaS or Chat GUI**: Designed as an embeddable Python control plane, CLI (`pvs`), and multi-tenant FastAPI ASGI server (`pvs serve`) exposing REST, MCP, A2A, signed webhook, `/health/*`, `/metrics`, and `/devx` endpoints.
 - **Not Individual Developer Surveillance**: DevX SPACE/DORA instrumentation enforces `aggregate_only: true`, SHA-256 anonymization, and explicit developer opt-out by design.
 - **No Opaque Prompt-Chain Magic**: Every stage, policy rule, budget cap, and artifact schema is declared explicitly in versioned YAML, JSON Schema, and Cedar files.
 
@@ -217,19 +220,23 @@ python scripts/run_benchmarks.py --markdown-out docs/BENCHMARKS.md
 
 ```text
 AI-Native-Product-Value-System/
-├── src/product_value_system/   # 30 public packages (agents, orchestrator, harness, policy,
-│                               #   caching, routing, evaluation, sandbox, security, brownfield,
-│                               #   metrics, monitoring, observability, contracts, api, cli, ...)
+├── src/product_value_system/   # 33 public packages (agents, orchestrator, harness, policy,
+│                               #   protocols, integrations, compliance, caching, routing,
+│                               #   evaluation, sandbox, security, brownfield, metrics,
+│                               #   monitoring, observability, contracts, api, cli, ...)
 ├── config/                     # 16 strictly validated YAML configs (StrictConfigModel)
 ├── schemas/                    # 8 JSON Schema 2020-12 artifact contracts
 ├── policies/                   # Declarative Cedar authorization schema & policies
+├── prompts/                    # Versioned prompt registry templates with SHA-256 hashes
+├── alembic/                    # Cross-dialect Alembic migrations (PostgreSQL + SQLite)
+├── migrations/                 # SQLite WAL & PostgreSQL HA + RLS + pgvector HNSW SQL
 ├── examples/                   # Greenfield, brownfield, progressive delivery & $0 showcases
 ├── golden_datasets/            # 180 HELM-structured eval samples & 25 golden trajectories
-├── docs/                       # Architecture, 6 ADRs, benchmarks, reference & 30+ guides
+├── docs/                       # Architecture, 6 ADRs, benchmarks, reference & 40+ guides
 ├── tests/                      # 4-tier test suite (unit + Hypothesis PBT, integration, eval, security)
 ├── scripts/                    # Benchmark harness, policy sync, secret scan & release audit
 ├── deploy/helm/                # Production-hardened Kubernetes Helm v3 chart (Restricted PSS)
-├── Dockerfile                  # Hardened multi-stage non-root container (UID 10001 + HEALTHCHECK)
+├── Dockerfile                  # 3-stage non-root container (builder-prod / runtime / ci-dev)
 └── Makefile                    # 23+ self-documenting developer & CI workflow commands
 ```
 
@@ -252,11 +259,11 @@ AI-Native-Product-Value-System/
 ## Development, Quality Gates & Testing
 
 ```bash
-make lint                  # Ruff lint + strict mypy across 200+ source files
+make lint                  # Ruff lint + strict mypy across 240+ source files
 make test-unit             # Fast unit + Hypothesis property-based invariant tests ($0)
 make test                  # Full 4-tier non-live suite (unit, integration, eval, security, $0)
 make validate-policies     # Verify 100% Cedar / Python policy parity (25/25)
-./scripts/final-audit.sh   # Full EVO-001..EVO-033 release readiness audit
+./scripts/final-audit.sh   # Full release readiness audit
 ```
 
 See [tests/README.md](tests/README.md) for test tiers, live integration opt-in (`RUN_REAL_INTEGRATION_TESTS=1`), and hard per-test cost limits (`$0.05/test`, `$0.50/run`).
@@ -265,9 +272,10 @@ See [tests/README.md](tests/README.md) for test tiers, live integration opt-in (
 
 ## Roadmap
 
-- ✅ **v0.1 – v0.5 (Core, Simulation, Evaluation, Governance & Observability)**: Multi-provider adapters (`OpenAI`, `Anthropic`, `Mock`) with SSE streaming, Cedar policy engine, Docker sandboxes, TinyTroupe simulation, Learn-stage outcome measurement, 180-sample golden datasets + trajectory evals, 4-perspective multi-agent review, SLOs & feature flags, A/B power & baseline validation, spec/code drift detection, ADR manager, Spec-Kit, OTel GenAI v1.28+, interview & evidence synthesis.
-- ✅ **v0.9 / Evolution P2 (EVO-024 – EVO-033 & 20-Round Production Hardening)**: Hybrid ML secret detection, L1/L2 WAL prompt caching, complexity model routing, discounted batch evaluations, DAG parallel execution, zero-trust `iptables` egress filtering, Git history forensics, Clauset-Newman-Moore Strangler Fig modernization + shadow ACL, SPACE/DORA DevX telemetry, strict Pydantic v2 config contracts (`12/12`), AWS resilience circuit breakers, constant-time auth & OWASP headers, structured secret-redacting logs, `pvs doctor`/`route`/`brownfield`/`devx` CLI, and reproducible benchmarks.
-- ✅ **v1.0 Multi-Provider, Polyglot Drift & Kubernetes Readiness**: Native Google Gemini (`GeminiModelAdapter`), Azure OpenAI (`AzureOpenAIModelAdapter`), and local Ollama (`OllamaModelAdapter`) adapters with unified `create_adapter()` factory & CLI `--provider`/`--model` flags; multi-language TypeScript/JavaScript & Go structural AST drift scanning (`TypeScriptScanner`, `GoScanner`) integrated end-to-end into `CodeScanner`/`SpecScanner`/`scan_drift()`; Gemini & Azure OpenAI batch evaluation adapters (`50%` discount); optional in-process Rust `cedarpy` PyO3 bindings; async PostgreSQL persistence (`PostgresDatabase`, `create_database()`); deterministic `requirements.lock` + CI `helm lint`/`kubeconform`/`pip-audit`; and production-hardened Kubernetes Helm v3 chart (`deploy/helm/product-value-system/`) with Restricted PSS, `NetworkPolicy`, HPA, PDB, `ServiceMonitor`, optional companion OTel Collector, and Grafana dashboard ConfigMap.
+- ✅ **v0.1 – v1.0 (Core, FinOps, Multi-Provider, Brownfield & Production Hardening `PROD-001`–`PROD-015`)**: Multi-provider adapters (`OpenAI`, `Anthropic`, `Gemini`, `Azure OpenAI`, `Ollama`, `Mock`), Cedar policy engine (optional Rust `cedarpy`), Docker `iptables` sandboxes, TinyTroupe simulation, 180-sample golden datasets, 4-perspective multi-agent review, polyglot Python/TS/Go drift scanning, Git forensics & Strangler Fig CNM modularity, Kubernetes Helm v3 chart (Restricted PSS), 20 runbooks, 15 Chaos GameDays, and SRE rituals.
+- ✅ **v1.1 – v1.2 (Waves 0–1 — Production Control Plane, Open Protocols & ReAct Build)**: Runnable ASGI composition root (`pvs serve`), durable multi-tenant HITL `DurableRunStore` (PostgreSQL HA + RLS + SQLite WAL + Alembic), 3-stage non-root `Dockerfile`, Cedar-governed MCP JSON-RPC 2.0 server/client, A2A Agent Cards & Tasks (`/.well-known/agent.json`), native Structured Outputs & Prompt Caching across providers, and iterative ReAct `BuildAgent` with unified diffs.
+- ✅ **v1.5 (Wave 2 — Semantic Intelligence, Adaptive Routing & Evaluation Flywheel)**: `pgvector` HNSW semantic store, tenant/version/temporal-scoped `PromptCache`, domain-agnostic embedding theme clustering, Thompson Sampling `BanditRouter`, 4-layer SHA-256 tamper-evident `ContextManager` (OWASP ASI06), versioned `PromptRegistry`, calibrated `LLM-as-a-Judge`, and `PromptOptimizer`.
+- ✅ **v2.0 – v2.5.1 (Waves 3–4 & Post-Audit Hardening)**: Signed GitHub Pre-Human PR Triage & Slack HITL webhooks (with 1 MiB DoS cap), PostHog/Amplitude/BigQuery analytics connectors, Jira/Linear/GitHub Issues bidirectional sync, DORA AI 7-Capabilities + 10-panel Grafana dashboard, live OWASP ASI01/ASI04 `ToolOutputSanitizer` on `ToolRegistry` & `Harness`, OWASP ASI01–ASI10 automated CI Red-Teaming, EU AI Act (Annex IV / Art. 14) + NIST AI RMF Governance Pack (`pvs governance export`), MCP JSON Schema + RBAC agent allowlists + RFC 9728 OAuth 2.1 Protected Resource Metadata, atomic `FOR UPDATE SKIP LOCKED` Postgres approvals, base64 safe sandbox writes, pure-stdlib ASGI boot (zero eager NumPy), and real Postgres+pgvector+Redis+Alembic + `mutmut` CI jobs.
 
 ---
 
@@ -280,4 +288,4 @@ See [tests/README.md](tests/README.md) for test tiers, live integration opt-in (
 
 ---
 
-**Last Updated**: 2026-11-22
+**Last Updated**: 2026-11-27

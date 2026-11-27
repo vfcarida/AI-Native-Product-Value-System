@@ -40,6 +40,7 @@ from product_value_system.harness.memory import Memory
 from product_value_system.harness.tools import ToolRegistry
 from product_value_system.observability.tracing import traced
 from product_value_system.policy.engine import PolicyEngine
+from product_value_system.security.agentic_guardrails import ToolOutputSanitizer
 from product_value_system.security.input_validator import (
     InputValidator as PromptInputValidator,
 )
@@ -111,6 +112,9 @@ class Harness:
         self.last_routing_decision: RoutingDecision | None = None
         self.input_validator: PromptInputValidator = (
             input_validator or PromptInputValidator()
+        )
+        self.tool_output_sanitizer = ToolOutputSanitizer(
+            input_validator=self.input_validator,
         )
         if trajectory_capture is not None:
             self.trajectory_capture: TrajectoryCapture = trajectory_capture
@@ -186,16 +190,57 @@ class Harness:
                 )
                 self.memory.add_message(role_str, content_str)
 
-            if role_str in {"user", "tool"}:
+            if role_str == "tool":
+                sanitized = self.tool_output_sanitizer.sanitize(content_str)
+                if not sanitized.allowed:
+                    reason = "; ".join(sanitized.findings)
+                    self._log_security_event(
+                        event_type="indirect_prompt_injection_detected",
+                        risk_level=sanitized.risk_level,
+                        patterns=sanitized.findings,
+                        categories=["OWASP_ASI01", "OWASP_ASI04"],
+                    )
+                    self.violations.append(reason)
+                    metrics.record_policy_violation(
+                        agent=self.context.agent_name,
+                        decision="DENY",
+                    )
+                    metrics.record_request(
+                        agent=self.context.agent_name,
+                        status="error",
+                        latency_seconds=time.perf_counter() - step_start,
+                        error_type="SecurityError",
+                    )
+                    if capture_active:
+                        self.trajectory_capture.log_step(
+                            thought=(
+                                "OWASP ASI01/ASI04 guard blocked indirect injection / "
+                                "tool poisoning in tool output"
+                            ),
+                            action=None,
+                            observation=f"BLOCKED: {reason}",
+                            latency_ms=(time.perf_counter() - step_start) * 1000.0,
+                            policy_checked=True,
+                            policy_decision="DENY",
+                        )
+                    raise SecurityError(
+                        f"Tool output blocked (ASI01) [ASI04]: {reason}",
+                        risk_level=sanitized.risk_level,
+                        matched_patterns=sanitized.findings,
+                    )
+                if sanitized.findings and sanitized.sanitized_text != content_str:
+                    last_msg = normalized[-1]
+                    normalized[-1] = AdapterMessage(
+                        role=last_msg.role,
+                        content=sanitized.sanitized_text,
+                        name=last_msg.name,
+                        cache_control=last_msg.cache_control,
+                    )
+            elif role_str == "user":
                 validation = self.input_validator.validate(content_str)
-                is_indirect = role_str == "tool"
                 if validation.risk_level in {"MEDIUM", "HIGH", "CRITICAL"}:
                     self._log_security_event(
-                        event_type=(
-                            "indirect_prompt_injection_detected"
-                            if is_indirect
-                            else "prompt_injection_detected"
-                        ),
+                        event_type="prompt_injection_detected",
                         risk_level=validation.risk_level,
                         patterns=validation.matched_patterns,
                         categories=validation.categories,
@@ -213,22 +258,16 @@ class Harness:
                             error_type="SecurityError",
                         )
                         if capture_active:
-                            thought_msg = (
-                                "OWASP ASI01 guard blocked indirect prompt injection in tool output"
-                                if is_indirect
-                                else "Input validation blocked suspicious user prompt"
-                            )
                             self.trajectory_capture.log_step(
-                                thought=thought_msg,
+                                thought="Input validation blocked suspicious user prompt",
                                 action=None,
                                 observation=f"BLOCKED: {validation.reason}",
                                 latency_ms=(time.perf_counter() - step_start) * 1000.0,
                                 policy_checked=True,
                                 policy_decision="DENY",
                             )
-                        prefix = "Tool output blocked (ASI01)" if is_indirect else "Input blocked"
                         raise SecurityError(
-                            f"{prefix}: {validation.reason}",
+                            f"Input blocked: {validation.reason}",
                             risk_level=validation.risk_level,
                             matched_patterns=validation.matched_patterns,
                         )

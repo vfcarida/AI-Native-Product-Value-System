@@ -26,7 +26,9 @@ from datetime import UTC, datetime
 from typing import Any, TextIO
 
 import httpx
+import jsonschema
 
+from product_value_system.__version__ import __version__
 from product_value_system.compliance.audit_logger import (
     AuditEvent,
     AuditEventType,
@@ -109,7 +111,7 @@ class MCPServer:
         tool_registry: ToolRegistry,
         *,
         name: str = "pvs-mcp-server",
-        version: str = "1.2.0",
+        version: str = __version__,
         audit_logger: AuditLogger | None = None,
         default_environment: str = "sandbox",
     ) -> None:
@@ -266,8 +268,20 @@ class MCPServer:
                 "tools/call requires string 'name' and object 'arguments'",
             )
 
-        if self.tool_registry.get_tool(tool_name) is None:
+        tool = self.tool_registry.get_tool(tool_name)
+        if tool is None:
             return _jsonrpc_err(req_id, ERR_INVALID_PARAMS, f"Tool '{tool_name}' not found")
+
+        if isinstance(tool.parameters, dict) and tool.parameters:
+            try:
+                jsonschema.validate(instance=arguments, schema=tool.parameters)
+            except jsonschema.ValidationError as exc:
+                return _jsonrpc_err(
+                    req_id,
+                    ERR_INVALID_PARAMS,
+                    f"Invalid tool arguments for '{tool_name}': {exc.message}",
+                    data={"tool": tool_name, "path": [str(p) for p in exc.path]},
+                )
 
         exec_context: dict[str, Any] = {
             "environment": self.default_environment,
@@ -493,7 +507,7 @@ class MCPClient:
             "initialize",
             {
                 "protocolVersion": MCP_PROTOCOL_VERSION,
-                "clientInfo": {"name": "pvs-mcp-client", "version": "1.2.0"},
+                "clientInfo": {"name": "pvs-mcp-client", "version": __version__},
             },
         )
 

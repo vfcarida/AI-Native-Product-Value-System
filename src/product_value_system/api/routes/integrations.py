@@ -30,6 +30,32 @@ from product_value_system.integrations.slack_hitl import (
 from product_value_system.metrics.devx_tracker import DevXTracker
 from product_value_system.persistence.run_store import DurableRunStore
 
+MAX_WEBHOOK_BODY_BYTES = 1_048_576  # 1 MiB DoS cap before signature/JSON parsing
+
+
+async def _read_bounded_webhook_body(request: Request) -> bytes:
+    """Read request body while enforcing a hard 1 MiB ceiling (HTTP 413)."""
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_WEBHOOK_BODY_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"Webhook payload exceeds maximum size of "
+                        f"{MAX_WEBHOOK_BODY_BYTES} bytes"
+                    ),
+                )
+        except ValueError:
+            pass
+    raw_body = await request.body()
+    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Webhook payload exceeds maximum size of {MAX_WEBHOOK_BODY_BYTES} bytes",
+        )
+    return raw_body
+
 
 def create_integrations_router(
     *,
@@ -46,7 +72,7 @@ def create_integrations_router(
 
     @router.post("/github/pr-triage")
     async def github_pr_triage_webhook(request: Request) -> dict[str, Any]:
-        raw_body = await request.body()
+        raw_body = await _read_bounded_webhook_body(request)
         sig = request.headers.get("x-hub-signature-256")
         if not verify_github_signature(raw_body, sig, github_webhook_secret):
             raise HTTPException(status_code=401, detail="Invalid GitHub webhook signature")
@@ -121,7 +147,7 @@ def create_integrations_router(
 
     @router.post("/slack/interactions")
     async def slack_hitl_interaction_webhook(request: Request) -> dict[str, Any]:
-        raw_body = await request.body()
+        raw_body = await _read_bounded_webhook_body(request)
         ts = request.headers.get("x-slack-request-timestamp")
         sig = request.headers.get("x-slack-signature")
         if not verify_slack_signature(raw_body, ts, sig, slack_signing_secret):

@@ -13,40 +13,42 @@ Following **Anthropic's *"Building Effective Agents"***, **McKinsey's AI-Native 
 
 ---
 
-## C4 System Architecture Overview (31 Packages)
+## C4 System Architecture Overview (33 Packages)
 
 ```mermaid
 flowchart TB
-    User["Product & Engineering Teams (CLI pvs / Make / Python SDK)"]
+    User["Product, Engineering & Enterprise Tools (pvs CLI / ASGI Control Plane / MCP / A2A / Slack / GitHub)"]
 
-    subgraph ControlPlane["Deterministic Control Plane"]
-        Orch["ValueStreamOrchestrator + ParallelExecutor (DAG)"]
-        Contracts["StrictConfigModel (16 YAML) + JSON Schemas (8)"]
-        Harness["Harness: Budget + ASI01 Guardrails + CircuitBreaker"]
+    subgraph ControlPlane["Deterministic Control Plane & ASGI Runtime"]
+        API["FastAPI Control Plane: /api/v1/runs, /mcp, /a2a, /webhooks/*, /.well-known/*"]
+        Orch["ValueStreamOrchestrator + ParallelExecutor (DAG) + 4-Layer ContextManager (ASI06)"]
+        Contracts["StrictConfigModel (16 YAML) + JSON Schemas (8) + OpenAPI 3.x"]
+        Harness["Harness: Budget + ASI01/ASI04 ToolOutputSanitizer + CircuitBreaker"]
         Policy["Cedar PolicyEngine (cedarpy / CLI / Python, 100% sync)"]
-        Persist["PostgreSQL HA + PgBouncer + Durable HITL RunStore + Alembic"]
+        Persist["PostgreSQL HA (RLS + pgvector HNSW) + Durable HITL RunStore + Alembic"]
     end
 
-    subgraph FinOps["FinOps & Resilience Layer"]
-        Router["Complexity ModelRouter (LOW/MED/HIGH)"]
-        Cache["PromptCache (L1 Memory / L2 SQLite WAL / Redis)"]
-        Batch["BatchEvalRunner (OpenAI 50% / Anthropic 30%)"]
+    subgraph FinOps["FinOps, Intelligence & Eval Layer"]
+        Router["Complexity ModelRouter + Thompson Sampling BanditRouter"]
+        Cache["Temporal/Tenant PromptCache (L1 Memory / L2 SQLite WAL / Redis / pgvector)"]
+        Batch["PromptRegistry + Calibrated Judge + PromptOptimizer + BatchEvalRunner"]
     end
 
-    subgraph ExecutionPlane["Governed Agent & Modernization Plane"]
-        Agents["Discovery | Spec | Multi-Review | Build | Learn"]
+    subgraph ExecutionPlane["Governed Agent, Integration & Modernization Plane"]
+        Agents["Discovery | Spec | Multi-Review | ReAct Build | Measurement"]
+        Integrations["GitHub PR Triage | Slack HITL | PostHog/Amplitude/BigQuery | Jira/Linear"]
         Brownfield["Brownfield Engine: GitAnalyzer + CNM Modularity Q + Shadow ACL"]
-        Sandbox["Zero-Trust Docker Sandbox + iptables Egress Allowlist"]
-        SecretScan["Hybrid Secret Detector (Regex + ML + Entropy)"]
+        Sandbox["Zero-Trust Docker Sandbox (base64 writes + iptables Egress) + Hybrid Secret Detector"]
     end
 
-    subgraph Telemetry["Unified Observability & Non-Punitive DevX"]
+    subgraph Telemetry["Observability, Compliance & Non-Punitive DevX"]
         OTel["OTel GenAI v1.28+ Tracing + Redacting JSON Logs"]
-        API["FastAPI: /health/live, /health/ready, /slos, /metrics, /devx"]
-        DevX["SPACE & DORA Tracker (aggregate_only=true)"]
+        Compliance["EU AI Act (Annex IV / Art. 14) + NIST AI RMF + OWASP ASI01-ASI10 RedTeam"]
+        DevX["DORA AI 7-Capabilities & SPACE Tracker (aggregate_only=true)"]
     end
 
-    User --> Orch
+    User --> API
+    API --> Orch
     Contracts --> Orch
     Orch --> Harness
     Harness --> Policy
@@ -55,11 +57,12 @@ flowchart TB
     Orch --> Agents
     Orch --> Persist
     Agents --> Sandbox
-    Agents --> SecretScan
+    API --> Integrations
     User --> Brownfield
     Batch --> Agents
     Harness --> OTel
     Orch --> DevX
+    Orch --> Compliance
     DevX --> API
     OTel --> API
 ```
@@ -70,12 +73,13 @@ flowchart TB
 
 | Architectural Plane | Packages | Primary Documentation & ADRs |
 |---|---|---|
-| **Orchestration & Parallelism** | `orchestrator`, `review`, `feature_flags`, `persistence` | [Parallel Execution](parallel-execution.md), [Multi-Agent Review](architecture/multi-agent-review.md), [ADR-0002](adr/ADR-0002-elephant-goldfish-multi-agent-review.md), [ADR-0003](adr/ADR-0003-progressive-delivery-and-feature-flags.md) |
-| **FinOps & Resilience** | `caching`, `routing`, `evaluation`, `harness` | [Token Caching](token-caching.md), [Model Routing](model-routing.md), [Batch Evaluations](batch-evaluations.md), [ADR-0004](adr/ADR-0004-finops-caching-routing-and-batch-optimization.md) |
-| **Security & Zero-Trust Governance** | `policy`, `security`, `sandbox`, `runtime`, `contracts` | [Threat Model](THREAT_MODEL.md), [Network Filtering](network-filtering.md), [Policy Sync](POLICY_SYNC.md), [ADR-0001](adr/ADR-0001-use-cedar-for-policy-engine.md), [ADR-0005](adr/ADR-0005-zero-trust-sandbox-egress-and-hybrid-secret-detection.md) |
+| **Control Plane & Protocols** | `api`, `protocols`, `orchestrator`, `review`, `feature_flags`, `persistence` | [Parallel Execution](parallel-execution.md), [Multi-Agent Review](architecture/multi-agent-review.md), [ADR-0002](adr/ADR-0002-elephant-goldfish-multi-agent-review.md), [ADR-0003](adr/ADR-0003-progressive-delivery-and-feature-flags.md) |
+| **Enterprise Integrations** | `integrations`, `cli` | [CLI Commands](reference/cli/commands.md), [Continuous Improvement (DORA & SPACE)](operations/improvement-metrics.md) |
+| **FinOps, Routing & Eval** | `caching`, `routing`, `evaluation`, `harness`, `adapters` | [Token Caching](token-caching.md), [Model Routing](model-routing.md), [Batch Evaluations](batch-evaluations.md), [ADR-0004](adr/ADR-0004-finops-caching-routing-and-batch-optimization.md) |
+| **Security, Governance & Compliance** | `policy`, `security`, `compliance`, `sandbox`, `runtime`, `contracts`, `secrets` | [Threat Model](THREAT_MODEL.md), [SOC2 Controls](compliance/soc2-controls.md), [GDPR Compliance](compliance/gdpr-compliance.md), [Network Filtering](network-filtering.md), [Policy Sync](POLICY_SYNC.md), [ADR-0001](adr/ADR-0001-use-cedar-for-policy-engine.md), [ADR-0005](adr/ADR-0005-zero-trust-sandbox-egress-and-hybrid-secret-detection.md) |
 | **Brownfield Modernization** | `brownfield`, `drift`, `adr`, `spec_kit` | [Git History Analysis](git-history-analysis.md), [Strangler Fig Modernization](strangler-fig-modernization.md), [ADR-0006](adr/ADR-0006-brownfield-modularity-and-non-punitive-devx-governance.md) |
 | **Discovery, Evidence & Learning** | `simulation`, `discovery`, `evidence`, `experiments`, `validation`, `learning` | [Evidence Synthesis](evidence-synthesis.md), [Experiment Design](experiment-design.md), [Learning API](reference/api/learning.md) |
-| **Observability & DevX** | `observability`, `monitoring`, `metrics`, `api`, `cli` | [OTel GenAI Conventions](otel-genai-conventions.md), [DevX Metrics](devx-metrics.md), [Empirical Benchmarks](BENCHMARKS.md) |
+| **Observability & DevX** | `observability`, `monitoring`, `metrics` | [OTel GenAI Conventions](otel-genai-conventions.md), [DevX Metrics](devx-metrics.md), [Empirical Benchmarks](BENCHMARKS.md) |
 
 ---
 
