@@ -1,3 +1,21 @@
+# Release Notes: v3.0.1 (Production-Readiness Hardening: PyJWT Extra, Persistent Audit Store, Multi-Pod SSE & Live Worker Executor)
+
+**Date**: 2026-11-27  
+**Status**: v3.0.1 Production-Hardened Platform (Zero-Warning Suite, Multi-Pod SSE, Persistent Append-Only Audit Trail & Turnkey Live Worker Mode)
+
+## Highlights Since v3.0.0
+
+1. **Packaging, Container & Helm Parity**:
+   - Added `PyJWT[crypto]>=2.8` to `[monitoring]` in `pyproject.toml`, copied `prompts/` into the `Dockerfile` production `runtime` stage for `governance-cronjob.yaml`, and exposed `E2B_API_KEY` and `PVS_WORKER_EXECUTOR` in Helm Chart `3.0.1`.
+2. **Persistent Append-Only Audit Trail in Control Plane**:
+   - Wired `DeferredSQLiteAuditStore` (SQLite WAL + immutable `BEFORE UPDATE`/`BEFORE DELETE` triggers) and `DeferredPostgresAuditStore` into `create_production_app()` so HMAC-signed compliance logs survive pod restarts.
+3. **Multi-Replica Kubernetes SSE Streaming**:
+   - Upgraded `RunEventBus` with Redis Pub/Sub cross-pod fan-out and durable DB tail polling fallback so horizontally scaled API pods stream live worker events without loss.
+4. **Turnkey Live Worker Mode (`PVS_WORKER_EXECUTOR=live`)**:
+   - Added `LiveAgentStageExecutor` executing each Value Stream stage through the governed `Harness` (`Budget`, OWASP guardrails, `ModelAdapter`) while preserving zero-NumPy/zero-SciPy ASGI startup.
+
+---
+
 # Release Notes: v3.0.0 (Async Durable Control Plane, SSE Streaming, Dynamic JWKS, Kernel Sandboxes & Executable PROD-015)
 
 **Date**: 2026-11-27  

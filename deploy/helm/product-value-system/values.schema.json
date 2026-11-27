@@ -369,6 +369,7 @@
         "enableProtocols": { "type": "string", "enum": ["true", "false"] },
         "enableIntegrations": { "type": "string", "enum": ["true", "false"] },
         "enableWorker": { "type": "string", "enum": ["true", "false"] },
+        "workerExecutor": { "type": "string", "enum": ["mock", "live"] },
         "enableDevx": { "type": "string", "enum": ["true", "false"] },
         "enableAudit": { "type": "string", "enum": ["true", "false"] },
         "allowAnonymousDev": { "type": "string", "enum": ["true", "false"] },

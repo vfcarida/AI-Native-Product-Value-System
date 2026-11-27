@@ -39,13 +39,20 @@ from product_value_system.api.routes.protocols import create_protocols_router
 from product_value_system.api.routes.runs import create_control_plane_router
 from product_value_system.api.worker import (
     DurableRunWorker,
+    LiveAgentStageExecutor,
     PostgresRunJobQueue,
     RunEventBus,
     RunJobQueue,
     SQLiteRunJobQueue,
     StageExecutor,
 )
-from product_value_system.compliance.audit_logger import AuditLogger, InMemoryAuditStore
+from product_value_system.compliance.audit_logger import (
+    AuditLogger,
+    AuditStore,
+    DeferredPostgresAuditStore,
+    DeferredSQLiteAuditStore,
+    InMemoryAuditStore,
+)
 from product_value_system.compliance.gdpr_handler import GDPRHandler
 from product_value_system.compliance.signing import generate_signing_key
 from product_value_system.harness.tools import ToolRegistry
@@ -94,6 +101,8 @@ class ProductionSettings:
     enable_protocols: bool = True
     enable_integrations: bool = True
     enable_worker: bool = True
+    worker_executor: str = "mock"
+    model_provider: str = "auto"
     allow_anonymous_dev: bool = False
     rate_limit_per_minute: int = 120
     api_keys: dict[str, TenantContext] = field(default_factory=dict)
@@ -142,6 +151,10 @@ class ProductionSettings:
             except json.JSONDecodeError as exc:
                 logger.warning("Ignoring malformed PVS_API_KEYS_JSON: %s", exc)
 
+        raw_executor = environ.get("PVS_WORKER_EXECUTOR", "mock").strip().lower()
+        worker_executor = raw_executor if raw_executor in {"mock", "live"} else "mock"
+        model_provider = environ.get("PVS_MODEL_PROVIDER", "auto").strip().lower() or "auto"
+
         return cls(
             database_url=db_url,
             redis_url=environ.get("REDIS_URL", ""),
@@ -162,6 +175,8 @@ class ProductionSettings:
             enable_protocols=_parse_bool(environ.get("PVS_ENABLE_PROTOCOLS"), True),
             enable_integrations=_parse_bool(environ.get("PVS_ENABLE_INTEGRATIONS"), True),
             enable_worker=_parse_bool(environ.get("PVS_ENABLE_WORKER"), True),
+            worker_executor=worker_executor,
+            model_provider=model_provider,
             allow_anonymous_dev=_parse_bool(environ.get("PVS_ALLOW_ANONYMOUS_DEV"), False),
             rate_limit_per_minute=int(environ.get("PVS_RATE_LIMIT_PER_MINUTE", "120")),
             api_keys=api_keys,
@@ -186,6 +201,24 @@ def _build_job_queue(database_url: str, store: DurableRunStore) -> RunJobQueue:
         return SQLiteRunJobQueue(":memory:")
     sqlite_path = database_url.removeprefix("sqlite:///")
     return SQLiteRunJobQueue(sqlite_path)
+
+
+def _build_audit_store(database_url: str, store: DurableRunStore) -> AuditStore:
+    if isinstance(store, PostgresDurableRunStore):
+        return DeferredPostgresAuditStore(store._db)
+    if isinstance(store, SQLiteDurableRunStore):
+        store_path = getattr(store, "db_path", None) or getattr(store, "_db_path", None)
+        if store_path is not None:
+            path_str = str(store_path)
+            if path_str == ":memory:":
+                return InMemoryAuditStore()
+            return DeferredSQLiteAuditStore(path_str)
+    if not database_url or database_url == ":memory:":
+        return InMemoryAuditStore()
+    sqlite_path = database_url.removeprefix("sqlite:///")
+    if sqlite_path == ":memory:":
+        return InMemoryAuditStore()
+    return DeferredSQLiteAuditStore(sqlite_path)
 
 
 class _DefaultKnowledgeBaseTool:
@@ -243,14 +276,20 @@ def create_production_app(
     cfg = settings or ProductionSettings.from_env()
     store: DurableRunStore = run_store or _build_run_store(cfg.database_url)
     active_job_queue: RunJobQueue = job_queue or _build_job_queue(cfg.database_url, store)
-    active_event_bus: RunEventBus = event_bus or RunEventBus(active_job_queue)
+    active_event_bus: RunEventBus = event_bus or RunEventBus(
+        active_job_queue, redis_client=redis_client
+    )
+    resolved_stage_executor: StageExecutor | None = stage_executor
+    if resolved_stage_executor is None and cfg.worker_executor.strip().lower() == "live":
+        resolved_stage_executor = LiveAgentStageExecutor(provider=cfg.model_provider)
+
     active_worker: DurableRunWorker | None = worker
     if active_worker is None and cfg.enable_worker:
         active_worker = DurableRunWorker(
             run_store=store,
             job_queue=active_job_queue,
             event_bus=active_event_bus,
-            stage_executor=stage_executor,
+            stage_executor=resolved_stage_executor,
         )
     active_metrics = metrics or PVSMetrics(register_global_prometheus=False)
 
@@ -261,12 +300,14 @@ def create_production_app(
         )
 
     active_audit: AuditLogger | None = audit_logger
+    managed_audit_store: AuditStore | None = None
     if active_audit is None and cfg.enable_audit:
         signing_key: bytes | str = (
             cfg.audit_signing_key if cfg.audit_signing_key else generate_signing_key()
         )
+        managed_audit_store = _build_audit_store(cfg.database_url, store)
         active_audit = AuditLogger(
-            store=InMemoryAuditStore(),
+            store=managed_audit_store,
             signing_key=signing_key,
             enable_async=False,
         )
@@ -388,8 +429,12 @@ def create_production_app(
 
         await store.initialize()
         await active_job_queue.initialize()
-        if active_worker is not None:
-            active_worker.start()
+        if managed_audit_store is not None:
+            init_fn = getattr(managed_audit_store, "initialize", None)
+            if callable(init_fn):
+                res = init_fn()
+                if hasattr(res, "__await__"):
+                    await res
 
         if state["redis"] is None and cfg.redis_url:
             try:
@@ -397,8 +442,14 @@ def create_production_app(
 
                 state["redis"] = aioredis.from_url(cfg.redis_url)
                 rate_limiter.set_redis_client(state["redis"])
+                active_event_bus.set_redis_client(state["redis"])
             except Exception as exc:
                 logger.warning("Redis connection skipped (%s); using local fallback", exc)
+        elif state["redis"] is not None:
+            active_event_bus.set_redis_client(state["redis"])
+
+        if active_worker is not None:
+            active_worker.start()
 
         state["started"] = True
         logger.info("PVS production control plane started (%s)", store.get_pool_stats())
@@ -409,6 +460,12 @@ def create_production_app(
             if active_worker is not None:
                 await active_worker.stop()
             await active_job_queue.close()
+            if managed_audit_store is not None:
+                close_audit = getattr(managed_audit_store, "close", None)
+                if callable(close_audit):
+                    res = close_audit()
+                    if hasattr(res, "__await__"):
+                        await res
             await store.close()
             if state["redis"] is not None:
                 close_fn = getattr(state["redis"], "aclose", None) or getattr(
@@ -425,6 +482,7 @@ def create_production_app(
     app.state.job_queue = active_job_queue
     app.state.event_bus = active_event_bus
     app.state.worker = active_worker
+    app.state.audit_logger = active_audit
     app.state.authenticator = authenticator
     app.state.settings = cfg
     app.state.mcp_server = active_mcp

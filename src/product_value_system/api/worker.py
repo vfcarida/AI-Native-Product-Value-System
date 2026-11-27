@@ -749,15 +749,58 @@ class PostgresRunJobQueue:
 
 class RunEventBus:
     """
-    Combines durable ``RunJobQueue`` event persistence with in-process
-    ``asyncio.Queue`` pub/sub fan-out for low-latency Server-Sent Events (SSE).
+    Combines durable ``RunJobQueue`` event persistence with local
+    ``asyncio.Queue`` fan-out, optional Redis Pub/Sub cross-replica broadcast,
+    and durable DB tail polling fallback for multi-pod Kubernetes SSE streaming.
     """
 
-    def __init__(self, job_queue: RunJobQueue | None = None) -> None:
+    def __init__(
+        self,
+        job_queue: RunJobQueue | None = None,
+        *,
+        redis_client: Any | None = None,
+        channel_prefix: str = "pvs:run_events:",
+        poll_interval_seconds: float = 0.25,
+    ) -> None:
         self._queue = job_queue
+        self._redis: Any | None = redis_client
+        self._channel_prefix = channel_prefix
+        self._poll_interval_seconds = max(0.02, float(poll_interval_seconds))
         self._subscribers: dict[tuple[str, str], list[asyncio.Queue[RunEvent]]] = {}
         self._memory_events: dict[tuple[str, str], list[RunEvent]] = {}
         self._mem_seq = 0
+
+    def set_redis_client(self, redis_client: Any | None) -> None:
+        """Attach or replace the async Redis client used for cross-pod Pub/Sub fan-out."""
+        self._redis = redis_client
+
+    def _channel_name(self, tenant_id: str, run_id: str) -> str:
+        return f"{self._channel_prefix}{tenant_id}:{run_id}"
+
+    @staticmethod
+    def _event_from_payload(raw_data: Any) -> RunEvent | None:
+        if isinstance(raw_data, bytes):
+            raw_data = raw_data.decode("utf-8", errors="replace")
+        if isinstance(raw_data, str):
+            try:
+                parsed = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return None
+        elif isinstance(raw_data, dict):
+            parsed = raw_data
+        else:
+            return None
+        if not isinstance(parsed, dict) or "seq" not in parsed or "run_id" not in parsed:
+            return None
+        return RunEvent(
+            seq=int(parsed["seq"]),
+            run_id=str(parsed["run_id"]),
+            tenant_id=str(parsed.get("tenant_id", "default")),
+            event_type=str(parsed.get("event_type", "")),
+            stage_name=str(parsed.get("stage_name", "")),
+            payload=dict(parsed.get("payload") or {}),
+            created_at=_dt(parsed.get("created_at")) or datetime.now(UTC),
+        )
 
     async def publish(
         self,
@@ -793,6 +836,17 @@ class RunEventBus:
                 sub_q.put_nowait(event)
             except asyncio.QueueFull:
                 logger.warning("Dropping SSE event for slow subscriber on run %s", run_id)
+
+        if self._redis is not None and callable(getattr(self._redis, "publish", None)):
+            try:
+                serialized = json.dumps(event.to_dict(), separators=(",", ":"))
+                await self._redis.publish(self._channel_name(tenant_id, run_id), serialized)
+            except Exception as exc:
+                logger.warning(
+                    "Redis Pub/Sub publish degraded for run %s (%s); DB tail fallback active",
+                    run_id,
+                    exc,
+                )
         return event
 
     async def list_events(
@@ -820,11 +874,61 @@ class RunEventBus:
         heartbeat_seconds: float = 15.0,
         idle_timeout_seconds: float = 30.0,
     ) -> AsyncIterator[str]:
-        """Yield W3C SSE frames replaying history and streaming live updates."""
+        """Yield W3C SSE frames replaying history and streaming multi-replica live updates."""
         key = (tenant_id, run_id)
         sub_q: asyncio.Queue[RunEvent] = asyncio.Queue(maxsize=256)
+        pubsub: Any | None = None
+        redis_task: asyncio.Task[None] | None = None
+        channel = self._channel_name(tenant_id, run_id)
+
         if follow:
             self._subscribers.setdefault(key, []).append(sub_q)
+            if self._redis is not None and callable(getattr(self._redis, "pubsub", None)):
+                try:
+                    pubsub = self._redis.pubsub()
+                    await pubsub.subscribe(channel)
+
+                    async def _relay_redis_messages(ps: Any) -> None:
+                        try:
+                            async for msg in ps.listen():
+                                if not isinstance(msg, dict):
+                                    continue
+                                if msg.get("type") != "message":
+                                    continue
+                                evt = self._event_from_payload(msg.get("data"))
+                                if (
+                                    evt is not None
+                                    and evt.run_id == run_id
+                                    and evt.tenant_id == tenant_id
+                                ):
+                                    try:
+                                        sub_q.put_nowait(evt)
+                                    except asyncio.QueueFull:
+                                        logger.warning(
+                                            "Dropping Redis SSE event for slow subscriber %s",
+                                            run_id,
+                                        )
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            logger.warning(
+                                "Redis Pub/Sub listener degraded for %s (%s); DB tail active",
+                                run_id,
+                                exc,
+                            )
+
+                    redis_task = asyncio.create_task(
+                        _relay_redis_messages(pubsub),
+                        name=f"pvs-sse-redis-{run_id[:12]}",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Redis Pub/Sub subscribe failed for run %s (%s); using DB tail fallback",
+                        run_id,
+                        exc,
+                    )
+                    pubsub = None
+                    redis_task = None
 
         last_seq = max(0, int(after_seq))
         try:
@@ -838,25 +942,80 @@ class RunEventBus:
             if not follow:
                 return
 
-            deadline = asyncio.get_running_loop().time() + max(0.2, idle_timeout_seconds)
+            loop = asyncio.get_running_loop()
+            hb_interval = max(0.05, float(heartbeat_seconds))
+            idle_window = max(0.2, float(idle_timeout_seconds))
+            deadline = loop.time() + idle_window
+            next_heartbeat = loop.time() + hb_interval
+
             while True:
-                remaining = deadline - asyncio.get_running_loop().time()
+                now = loop.time()
+                remaining = deadline - now
                 if remaining <= 0:
                     return
-                wait_for = min(max(0.05, heartbeat_seconds), remaining)
+                hb_wait = max(0.01, next_heartbeat - now)
+                if self._queue is not None:
+                    wait_for = min(self._poll_interval_seconds, hb_wait, remaining)
+                else:
+                    wait_for = min(hb_wait, remaining)
+
                 try:
                     evt = await asyncio.wait_for(sub_q.get(), timeout=wait_for)
                 except TimeoutError:
-                    yield ": heartbeat\n\n"
+                    if self._queue is not None:
+                        tail = await self.list_events(
+                            run_id, tenant_id=tenant_id, after_seq=last_seq
+                        )
+                        emitted = False
+                        for tail_evt in tail:
+                            if tail_evt.seq <= last_seq:
+                                continue
+                            last_seq = tail_evt.seq
+                            emitted = True
+                            yield tail_evt.format_sse()
+                            deadline = loop.time() + idle_window
+                            next_heartbeat = loop.time() + hb_interval
+                            if tail_evt.event_type in TERMINAL_EVENT_TYPES:
+                                return
+                        if emitted:
+                            continue
+                    if loop.time() >= next_heartbeat:
+                        yield ": heartbeat\n\n"
+                        next_heartbeat = loop.time() + hb_interval
                     continue
+
                 if evt.seq <= last_seq:
                     continue
                 last_seq = evt.seq
                 yield evt.format_sse()
-                deadline = asyncio.get_running_loop().time() + max(0.2, idle_timeout_seconds)
+                deadline = loop.time() + idle_window
+                next_heartbeat = loop.time() + hb_interval
                 if evt.event_type in TERMINAL_EVENT_TYPES:
                     return
         finally:
+            if redis_task is not None:
+                redis_task.cancel()
+                try:
+                    await redis_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if pubsub is not None:
+                try:
+                    unsub = getattr(pubsub, "unsubscribe", None)
+                    if callable(unsub):
+                        res = unsub(channel)
+                        if hasattr(res, "__await__"):
+                            await res
+                except Exception:
+                    pass
+                try:
+                    close_ps = getattr(pubsub, "aclose", None) or getattr(pubsub, "close", None)
+                    if callable(close_ps):
+                        res = close_ps()
+                        if hasattr(res, "__await__"):
+                            await res
+                except Exception:
+                    pass
             if follow:
                 subs = self._subscribers.get(key)
                 if subs and sub_q in subs:
@@ -1172,3 +1331,181 @@ class DurableRunWorker:
             "summary": "Outcome measurement baseline & SLO guardrails registered",
             "artifact": {"baseline_registered": True, "slo_status": "healthy"},
         }
+
+
+class LiveAgentStageExecutor:
+    """
+    Governed live-LLM ``StageExecutor`` bridging ``DurableRunWorker`` to
+    ``Harness`` + ``ModelAdapter`` with per-run budget ceilings, OWASP
+    guardrails, and stage-specific prompts.
+
+    Uses lazy imports inside execution methods so importing ASGI control plane
+    modules never pulls optional ML/scientific libraries at boot time.
+    """
+
+    _STAGE_CONFIG: dict[str, tuple[str, str]] = {
+        "discovery": (
+            "discovery",
+            (
+                "Analyze the product problem, surface evidence gaps, and propose a "
+                "prioritized opportunity tree with a primary KPI."
+            ),
+        ),
+        "specification": (
+            "specification",
+            (
+                "Write a concise executable specification with functional requirements, "
+                "acceptance criteria, and edge cases."
+            ),
+        ),
+        "parallel_review": (
+            "review",
+            (
+                "Review the specification across security, architecture, performance, "
+                "and maintainability perspectives and list critical findings."
+            ),
+        ),
+        "build": (
+            "build",
+            (
+                "Produce a minimal, well-tested implementation plan and concise diff "
+                "summary with verification steps."
+            ),
+        ),
+        "measurement": (
+            "measurement",
+            (
+                "Define post-launch outcome measurement metrics, SLO guardrails, "
+                "and rollback triggers."
+            ),
+        ),
+    }
+
+    def __init__(
+        self,
+        *,
+        provider: str = "auto",
+        model: str | None = None,
+        model_adapter: Any | None = None,
+        max_cost_usd: float = 1.0,
+        max_tokens_per_stage: int = 800,
+        policy_engine: Any | None = None,
+    ) -> None:
+        self.provider = provider.strip().lower() or "auto"
+        self.model = model
+        self._explicit_adapter = model_adapter
+        self._cached_adapter: Any | None = None
+        self.max_cost_usd = max(0.01, float(max_cost_usd))
+        self.max_tokens_per_stage = max(64, int(max_tokens_per_stage))
+        self._policy_engine = policy_engine
+
+    def _resolve_adapter(self) -> Any:
+        if self._explicit_adapter is not None:
+            return self._explicit_adapter
+        if self._cached_adapter is not None:
+            return self._cached_adapter
+
+        import os
+
+        from product_value_system.adapters import create_adapter
+
+        provider = self.provider
+        if provider == "auto":
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                provider = "anthropic"
+            elif os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+            elif os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+                provider = "gemini"
+            elif os.environ.get("AZURE_OPENAI_API_KEY"):
+                provider = "azure_openai"
+            else:
+                logger.warning(
+                    "PVS_WORKER_EXECUTOR=live with provider=auto found no LLM API keys; "
+                    "falling back to MockModelAdapter"
+                )
+                provider = "mock"
+
+        self._cached_adapter = create_adapter(provider, model=self.model)
+        return self._cached_adapter
+
+    async def __call__(
+        self,
+        rec: DurableRunRecord,
+        stage_name: str,
+    ) -> dict[str, Any]:
+        from decimal import Decimal
+
+        from product_value_system.adapters.model_adapter import Message, Role
+        from product_value_system.harness.budget import Budget
+        from product_value_system.harness.context import ExecutionContext
+        from product_value_system.harness.harness import Harness
+
+        agent_name, instruction = self._STAGE_CONFIG.get(
+            stage_name,
+            ("orchestrator", f"Execute governed Value Stream stage '{stage_name}'."),
+        )
+        adapter = self._resolve_adapter()
+        ctx = ExecutionContext(run_id=rec.run_id, agent_name=agent_name)
+        budget = Budget(max_cost_usd=Decimal(str(self.max_cost_usd)))
+        harness = Harness(
+            context=ctx,
+            budget=budget,
+            model_adapter=adapter,
+            policy_engine=self._policy_engine,
+        )
+
+        prior_artifacts = json.dumps(rec.artifacts, sort_keys=True, default=str)[:2000]
+        problem_json = json.dumps(rec.problem_payload, sort_keys=True, default=str)[:2000]
+        messages = [
+            Message(
+                role=Role.SYSTEM,
+                content=(
+                    f"You are the Product Value System {agent_name} agent operating under "
+                    f"governed Cedar policy and FinOps budget constraints. {instruction}"
+                ),
+            ),
+            Message(
+                role=Role.USER,
+                content=(
+                    f"Problem ID: {rec.problem_id}\n"
+                    f"Stage: {stage_name}\n"
+                    f"Problem Payload: {problem_json}\n"
+                    f"Prior Stage Artifacts: {prior_artifacts}"
+                ),
+            ),
+        ]
+
+        response = await harness.invoke_model(
+            messages,
+            max_tokens=self.max_tokens_per_stage,
+            task_type=stage_name,
+        )
+
+        content = str(response.content or "").strip()
+        summary = content.splitlines()[0][:240] if content else f"Completed stage '{stage_name}'"
+        cost_usd = round(float(harness.budget.current_cost_usd), 6)
+        total_tokens = int(response.usage.total_tokens) if response.usage is not None else 0
+        artifact: dict[str, Any] = {
+            "executor": "live",
+            "agent": agent_name,
+            "model": response.model or self.model or "unknown",
+            "total_tokens": total_tokens,
+            "content": content,
+        }
+        result: dict[str, Any] = {
+            "cost_usd": cost_usd,
+            "summary": summary,
+            "artifact": artifact,
+        }
+        if stage_name == "build":
+            diffs = [
+                {
+                    "path": f"src/{rec.problem_id.lower().replace('-', '_')}.py",
+                    "change_type": "planned",
+                    "summary": summary,
+                }
+            ]
+            result["diffs"] = diffs
+            artifact["diffs"] = diffs
+        return result

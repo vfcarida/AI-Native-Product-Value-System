@@ -4,7 +4,7 @@
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-2F855A?style=for-the-badge)](LICENSE)
-[![Status: v3.0.0 Enterprise Ready](https://img.shields.io/badge/status-v3.0.0%20Enterprise%20Ready-2F855A?style=for-the-badge)](#roadmap)
+[![Status: v3.0.1 Enterprise Ready](https://img.shields.io/badge/status-v3.0.1%20Enterprise%20Ready-2F855A?style=for-the-badge)](#roadmap)
 [![Cedar Policy Sync](https://img.shields.io/badge/Cedar%20Policy%20Sync-100%25%20(25%2F25)-6B46C1?style=for-the-badge)](docs/POLICY_SYNC.md)
 [![Security Scanning](https://img.shields.io/badge/Security%20Scan-OWASP%20ASI01--10%20%2B%20Trivy%20%2B%20SBOM-2B6CB0?style=for-the-badge)](docs/security/vulnerability-management.md)
 [![Test Suite](https://img.shields.io/badge/tests-1%2C170%2B%204--Tier%20Suite-009688?style=for-the-badge)](tests/README.md)

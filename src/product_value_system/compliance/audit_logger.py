@@ -683,6 +683,146 @@ class PostgresAuditStore:
             return int(await conn.fetchval("SELECT COUNT(*) FROM audit_logs"))
 
 
+class DeferredSQLiteAuditStore:
+    """
+    Lazy-initializing append-only SQLite audit store for ASGI lifespan management.
+
+    Defers opening the SQLite file until ``initialize()`` or the first audit
+    operation so importing ASGI composition modules remains side-effect free,
+    and cleanly closes file descriptors on shutdown.
+    """
+
+    def __init__(self, db_path: Path | str) -> None:
+        self.db_path = str(db_path)
+        self._store: SQLiteAuditStore | None = None
+
+    def _ensure_store(self) -> SQLiteAuditStore:
+        if self._store is None:
+            self._store = SQLiteAuditStore(self.db_path)
+        return self._store
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """Expose underlying SQLite connection for inspection and immutability tests."""
+        return self._ensure_store().connection
+
+    async def initialize(self) -> None:
+        """Eagerly open and migrate the append-only SQLite audit database."""
+        self._ensure_store()
+
+    async def close(self) -> None:
+        """Close the underlying SQLite connection if open."""
+        if self._store is not None:
+            self._store.close()
+            self._store = None
+
+    async def insert(self, event: AuditEvent) -> None:
+        await self._ensure_store().insert(event)
+
+    async def query(
+        self,
+        *,
+        user_id: str | None = None,
+        subject_id: str | None = None,
+        event_type: AuditEventType | None = None,
+        resource_type: str | None = None,
+        session_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditEvent]:
+        return await self._ensure_store().query(
+            user_id=user_id,
+            subject_id=subject_id,
+            event_type=event_type,
+            resource_type=resource_type,
+            session_id=session_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query_older_than(self, cutoff: datetime, *, limit: int = 10000) -> list[AuditEvent]:
+        return await self._ensure_store().query_older_than(cutoff, limit=limit)
+
+    async def archive_and_prune(self, event_ids: Sequence[str]) -> int:
+        return await self._ensure_store().archive_and_prune(event_ids)
+
+    async def anonymize_subject(self, subject_id: str) -> int:
+        return await self._ensure_store().anonymize_subject(subject_id)
+
+    async def count(self) -> int:
+        return await self._ensure_store().count()
+
+
+class DeferredPostgresAuditStore:
+    """
+    Lazy-binding append-only PostgreSQL audit store backed by a ``PostgresDatabase``.
+
+    Resolves the ``asyncpg`` pool once ``PostgresDatabase.connect()`` completes
+    during ASGI lifespan startup, delegating all calls to ``PostgresAuditStore``.
+    """
+
+    def __init__(self, database: Any) -> None:
+        self._database = database
+
+    def _ensure_store(self) -> PostgresAuditStore:
+        pool = getattr(self._database, "_pool", None)
+        if pool is None:
+            raise RuntimeError(
+                "DeferredPostgresAuditStore requires an initialized PostgreSQL connection pool"
+            )
+        return PostgresAuditStore(pool)
+
+    async def initialize(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def insert(self, event: AuditEvent) -> None:
+        await self._ensure_store().insert(event)
+
+    async def query(
+        self,
+        *,
+        user_id: str | None = None,
+        subject_id: str | None = None,
+        event_type: AuditEventType | None = None,
+        resource_type: str | None = None,
+        session_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditEvent]:
+        return await self._ensure_store().query(
+            user_id=user_id,
+            subject_id=subject_id,
+            event_type=event_type,
+            resource_type=resource_type,
+            session_id=session_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def query_older_than(self, cutoff: datetime, *, limit: int = 10000) -> list[AuditEvent]:
+        return await self._ensure_store().query_older_than(cutoff, limit=limit)
+
+    async def archive_and_prune(self, event_ids: Sequence[str]) -> int:
+        return await self._ensure_store().archive_and_prune(event_ids)
+
+    async def anonymize_subject(self, subject_id: str) -> int:
+        return await self._ensure_store().anonymize_subject(subject_id)
+
+    async def count(self) -> int:
+        return await self._ensure_store().count()
+
+
 class AuditLogger:
     """Async compliance audit logger with HMAC-SHA256 signing and circuit-breaker fallback."""
 

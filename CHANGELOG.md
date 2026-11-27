@@ -5,6 +5,21 @@ All notable changes to the **AI-Native Product Value System** are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-11-27
+
+### Fixed & Hardened
+
+- **Packaging & Container Runtime Parity**:
+  - Added `"PyJWT[crypto]>=2.8"` to `[project.optional-dependencies] monitoring` in `pyproject.toml` so clean CI and Docker runtime images always carry asymmetric RSA/EC JWKS verification dependencies.
+  - Added `COPY --chown=pvs:pvs prompts/ ./prompts/` into Stage 2 (`runtime`) of `Dockerfile` so the Helm quarterly governance `CronJob` finds versioned prompts inside the production container.
+  - Exposed `config.workerExecutor` (`PVS_WORKER_EXECUTOR`) and optional `secrets.e2bApiKey` (`E2B_API_KEY`) in Helm Chart `3.0.1` (`Chart.yaml`, `values.yaml`, `values.schema.json`, `templates/configmap.yaml`, `templates/secret.yaml`).
+- **Persistent Append-Only Audit Store in Control Plane**:
+  - Added `DeferredSQLiteAuditStore` and `DeferredPostgresAuditStore` in `compliance/audit_logger.py` and wired `create_production_app()` to persist HMAC-signed audit events to SQLite (with append-only `BEFORE UPDATE`/`BEFORE DELETE` triggers) or PostgreSQL whenever a persistent `DATABASE_URL` is configured, with clean lifespan open/close lifecycle.
+- **Multi-Replica Kubernetes SSE Streaming (`RunEventBus`)**:
+  - Upgraded `RunEventBus` in `api/worker.py` with optional Redis Pub/Sub broadcast/subscription (`pvs:run_events:{tenant_id}:{run_id}`) plus automatic durable DB tail polling fallback (`poll_interval_seconds`), ensuring SSE clients receive live events across horizontally scaled API/worker pods.
+- **Turnkey Live LLM Worker Executor (`LiveAgentStageExecutor`)**:
+  - Added `LiveAgentStageExecutor` in `api/worker.py` selectable via `PVS_WORKER_EXECUTOR=live` (default `mock` for `$0` safety) and `PVS_MODEL_PROVIDER`, executing every Value Stream stage through the governed `Harness` (`Budget`, OWASP guardrails, `ModelAdapter`) with lazy imports preserving zero-NumPy/zero-SciPy ASGI startup.
+
 ## [3.0.0] - 2026-11-27
 
 ### Added

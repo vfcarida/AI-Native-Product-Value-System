@@ -37,6 +37,7 @@ data:
   PVS_ENABLE_PROTOCOLS: {{ .Values.config.enableProtocols | default "true" | quote }}
   PVS_ENABLE_INTEGRATIONS: {{ .Values.config.enableIntegrations | default "true" | quote }}
   PVS_ENABLE_WORKER: {{ .Values.config.enableWorker | default "true" | quote }}
+  PVS_WORKER_EXECUTOR: {{ .Values.config.workerExecutor | default "mock" | quote }}
   PVS_ENABLE_DEVX: {{ .Values.config.enableDevx | default "true" | quote }}
   PVS_ENABLE_AUDIT: {{ .Values.config.enableAudit | default "true" | quote }}
   PVS_ALLOW_ANONYMOUS_DEV: {{ .Values.config.allowAnonymousDev | default "false" | quote }}

@@ -45,6 +45,7 @@ COPY --chown=pvs:pvs src/ ./src/
 COPY --chown=pvs:pvs config/ ./config/
 COPY --chown=pvs:pvs schemas/ ./schemas/
 COPY --chown=pvs:pvs policies/ ./policies/
+COPY --chown=pvs:pvs prompts/ ./prompts/
 COPY --chown=pvs:pvs migrations/ ./migrations/
 COPY --chown=pvs:pvs alembic/ ./alembic/
 
