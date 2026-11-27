@@ -64,11 +64,20 @@ def create_integrations_router(
     audit_logger: AuditLogger | None = None,
     github_webhook_secret: str = "",
     slack_signing_secret: str = "",
+    job_queue: Any | None = None,
+    event_bus: Any | None = None,
+    worker: Any | None = None,
 ) -> APIRouter:
     """Create cryptographically verified webhook router for GitHub PR Triage & Slack HITL."""
     router = APIRouter(prefix="/api/v1/webhooks", tags=["integrations"])
     triage_engine = PreHumanPRTriageEngine()
-    slack_handler = SlackHITLHandler(run_store=run_store, audit_logger=audit_logger)
+    slack_handler = SlackHITLHandler(
+        run_store=run_store,
+        audit_logger=audit_logger,
+        job_queue=job_queue,
+        event_bus=event_bus,
+        worker=worker,
+    )
 
     @router.post("/github/pr-triage")
     async def github_pr_triage_webhook(request: Request) -> dict[str, Any]:

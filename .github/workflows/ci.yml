@@ -200,7 +200,7 @@ jobs:
           DATABASE_URL: postgresql://pvs@localhost:5432/pvs_test
           REDIS_URL: redis://localhost:6379/0
         run: |
-          pytest tests/api/test_openapi_contract.py tests/security/test_agentic_redteam.py tests/compliance/test_ai_governance.py -v
+          pytest tests/api/test_openapi_contract.py tests/api/test_async_worker_and_sse.py tests/api/test_oauth21_jwks.py tests/persistence/test_pgvector_and_redis_integration.py tests/security/test_agentic_redteam.py tests/compliance/test_ai_governance.py -v
           python -W error -m product_value_system governance export --format json --include-redteam > /tmp/governance-pack.json
 
   mutation-testing:

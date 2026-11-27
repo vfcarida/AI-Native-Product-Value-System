@@ -120,9 +120,15 @@ class SlackHITLHandler:
         run_store: DurableRunStore,
         *,
         audit_logger: AuditLogger | None = None,
+        job_queue: Any | None = None,
+        event_bus: Any | None = None,
+        worker: Any | None = None,
     ) -> None:
         self.run_store = run_store
         self.audit_logger = audit_logger
+        self.job_queue = job_queue
+        self.event_bus = event_bus
+        self.worker = worker
 
     async def handle_interaction(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Resolve a Slack ``block_actions`` approval click and return Block Kit confirmation."""
@@ -172,18 +178,25 @@ class SlackHITLHandler:
             }
 
         now = datetime.now(UTC)
+        is_async = record.problem_payload.get("execution_mode") == "async_worker"
         if decision == "approved":
             record.stages["decision_gate"] = {
                 "status": "completed",
                 "approved_by": f"slack:{slack_user}",
                 "completed_at": now.isoformat(),
             }
-            record.stages["specification"] = {
-                "status": "completed",
-                "completed_at": now.isoformat(),
-            }
-            record.status = "completed"
-            record.current_stage = "completed"
+            if is_async and self.job_queue is not None:
+                record.status = "running"
+                record.current_stage = "build"
+                record.completed_at = None
+            else:
+                record.stages["specification"] = {
+                    "status": "completed",
+                    "completed_at": now.isoformat(),
+                }
+                record.status = "completed"
+                record.current_stage = "completed"
+                record.completed_at = now
         else:
             record.stages["decision_gate"] = {
                 "status": "rejected",
@@ -192,8 +205,47 @@ class SlackHITLHandler:
             }
             record.status = "cancelled"
             record.current_stage = "decision_gate"
-        record.completed_at = now
+            record.completed_at = now
         await self.run_store.update_run(record)
+
+        if self.event_bus is not None:
+            await self.event_bus.publish(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                event_type="hitl.approval_resolved",
+                stage_name="decision_gate",
+                payload={
+                    "decision": decision,
+                    "decided_by": f"slack:{slack_user}",
+                    "approval_id": resolved.approval_id,
+                },
+            )
+            if decision == "rejected":
+                await self.event_bus.publish(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    event_type="run.cancelled",
+                    stage_name="decision_gate",
+                    payload={"reason": comment},
+                )
+            elif not (is_async and self.job_queue is not None):
+                await self.event_bus.publish(
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    event_type="run.completed",
+                    stage_name="completed",
+                    payload={"approved_via": "slack"},
+                )
+
+        if decision == "approved" and is_async and self.job_queue is not None:
+            await self.job_queue.enqueue(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                job_type="resume",
+                payload={"approved_by": f"slack:{slack_user}"},
+            )
+            if self.worker is not None:
+                self.worker.notify()
 
         if self.audit_logger is not None:
             await self.audit_logger.log(

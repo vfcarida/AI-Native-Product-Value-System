@@ -66,6 +66,7 @@ def test_production_asgi_openapi_contract_schema_and_routes(tmp_path: Path) -> N
         "/devx": {"get"},
         "/api/v1/runs": {"get", "post"},
         "/api/v1/runs/{run_id}": {"get"},
+        "/api/v1/runs/{run_id}/events": {"get"},
         "/api/v1/runs/{run_id}/approve": {"post"},
         "/api/v1/runs/{run_id}/reject": {"post"},
         "/api/v1/agents": {"get"},
@@ -75,6 +76,7 @@ def test_production_asgi_openapi_contract_schema_and_routes(tmp_path: Path) -> N
         "/api/v1/a2a/agents": {"get"},
         "/api/v1/a2a/tasks/send": {"post"},
         "/api/v1/a2a/tasks/{task_id}": {"get"},
+        "/api/v1/a2a/tasks/{task_id}/events": {"get"},
         "/api/v1/webhooks/github/pr-triage": {"post"},
         "/api/v1/webhooks/slack/interactions": {"post"},
     }

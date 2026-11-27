@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from product_value_system.api.auth import (
@@ -24,6 +25,7 @@ from product_value_system.api.auth import (
     DistributedRateLimiter,
     TenantContext,
 )
+from product_value_system.api.worker import DurableRunWorker, RunEventBus, RunJobQueue
 from product_value_system.compliance.audit_logger import (
     AuditEvent,
     AuditEventType,
@@ -88,6 +90,7 @@ class CreateRunRequest(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=10_000)
     require_human_approval: bool = True
+    execute_async: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -132,11 +135,15 @@ def create_control_plane_router(
     rate_limiter: DistributedRateLimiter | None = None,
     audit_logger: AuditLogger | None = None,
     agents_catalog: list[dict[str, Any]] | None = None,
+    job_queue: RunJobQueue | None = None,
+    event_bus: RunEventBus | None = None,
+    worker: DurableRunWorker | None = None,
 ) -> APIRouter:
     """Create authenticated, tenant-isolated Control Plane REST API router."""
     router = APIRouter(prefix="/api/v1", tags=["control-plane"])
     limiter = rate_limiter or DistributedRateLimiter()
     catalog = list(agents_catalog) if agents_catalog is not None else list(DEFAULT_AGENT_CATALOG)
+    bus = event_bus or RunEventBus(job_queue)
 
     async def _require(request: Request, response: Response, permission: str) -> TenantContext:
         ctx = authenticator.authenticate(request)
@@ -184,6 +191,56 @@ def create_control_plane_router(
         now = datetime.now(UTC)
         run_id = new_run_id()
 
+        if payload.execute_async and job_queue is not None:
+            record = DurableRunRecord(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                problem_id=payload.problem_id,
+                problem_payload={
+                    "title": payload.title,
+                    "description": payload.description,
+                    "metadata": payload.metadata,
+                    "execution_mode": "async_worker",
+                    "require_human_approval": payload.require_human_approval,
+                },
+                status="pending",
+                current_stage="queued",
+                created_by=ctx.user_id,
+                created_at=now,
+                updated_at=now,
+                completed_at=None,
+                stages={"queued": {"status": "pending", "queued_at": now.isoformat()}},
+            )
+            await run_store.create_run(record)
+            job = await job_queue.enqueue(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                job_type="start",
+                payload={"require_human_approval": payload.require_human_approval},
+            )
+            await bus.publish(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                event_type="run.queued",
+                stage_name="queued",
+                payload={"job_id": job.job_id, "problem_id": payload.problem_id},
+            )
+            if worker is not None:
+                worker.notify()
+            await _log_audit(
+                audit_logger,
+                event_type=AuditEventType.AGENT_STARTED,
+                ctx=ctx,
+                action=f"Enqueued async value stream run {run_id} (job={job.job_id})",
+                resource_id=run_id,
+                result="success",
+                metadata={"problem_id": payload.problem_id, "job_id": job.job_id},
+                request=request,
+            )
+            out = record.to_dict()
+            out["job_id"] = job.job_id
+            return out
+
         stages: dict[str, dict[str, Any]] = {
             "problem_analysis": {
                 "status": "completed",
@@ -229,6 +286,13 @@ def create_control_plane_router(
         )
         await run_store.create_run(record)
 
+        await bus.publish(
+            run_id=run_id,
+            tenant_id=ctx.tenant_id,
+            event_type="run.started",
+            stage_name="discovery",
+            payload={"problem_id": payload.problem_id},
+        )
         if payload.require_human_approval:
             approval = ApprovalRecord(
                 approval_id=new_approval_id(),
@@ -240,6 +304,21 @@ def create_control_plane_router(
             )
             await run_store.create_approval(approval)
             record.approvals.append(approval)
+            await bus.publish(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                event_type="hitl.approval_requested",
+                stage_name="decision_gate",
+                payload={"approval_id": approval.approval_id},
+            )
+        else:
+            await bus.publish(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                event_type="run.completed",
+                stage_name="completed",
+                payload={"problem_id": payload.problem_id},
+            )
 
         await _log_audit(
             audit_logger,
@@ -286,6 +365,42 @@ def create_control_plane_router(
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
         return rec.to_dict()
 
+    @router.get("/runs/{run_id}/events")
+    async def stream_run_events(
+        run_id: str,
+        request: Request,
+        response: Response,
+        after_seq: int = Query(default=0, ge=0),
+        follow: bool = Query(default=True),
+        timeout_seconds: float = Query(default=15.0, ge=0.2, le=120.0),
+    ) -> StreamingResponse:
+        """Stream durable and live lifecycle events for a run via Server-Sent Events (SSE)."""
+        ctx = await _require(request, response, "runs:read")
+        rec = await run_store.get_run(run_id, tenant_id=ctx.tenant_id)
+        if rec is None:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+        last_evt_hdr = (request.headers.get("last-event-id") or "").strip()
+        cursor = after_seq
+        if last_evt_hdr.isdigit():
+            cursor = max(cursor, int(last_evt_hdr))
+
+        return StreamingResponse(
+            bus.stream_sse(
+                run_id,
+                tenant_id=ctx.tenant_id,
+                after_seq=cursor,
+                follow=follow,
+                idle_timeout_seconds=timeout_seconds,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "X-Tenant-ID": ctx.tenant_id,
+            },
+        )
+
     @router.post("/runs/{run_id}/approve")
     async def approve_run(
         run_id: str,
@@ -314,16 +429,52 @@ def create_control_plane_router(
             raise HTTPException(status_code=409, detail="No pending approval gate found")
 
         now = datetime.now(UTC)
+        is_async = rec.problem_payload.get("execution_mode") == "async_worker"
         rec.stages["decision_gate"] = {
             "status": "completed",
             "approved_by": ctx.user_id,
             "completed_at": now.isoformat(),
         }
-        rec.stages["specification"] = {"status": "completed", "completed_at": now.isoformat()}
-        rec.status = "completed"
-        rec.current_stage = "completed"
-        rec.completed_at = now
+        if is_async and job_queue is not None:
+            rec.status = "running"
+            rec.current_stage = "build"
+            rec.completed_at = None
+        else:
+            rec.stages["specification"] = {"status": "completed", "completed_at": now.isoformat()}
+            rec.status = "completed"
+            rec.current_stage = "completed"
+            rec.completed_at = now
         await run_store.update_run(rec)
+
+        await bus.publish(
+            run_id=run_id,
+            tenant_id=ctx.tenant_id,
+            event_type="hitl.approval_resolved",
+            stage_name="decision_gate",
+            payload={
+                "decision": "approved",
+                "decided_by": ctx.user_id,
+                "approval_id": resolved.approval_id,
+                "comment": body.comment,
+            },
+        )
+        if is_async and job_queue is not None:
+            await job_queue.enqueue(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                job_type="resume",
+                payload={"approved_by": ctx.user_id},
+            )
+            if worker is not None:
+                worker.notify()
+        else:
+            await bus.publish(
+                run_id=run_id,
+                tenant_id=ctx.tenant_id,
+                event_type="run.completed",
+                stage_name="completed",
+                payload={"approved_by": ctx.user_id},
+            )
 
         updated = await run_store.get_run(run_id, tenant_id=ctx.tenant_id)
         assert updated is not None
@@ -377,6 +528,26 @@ def create_control_plane_router(
         rec.current_stage = "decision_gate"
         rec.completed_at = now
         await run_store.update_run(rec)
+
+        await bus.publish(
+            run_id=run_id,
+            tenant_id=ctx.tenant_id,
+            event_type="hitl.approval_resolved",
+            stage_name="decision_gate",
+            payload={
+                "decision": "rejected",
+                "decided_by": ctx.user_id,
+                "approval_id": resolved.approval_id,
+                "comment": body.comment,
+            },
+        )
+        await bus.publish(
+            run_id=run_id,
+            tenant_id=ctx.tenant_id,
+            event_type="run.cancelled",
+            stage_name="decision_gate",
+            payload={"comment": body.comment},
+        )
 
         updated = await run_store.get_run(run_id, tenant_id=ctx.tenant_id)
         assert updated is not None

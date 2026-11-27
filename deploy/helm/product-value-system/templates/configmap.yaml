@@ -36,6 +36,7 @@ data:
   PVS_ENABLE_CONTROL_PLANE: {{ .Values.config.enableControlPlane | default "true" | quote }}
   PVS_ENABLE_PROTOCOLS: {{ .Values.config.enableProtocols | default "true" | quote }}
   PVS_ENABLE_INTEGRATIONS: {{ .Values.config.enableIntegrations | default "true" | quote }}
+  PVS_ENABLE_WORKER: {{ .Values.config.enableWorker | default "true" | quote }}
   PVS_ENABLE_DEVX: {{ .Values.config.enableDevx | default "true" | quote }}
   PVS_ENABLE_AUDIT: {{ .Values.config.enableAudit | default "true" | quote }}
   PVS_ALLOW_ANONYMOUS_DEV: {{ .Values.config.allowAnonymousDev | default "false" | quote }}
@@ -45,4 +46,7 @@ data:
   {{- end }}
   {{- if .Values.config.jwtAudience }}
   PVS_JWT_AUDIENCE: {{ .Values.config.jwtAudience | quote }}
+  {{- end }}
+  {{- if .Values.config.jwksUrl }}
+  PVS_JWKS_URL: {{ .Values.config.jwksUrl | quote }}
   {{- end }}

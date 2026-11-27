@@ -100,6 +100,8 @@ def test_sqlite_migrations_apply_001_002_003_cleanly(tmp_path: Path) -> None:
     }
     assert "durable_runs" in tables
     assert "run_approvals" in tables
+    assert "run_jobs" in tables
+    assert "run_events" in tables
 
     versions = [
         int(row["version"])
@@ -107,7 +109,7 @@ def test_sqlite_migrations_apply_001_002_003_cleanly(tmp_path: Path) -> None:
             "SELECT version FROM schema_migrations ORDER BY version ASC"
         ).fetchall()
     ]
-    assert versions == [1, 2, 3]
+    assert versions == [1, 2, 3, 4]
     db.close()
 
 

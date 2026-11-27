@@ -184,12 +184,14 @@ config:
   enableControlPlane: "true"
   enableProtocols: "true"
   enableIntegrations: "true"
+  enableWorker: "true"
   enableDevx: "true"
   enableAudit: "true"
   allowAnonymousDev: "false"
   rateLimitPerMinute: "120"
   jwtIssuer: ""
   jwtAudience: ""
+  jwksUrl: ""
 
 # Secret management: ALWAYS prefer `existingSecret` (External Secrets / Vault / SealedSecrets)
 secrets:

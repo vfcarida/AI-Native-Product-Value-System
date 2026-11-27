@@ -11,12 +11,14 @@ import hmac
 import inspect
 import json
 import logging
+import threading
 import time
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
@@ -141,10 +143,134 @@ def verify_hs256_jwt(
     return payload
 
 
+class JWKSKeyResolver:
+    """
+    OAuth 2.1 / OIDC Dynamic JWKS Key Resolver with TTL caching and automatic
+    cache-miss key rotation (``kid`` lookup -> refresh on unknown ``kid``).
+    """
+
+    def __init__(
+        self,
+        jwks_url: str,
+        *,
+        cache_ttl_seconds: float = 300.0,
+        min_refresh_interval_seconds: float = 1.0,
+        timeout: float = 5.0,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
+        if not jwks_url.strip():
+            raise ValueError("jwks_url must be non-empty")
+        self.jwks_url = jwks_url.strip()
+        self.cache_ttl_seconds = max(1.0, float(cache_ttl_seconds))
+        self.min_refresh_interval_seconds = max(0.0, float(min_refresh_interval_seconds))
+        self._timeout = float(timeout)
+        self._transport = transport
+        self._lock = threading.RLock()
+        self._keys_by_kid: dict[str, dict[str, Any]] = {}
+        self._expires_at: float = 0.0
+        self._last_refresh_at: float = 0.0
+        self.refresh_count: int = 0
+
+    def _fetch_jwks(self) -> dict[str, dict[str, Any]]:
+        client_kwargs: dict[str, Any] = {"timeout": httpx.Timeout(self._timeout)}
+        if self._transport is not None:
+            client_kwargs["transport"] = self._transport
+        with httpx.Client(**client_kwargs) as client:
+            resp = client.get(self.jwks_url)
+            resp.raise_for_status()
+            body = resp.json()
+        keys_raw = body.get("keys")
+        if not isinstance(keys_raw, list):
+            raise ValueError("JWKS document missing 'keys' array")
+        indexed: dict[str, dict[str, Any]] = {}
+        for item in keys_raw:
+            if isinstance(item, dict):
+                kid = str(item.get("kid") or "").strip()
+                if kid:
+                    indexed[kid] = dict(item)
+                elif len(keys_raw) == 1:
+                    indexed["__default__"] = dict(item)
+        return indexed
+
+    def refresh(self, *, force: bool = False) -> dict[str, dict[str, Any]]:
+        """Refresh JWK cache respecting TTL and anti-DoS minimum refresh interval."""
+        with self._lock:
+            now = time.monotonic()
+            if not force and self._keys_by_kid and now < self._expires_at:
+                return dict(self._keys_by_kid)
+            if (
+                self._last_refresh_at > 0.0
+                and (now - self._last_refresh_at) < self.min_refresh_interval_seconds
+                and self._keys_by_kid
+            ):
+                return dict(self._keys_by_kid)
+            fetched = self._fetch_jwks()
+            self._keys_by_kid = fetched
+            self._last_refresh_at = now
+            self._expires_at = now + self.cache_ttl_seconds
+            self.refresh_count += 1
+            return dict(self._keys_by_kid)
+
+    def resolve_jwk(self, kid: str | None) -> dict[str, Any]:
+        """Resolve JWK dict by ``kid``, performing one forced refresh on cache miss."""
+        lookup = (kid or "").strip()
+        keys = self.refresh(force=False)
+        if lookup and lookup in keys:
+            return keys[lookup]
+        if not lookup and "__default__" in keys:
+            return keys["__default__"]
+
+        # Cache miss (possible IdP key rotation): force one refresh
+        refreshed = self.refresh(force=True)
+        if lookup and lookup in refreshed:
+            return refreshed[lookup]
+        if not lookup and "__default__" in refreshed:
+            return refreshed["__default__"]
+        raise ValueError(f"Unknown JWKS signing key id: {lookup or '<missing>'!r}")
+
+    def verify_jwt(
+        self,
+        token: str,
+        *,
+        issuer: str | None = None,
+        audience: str | None = None,
+        allowed_algorithms: tuple[str, ...] = ("RS256", "ES256"),
+    ) -> dict[str, Any]:
+        """Verify an OIDC/OAuth 2.1 JWT against dynamically resolved JWKS keys."""
+        try:
+            import jwt as pyjwt
+            from jwt import PyJWK
+        except ImportError as exc:
+            raise ValueError("PyJWT[crypto] required for JWKS OIDC verification") from exc
+
+        header = pyjwt.get_unverified_header(token)
+        alg = str(header.get("alg") or "")
+        if alg not in allowed_algorithms:
+            raise ValueError(f"Disallowed JWT algorithm: {alg!r}")
+        kid = str(header.get("kid") or "").strip() or None
+
+        jwk_dict = self.resolve_jwk(kid)
+        signing_key = PyJWK.from_dict(jwk_dict).key
+        decode_options: Any = {
+            "require": ["exp"],
+            "verify_aud": bool(audience),
+            "verify_iss": bool(issuer),
+        }
+        decoded: dict[str, Any] = pyjwt.decode(
+            token,
+            signing_key,
+            algorithms=[alg],
+            issuer=issuer,
+            audience=audience,
+            options=decode_options,
+        )
+        return decoded
+
+
 class ControlPlaneAuthenticator:
     """
     Authenticates incoming Control Plane HTTP requests via:
-    1. OIDC/JWT ``Authorization: Bearer <jwt>`` (HS256 or optional PyJWT RS256/JWKS)
+    1. OIDC/OAuth 2.1 JWT ``Authorization: Bearer <jwt>`` (dynamic JWKS, static pubkey, or HS256)
     2. Constant-time API keys mapped to ``TenantContext`` (``X-API-Key`` or ``Bearer``)
     """
 
@@ -156,6 +282,9 @@ class ControlPlaneAuthenticator:
         jwt_public_key: str | None = None,
         jwt_issuer: str | None = None,
         jwt_audience: str | None = None,
+        jwks_url: str | None = None,
+        jwks_resolver: JWKSKeyResolver | None = None,
+        jwks_cache_ttl_seconds: float = 300.0,
         allow_anonymous_dev: bool = False,
     ) -> None:
         self._api_keys: dict[str, TenantContext] = dict(api_keys or {})
@@ -163,6 +292,14 @@ class ControlPlaneAuthenticator:
         self.jwt_public_key = jwt_public_key or ""
         self.jwt_issuer = jwt_issuer
         self.jwt_audience = jwt_audience
+        self.jwks_url = (jwks_url or "").strip()
+        self._jwks_resolver: JWKSKeyResolver | None = jwks_resolver or (
+            JWKSKeyResolver(self.jwks_url, cache_ttl_seconds=jwks_cache_ttl_seconds)
+            if self.jwks_url
+            else None
+        )
+        if self._jwks_resolver is not None and not self.jwks_url:
+            self.jwks_url = self._jwks_resolver.jwks_url
         self.allow_anonymous_dev = allow_anonymous_dev
 
     @staticmethod
@@ -182,7 +319,7 @@ class ControlPlaneAuthenticator:
         if not user_id or not tenant_id:
             raise ValueError("JWT missing required 'sub' or 'tenant_id' claims")
         role = str(claims.get("role") or "developer").strip().lower()
-        raw_perms = claims.get("permissions") or claims.get("scope")
+        raw_perms = claims.get("permissions") or claims.get("scope") or claims.get("scp")
         if isinstance(raw_perms, list):
             perms = frozenset(str(p) for p in raw_perms)
         elif isinstance(raw_perms, str) and raw_perms.strip():
@@ -198,6 +335,13 @@ class ControlPlaneAuthenticator:
         )
 
     def _verify_jwt(self, token: str) -> TenantContext:
+        if self._jwks_resolver is not None:
+            decoded = self._jwks_resolver.verify_jwt(
+                token,
+                issuer=self.jwt_issuer,
+                audience=self.jwt_audience,
+            )
+            return self._claims_to_context(decoded)
         if self.jwt_public_key:
             try:
                 import jwt as pyjwt

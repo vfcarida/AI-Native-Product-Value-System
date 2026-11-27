@@ -11,7 +11,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from product_value_system.api.auth import (
@@ -19,6 +20,7 @@ from product_value_system.api.auth import (
     DistributedRateLimiter,
     TenantContext,
 )
+from product_value_system.api.worker import RunEventBus
 from product_value_system.compliance.audit_logger import (
     AuditEvent,
     AuditEventType,
@@ -65,10 +67,12 @@ def create_protocols_router(
     authenticator: ControlPlaneAuthenticator,
     rate_limiter: DistributedRateLimiter | None = None,
     audit_logger: AuditLogger | None = None,
+    event_bus: RunEventBus | None = None,
 ) -> APIRouter:
-    """Create FastAPI router exposing A2A discovery/tasks and Cedar-governed MCP JSON-RPC."""
+    """Create FastAPI router exposing A2A discovery/tasks/SSE and Cedar-governed MCP JSON-RPC."""
     router = APIRouter(tags=["protocols"])
     limiter = rate_limiter or DistributedRateLimiter()
+    bus = event_bus or RunEventBus()
 
     async def _require(request: Request, response: Response, permission: str) -> TenantContext:
         ctx = authenticator.authenticate(request)
@@ -102,13 +106,17 @@ def create_protocols_router(
             authenticator, "jwt_issuer", None
         )
         auth_servers = [str(issuer)] if issuer else [f"{base_url}/oauth"]
-        return {
+        metadata: dict[str, Any] = {
             "resource": f"{base_url}/api/v1/mcp",
             "authorization_servers": auth_servers,
             "bearer_methods_supported": ["header"],
             "scopes_supported": ["runs:read", "runs:write", "runs:approve", "agents:read"],
             "resource_documentation": f"{base_url}/docs",
         }
+        jwks_uri = getattr(authenticator, "jwks_url", "")
+        if jwks_uri:
+            metadata["jwks_uri"] = jwks_uri
+        return metadata
 
     @router.get("/api/v1/a2a/agents")
     async def list_a2a_agents(request: Request, response: Response) -> dict[str, Any]:
@@ -201,6 +209,40 @@ def create_protocols_router(
         if task is None:
             raise HTTPException(status_code=404, detail=f"A2A task '{task_id}' not found")
         return task.to_dict()
+
+    @router.get("/api/v1/a2a/tasks/{task_id}/events")
+    async def stream_a2a_task_events(
+        task_id: str,
+        request: Request,
+        response: Response,
+        after_seq: int = Query(default=0, ge=0),
+        follow: bool = Query(default=True),
+        timeout_seconds: float = Query(default=15.0, ge=0.2, le=120.0),
+    ) -> StreamingResponse:
+        """Stream A2A task status and artifact updates over Server-Sent Events (SSE)."""
+        ctx = await _require(request, response, "runs:read")
+        task = await a2a_dispatcher.get_task(task_id, tenant_id=ctx.tenant_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"A2A task '{task_id}' not found")
+        last_evt_hdr = (request.headers.get("last-event-id") or "").strip()
+        cursor = after_seq
+        if last_evt_hdr.isdigit():
+            cursor = max(cursor, int(last_evt_hdr))
+        return StreamingResponse(
+            bus.stream_sse(
+                task_id,
+                tenant_id=ctx.tenant_id,
+                after_seq=cursor,
+                follow=follow,
+                idle_timeout_seconds=timeout_seconds,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "X-Tenant-ID": ctx.tenant_id,
+            },
+        )
 
     @router.post("/api/v1/mcp")
     async def mcp_jsonrpc_endpoint(

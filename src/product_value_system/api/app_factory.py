@@ -30,12 +30,21 @@ from product_value_system.api.auth import (
     DEFAULT_ROLE_PERMISSIONS,
     ControlPlaneAuthenticator,
     DistributedRateLimiter,
+    JWKSKeyResolver,
     TenantContext,
 )
 from product_value_system.api.health import create_app
 from product_value_system.api.routes.audit import AuditPrincipal
 from product_value_system.api.routes.protocols import create_protocols_router
 from product_value_system.api.routes.runs import create_control_plane_router
+from product_value_system.api.worker import (
+    DurableRunWorker,
+    PostgresRunJobQueue,
+    RunEventBus,
+    RunJobQueue,
+    SQLiteRunJobQueue,
+    StageExecutor,
+)
 from product_value_system.compliance.audit_logger import AuditLogger, InMemoryAuditStore
 from product_value_system.compliance.gdpr_handler import GDPRHandler
 from product_value_system.compliance.signing import generate_signing_key
@@ -73,6 +82,8 @@ class ProductionSettings:
     jwt_public_key: str = ""
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
+    jwks_url: str = ""
+    jwks_cache_ttl_seconds: float = 300.0
     audit_signing_key: str = ""
     github_webhook_secret: str = ""
     slack_signing_secret: str = ""
@@ -82,6 +93,7 @@ class ProductionSettings:
     enable_control_plane: bool = True
     enable_protocols: bool = True
     enable_integrations: bool = True
+    enable_worker: bool = True
     allow_anonymous_dev: bool = False
     rate_limit_per_minute: int = 120
     api_keys: dict[str, TenantContext] = field(default_factory=dict)
@@ -138,6 +150,8 @@ class ProductionSettings:
             jwt_public_key=environ.get("PVS_JWT_PUBLIC_KEY", ""),
             jwt_issuer=environ.get("PVS_JWT_ISSUER") or None,
             jwt_audience=environ.get("PVS_JWT_AUDIENCE") or None,
+            jwks_url=environ.get("PVS_JWKS_URL", ""),
+            jwks_cache_ttl_seconds=float(environ.get("PVS_JWKS_CACHE_TTL_SECONDS", "300")),
             audit_signing_key=environ.get("PVS_AUDIT_SIGNING_KEY", ""),
             github_webhook_secret=environ.get("PVS_GITHUB_WEBHOOK_SECRET", ""),
             slack_signing_secret=environ.get("PVS_SLACK_SIGNING_SECRET", ""),
@@ -147,6 +161,7 @@ class ProductionSettings:
             enable_control_plane=_parse_bool(environ.get("PVS_ENABLE_CONTROL_PLANE"), True),
             enable_protocols=_parse_bool(environ.get("PVS_ENABLE_PROTOCOLS"), True),
             enable_integrations=_parse_bool(environ.get("PVS_ENABLE_INTEGRATIONS"), True),
+            enable_worker=_parse_bool(environ.get("PVS_ENABLE_WORKER"), True),
             allow_anonymous_dev=_parse_bool(environ.get("PVS_ALLOW_ANONYMOUS_DEV"), False),
             rate_limit_per_minute=int(environ.get("PVS_RATE_LIMIT_PER_MINUTE", "120")),
             api_keys=api_keys,
@@ -162,6 +177,15 @@ def _build_run_store(database_url: str) -> DurableRunStore:
         return SQLiteDurableRunStore(":memory:")
     sqlite_path = database_url.removeprefix("sqlite:///")
     return SQLiteDurableRunStore(sqlite_path)
+
+
+def _build_job_queue(database_url: str, store: DurableRunStore) -> RunJobQueue:
+    if isinstance(store, PostgresDurableRunStore):
+        return PostgresRunJobQueue(store._db)
+    if database_url == ":memory:":
+        return SQLiteRunJobQueue(":memory:")
+    sqlite_path = database_url.removeprefix("sqlite:///")
+    return SQLiteRunJobQueue(sqlite_path)
 
 
 class _DefaultKnowledgeBaseTool:
@@ -207,12 +231,27 @@ def create_production_app(
     redis_client: Any | None = None,
     tool_registry: ToolRegistry | None = None,
     mcp_server: MCPServer | None = None,
+    job_queue: RunJobQueue | None = None,
+    event_bus: RunEventBus | None = None,
+    worker: DurableRunWorker | None = None,
+    stage_executor: StageExecutor | None = None,
+    jwks_resolver: JWKSKeyResolver | None = None,
 ) -> FastAPI:
     """
     Build the fully wired production FastAPI application with managed ASGI lifespan.
     """
     cfg = settings or ProductionSettings.from_env()
     store: DurableRunStore = run_store or _build_run_store(cfg.database_url)
+    active_job_queue: RunJobQueue = job_queue or _build_job_queue(cfg.database_url, store)
+    active_event_bus: RunEventBus = event_bus or RunEventBus(active_job_queue)
+    active_worker: DurableRunWorker | None = worker
+    if active_worker is None and cfg.enable_worker:
+        active_worker = DurableRunWorker(
+            run_store=store,
+            job_queue=active_job_queue,
+            event_bus=active_event_bus,
+            stage_executor=stage_executor,
+        )
     active_metrics = metrics or PVSMetrics(register_global_prometheus=False)
 
     active_devx: DevXTracker | None = devx_tracker
@@ -275,6 +314,9 @@ def create_production_app(
         jwt_public_key=cfg.jwt_public_key,
         jwt_issuer=cfg.jwt_issuer,
         jwt_audience=cfg.jwt_audience,
+        jwks_url=cfg.jwks_url,
+        jwks_resolver=jwks_resolver,
+        jwks_cache_ttl_seconds=cfg.jwks_cache_ttl_seconds,
         allow_anonymous_dev=cfg.allow_anonymous_dev,
     )
     rate_limiter = DistributedRateLimiter(
@@ -290,6 +332,9 @@ def create_production_app(
                 authenticator=authenticator,
                 rate_limiter=rate_limiter,
                 audit_logger=active_audit,
+                job_queue=active_job_queue,
+                event_bus=active_event_bus,
+                worker=active_worker,
             )
         )
 
@@ -313,6 +358,7 @@ def create_production_app(
                 authenticator=authenticator,
                 rate_limiter=rate_limiter,
                 audit_logger=active_audit,
+                event_bus=active_event_bus,
             )
         )
 
@@ -326,6 +372,9 @@ def create_production_app(
                 audit_logger=active_audit,
                 github_webhook_secret=cfg.github_webhook_secret,
                 slack_signing_secret=cfg.slack_signing_secret,
+                job_queue=active_job_queue,
+                event_bus=active_event_bus,
+                worker=active_worker,
             )
         )
 
@@ -338,6 +387,9 @@ def create_production_app(
                 logger.warning("Tracing initialization degraded (%s)", exc)
 
         await store.initialize()
+        await active_job_queue.initialize()
+        if active_worker is not None:
+            active_worker.start()
 
         if state["redis"] is None and cfg.redis_url:
             try:
@@ -354,6 +406,9 @@ def create_production_app(
             yield
         finally:
             state["started"] = False
+            if active_worker is not None:
+                await active_worker.stop()
+            await active_job_queue.close()
             await store.close()
             if state["redis"] is not None:
                 close_fn = getattr(state["redis"], "aclose", None) or getattr(
@@ -367,6 +422,10 @@ def create_production_app(
 
     app.router.lifespan_context = _lifespan
     app.state.run_store = store
+    app.state.job_queue = active_job_queue
+    app.state.event_bus = active_event_bus
+    app.state.worker = active_worker
+    app.state.authenticator = authenticator
     app.state.settings = cfg
     app.state.mcp_server = active_mcp
     app.state.a2a_registry = a2a_registry
