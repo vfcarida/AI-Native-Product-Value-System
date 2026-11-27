@@ -1,3 +1,28 @@
+# Release Notes: v2.5.1 (Enterprise Control Plane, Open Protocols, OWASP ASI01–ASI10 & Post-Audit Hardening)
+
+**Date**: 2026-11-27  
+**Status**: v2.5.1 Enterprise-Ready Reference Implementation (Zero-Warning Suite, 1,170+ Passing Tests, 94% Durable RunStore Coverage)
+
+## Highlights Since v1.0.0
+
+1. **Production Multi-Tenant ASGI Control Plane & Durable HITL (`Wave 0` + `v2.5.1`)**:
+   - Runnable ASGI composition root via `pvs serve` and 3-stage non-root `Dockerfile` (`builder-prod` / `runtime` / `ci-dev`), empirically verified to boot with zero `numpy` or `scipy` runtime dependencies.
+   - Multi-tenant `DurableRunStore` with SQLite WAL and PostgreSQL HA + Row-Level Security (`app.current_tenant` unified across migrations `003` and `004`), atomic `FOR UPDATE SKIP LOCKED` approval resolution, and cross-dialect Alembic migrations (`alembic/`).
+   - Updated Helm Chart `2.5.1` ([deploy/helm/product-value-system/Chart.yaml](deploy/helm/product-value-system/Chart.yaml)) exposing Control Plane, MCP/A2A, webhook, JWT, and rate-limit configuration with hardened defaults (`allowAnonymousDev: "false"`).
+2. **Open Interoperability Protocols & Iterative ReAct Build (`Wave 1` + `v2.5.1`)**:
+   - Cedar-governed MCP JSON-RPC 2.0 server & client (`POST /api/v1/mcp` + stdio) hardened with `jsonschema` parameter validation (`-32602`), role-based `X-Agent-Name` RBAC allowlists (`403`), and RFC 9728 OAuth 2.1 Protected Resource Metadata (`GET /.well-known/oauth-protected-resource`).
+   - A2A Agent Cards (`GET /.well-known/agent.json`, `/api/v1/a2a/agents`) and tenant-isolated A2A task dispatch linked to durable HITL approvals.
+   - Native Structured Outputs (`Harness.invoke_structured()`) & Prompt Caching across Anthropic, OpenAI, Gemini, and Mock adapters, plus iterative ReAct `BuildAgent` with unified diffs, safe `base64` sandbox file writes, and strict `req_id` filename sanitization.
+3. **Semantic Intelligence, Bandit FinOps Routing & Eval Flywheel (`Wave 2`)**:
+   - `pgvector` HNSW semantic cache & memory migration (`004`), tenant/version/temporal-scoped `PromptCache` (with strictly monotonic SQLite LRU timestamps), domain-agnostic theme clustering, Thompson Sampling `BanditRouter`, 4-layer SHA-256 tamper-evident `ContextManager` (OWASP ASI06), versioned `PromptRegistry`, calibrated `LLM-as-a-Judge`, and `PromptOptimizer`.
+4. **Enterprise PDLC/SDLC Integrations & DORA AI Telemetry (`Wave 3` + `v2.5.1`)**:
+   - HMAC-signed GitHub Pre-Human PR Triage & Slack Block Kit HITL approval webhooks (protected by a `1 MiB` HTTP `413` body-size DoS ceiling), PostHog/Amplitude (safe `json.dumps` escaping)/BigQuery analytics connectors, Jira/Linear/GitHub Issues bidirectional sync, DORA AI 7-Capabilities rework/churn metrics, and 10-panel Grafana dashboard.
+5. **OWASP Agentic Top 10 (ASI01–ASI10), EU AI Act / NIST AI RMF Governance & Real-Infra CI (`Wave 4` + `v2.5.1`)**:
+   - Live `ToolOutputSanitizer` enforced on the hot path of `ToolRegistry.execute()` and `Harness.invoke_model(role="tool")` (blocking zero-width unicode smuggling, hidden `<system>`/`<!-- AI_INSTRUCTION:` tool poisoning, and indirect injection while redacting secrets).
+   - Automated OWASP ASI01–ASI10 red-teaming gate (`AgenticRedTeamRunner`), EU AI Act (Annex IV / Article 14) + NIST AI RMF audit pack export (`pvs governance export`), OpenAPI 3.x contract + negative fuzz suite, and CI jobs for `pgvector/pgvector:pg16` + `redis:7` + `alembic` and `mutmut` mutation testing.
+
+---
+
 # Release Notes: v1.0.0 (Multi-Provider, Polyglot Drift, Cloud-Native & Hardened Control Plane)
 
 **Date**: 2026-11-22  

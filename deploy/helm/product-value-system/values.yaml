@@ -176,22 +176,37 @@ config:
   cacheBackend: redis
   redisHost: ""
   redisPort: "6379"
+  redisUrl: ""
   ollamaBaseUrl: ""
   azureOpenaiEndpoint: ""
   azureOpenaiDeployment: ""
   azureOpenaiApiVersion: "2024-10-21"
+  enableControlPlane: "true"
+  enableProtocols: "true"
+  enableIntegrations: "true"
+  enableDevx: "true"
+  enableAudit: "true"
+  allowAnonymousDev: "false"
+  rateLimitPerMinute: "120"
+  jwtIssuer: ""
+  jwtAudience: ""
 
 # Secret management: ALWAYS prefer `existingSecret` (External Secrets / Vault / SealedSecrets)
 secrets:
   existingSecret: ""
   create: false
   # Only used when `secrets.create=true` and `secrets.existingSecret` is empty; pass via --set
+  databaseUrl: ""
   openaiApiKey: ""
   anthropicApiKey: ""
   geminiApiKey: ""
   azureOpenaiApiKey: ""
   pvsMetricsApiKey: ""
   pvsAdminApiKey: ""
+  pvsJwtSecret: ""
+  pvsAuditSigningKey: ""
+  pvsGithubWebhookSecret: ""
+  pvsSlackSigningSecret: ""
 
 # Zero-trust default-deny egress NetworkPolicy
 networkPolicy:

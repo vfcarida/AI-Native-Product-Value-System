@@ -22,6 +22,9 @@ data:
   REDIS_HOST: {{ .Values.config.redisHost | quote }}
   REDIS_PORT: {{ .Values.config.redisPort | quote }}
   {{- end }}
+  {{- if .Values.config.redisUrl }}
+  REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  {{- end }}
   {{- if .Values.config.ollamaBaseUrl }}
   OLLAMA_BASE_URL: {{ .Values.config.ollamaBaseUrl | quote }}
   {{- end }}
@@ -29,4 +32,17 @@ data:
   AZURE_OPENAI_ENDPOINT: {{ .Values.config.azureOpenaiEndpoint | quote }}
   AZURE_OPENAI_DEPLOYMENT: {{ .Values.config.azureOpenaiDeployment | quote }}
   AZURE_OPENAI_API_VERSION: {{ .Values.config.azureOpenaiApiVersion | quote }}
+  {{- end }}
+  PVS_ENABLE_CONTROL_PLANE: {{ .Values.config.enableControlPlane | default "true" | quote }}
+  PVS_ENABLE_PROTOCOLS: {{ .Values.config.enableProtocols | default "true" | quote }}
+  PVS_ENABLE_INTEGRATIONS: {{ .Values.config.enableIntegrations | default "true" | quote }}
+  PVS_ENABLE_DEVX: {{ .Values.config.enableDevx | default "true" | quote }}
+  PVS_ENABLE_AUDIT: {{ .Values.config.enableAudit | default "true" | quote }}
+  PVS_ALLOW_ANONYMOUS_DEV: {{ .Values.config.allowAnonymousDev | default "false" | quote }}
+  PVS_RATE_LIMIT_PER_MINUTE: {{ .Values.config.rateLimitPerMinute | default "120" | quote }}
+  {{- if .Values.config.jwtIssuer }}
+  PVS_JWT_ISSUER: {{ .Values.config.jwtIssuer | quote }}
+  {{- end }}
+  {{- if .Values.config.jwtAudience }}
+  PVS_JWT_AUDIENCE: {{ .Values.config.jwtAudience | quote }}
   {{- end }}

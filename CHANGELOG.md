@@ -5,6 +5,51 @@ All notable changes to the **AI-Native Product Value System** are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-11-27
+
+### Added
+
+- **MCP 2025/2026 Security & OAuth 2.1 Discovery**:
+  - Added RFC 9728 OAuth 2.1 Protected Resource Metadata discovery endpoint (`GET /.well-known/oauth-protected-resource`) in `api/routes/protocols.py` and verified it in `tests/api/test_openapi_contract.py`.
+  - Added JSON Schema argument validation (`jsonschema.validate`) inside `MCPServer._handle_tool_call()`, returning JSON-RPC `-32602` on schema violations.
+  - Added role-based allowlists (`_ROLE_ALLOWED_MCP_AGENTS`) on `X-Agent-Name` in `POST /api/v1/mcp`, returning HTTP `403` when non-admin callers attempt to impersonate privileged agents (e.g., `build`).
+- **Postgres Durable Store Test Coverage (`94%`)**:
+  - Added comprehensive unit test suite for `PostgresDurableRunStore` covering initialization, health checks, pool stats, multi-tenant isolation, listing/filtering, updates, and atomic concurrent approval resolution.
+- **Helm Chart `2.5.1` Runtime Configuration**:
+  - Updated `deploy/helm/product-value-system/Chart.yaml` (`version: 2.5.1`, `appVersion: "2.5.1"`), `values.yaml`, `values.schema.json`, `templates/configmap.yaml`, and `templates/secret.yaml` to expose Control Plane, MCP/A2A protocol, webhook, JWT, and rate-limit settings with hardened defaults (`allowAnonymousDev: "false"`).
+
+### Changed
+
+- **Single Source of Truth Versioning (`2.5.1`)**: Unified `pyproject.toml`, `product_value_system.__version__`, `MCPServer`/`MCPClient`, `AgentCard`/`A2ARegistry`, `EnterpriseGovernancePackGenerator`, and Helm `Chart.yaml` on `2.5.1`.
+- **Zero-NumPy / Zero-SciPy Production ASGI Boot**: Rewrote `caching/similarity_matcher.py` in pure Python stdlib (`math.sqrt`), converted `integrations/__init__.py` to PEP 562 lazy re-exports, and made `scipy.stats` lazy-loaded with a `statistics.NormalDist` fallback in `learning/analytics_adapter.py`, guaranteeing slim Docker runtime boot without scientific extras.
+- **Postgres Extra Completeness**: Added `alembic>=1.13`, `sqlalchemy>=2.0`, and `psycopg[binary]>=3.1` to `[project.optional-dependencies] postgres` in `pyproject.toml`.
+- **Documentation Refresh**: Updated `README.md`, `docs/ARCHITECTURE.md`, `docs/reference/cli/commands.md` (`pvs serve`, `pvs governance export`), `RELEASE_NOTES.md`, and `docs/BENCHMARKS.md`.
+
+### Fixed
+
+- **Atomic PostgreSQL & SQLite HITL Approvals (TOCTOU Fix)**: Replaced non-atomic `SELECT` + `UPDATE` in `PostgresDurableRunStore.resolve_approval()` with a single atomic `UPDATE ... WHERE approval_id = (SELECT ... FOR UPDATE SKIP LOCKED) AND status = 'pending' RETURNING *`; added `AND status = 'pending'` and `rowcount == 1` check to `SQLiteDurableRunStore`.
+- **PostgreSQL RLS Consistency (`004` vs `003`)**: Aligned `migrations/postgres/004_create_pgvector_semantic_store.sql` RLS policies to `app.current_tenant` with the same `IS NULL OR = ''` fallback as `003`.
+- **Cross-Dialect Alembic Audit Migration**: Guarded PostgreSQL-only `JSONB` (`sa.JSON().with_variant(JSONB(), "postgresql")`) and `DO $$ ... REVOKE ... $$;` block (`op.get_bind().dialect.name == "postgresql"`) in `alembic/versions/001_create_audit_tables.py`.
+- **SQLite Cache Monotonic LRU Eviction**: Fixed sub-millisecond clock ties in `SQLiteCacheBackend` LRU eviction via strictly monotonic microsecond ISO timestamps (`_next_monotonic_iso`) while keeping reads zero-write.
+- **Amplitude Metric Query Escaping**: Replaced string interpolation in `AmplitudeAnalyticsAdapter.query_timeseries()` with `json.dumps({"event_type": metric_name})`.
+
+### Security
+
+- **Live OWASP ASI01/ASI04 Enforcement on Hot Execution Path**: Wired `ToolOutputSanitizer` directly into `ToolRegistry.execute()` and `Harness.invoke_model(role="tool")`, blocking zero-width unicode smuggling (`\u200b`), hidden `<system>` / `<!-- AI_INSTRUCTION:` tool poisoning, and indirect prompt injection while redacting accidental secret leaks.
+- **BuildAgent Sandbox Hardening**: Replaced shell heredoc (`<< 'EOF'`) file writes in `BuildAgent._write_sandbox_files()` with `base64 -d` writes and strict `req_id` filename sanitization (`_sanitize_req_id`) preventing heredoc breakouts and path traversal.
+- **Webhook DoS Protection**: Enforced a `1 MiB` (`MAX_WEBHOOK_BODY_BYTES`, HTTP `413`) request body ceiling on `/api/v1/webhooks/github/pr-triage` and `/api/v1/webhooks/slack/interactions` prior to signature verification or JSON parsing.
+
+## [2.5.0] - 2026-11-26
+
+### Added
+
+- **Wave 0 (`v1.1` — Production Control Plane & Durable HITL)**: FastAPI ASGI composition root (`api/app_factory.py`, `pvs serve`), RBAC/JWT/API-key auth + rate limiting (`api/auth.py`), Control Plane API (`api/routes/runs.py`), durable multi-tenant `DurableRunStore` (SQLite WAL + PostgreSQL HA/RLS), Alembic migration chain (`alembic/`), 3-stage non-root `Dockerfile` (`builder-prod`, `runtime`, `ci-dev`), and OWASP ASI01 tool-output guards.
+- **Wave 1 (`v1.2` — Open Protocols, Native Structured Outputs & ReAct Build)**: Cedar-governed MCP JSON-RPC 2.0 server/client (`protocols/mcp.py`), A2A Agent Cards & multi-tenant task dispatcher (`protocols/a2a.py`, `/.well-known/agent.json`), native Structured Outputs (`Harness.invoke_structured()`) & Prompt Caching across Anthropic/OpenAI/Gemini/Mock adapters, and iterative ReAct `BuildAgent` with unified diffs.
+- **Wave 2 (`v1.5` — Semantic Intelligence, Adaptive Routing & Eval Flywheel)**: `EmbeddingAdapter`, `pgvector` HNSW migration `004`, temporal/tenant/version-scoped `PromptCache`, domain-agnostic embedding clustering (`discovery/theme_clusterer.py`), Thompson Sampling `BanditRouter`, 4-layer SHA-256 tamper-evident `ContextManager` (OWASP ASI06), versioned `PromptRegistry`, calibrated `LLM-as-a-Judge`, and `PromptOptimizer`.
+- **Wave 3 (`v2.0` — Enterprise PDLC/SDLC Integrations & DORA AI)**: Signed GitHub Pre-Human PR Triage & Slack Block Kit HITL webhooks (`api/routes/integrations.py`, `integrations/github_pr_triage.py`, `integrations/slack_hitl.py`), PostHog/Amplitude/BigQuery analytics connectors (`integrations/product_analytics.py`), Jira/Linear/GitHub Issues bidirectional sync (`integrations/work_tracking.py`), DORA AI 7-Capabilities & rework telemetry (`metrics/devx_tracker.py`), and 10-panel Grafana improvement dashboard.
+- **Wave 4 (`v2.5` — OWASP ASI01–ASI10 Red-Teaming, EU AI Act / NIST AI RMF & Real-Infra CI)**: `security/agentic_guardrails.py` (`ToolOutputSanitizer`, `PostLLMGroundednessGuardrail`, `SignedAgentEnvelope`, `AgenticRedTeamRunner`), `compliance/ai_governance.py` + `pvs governance export` CLI, OpenAPI 3.x contract + negative fuzz tests, real `pgvector/pgvector:pg16` + `redis:7` + `alembic` CI job, and `mutmut` mutation testing CI configuration.
+- **Production Hardening Operational Suite (`PROD-001`–`PROD-015`)**: 20 operational runbooks, 15 Chaos Engineering GameDay scenarios, quarterly DR drills, incident management playbooks, SRE team rituals, HA Patroni/PgBouncer templates, k6 load testing suite, and HashiCorp Vault Agent Injector manifests.
+
 ## [1.0.0] - 2026-11-22
 
 ### Added

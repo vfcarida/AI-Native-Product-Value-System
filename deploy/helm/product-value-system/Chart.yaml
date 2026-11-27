@@ -2,8 +2,8 @@ apiVersion: v2
 name: product-value-system
 description: Production-hardened Helm chart for the AI-Native Product Value System control plane
 type: application
-version: 1.9.0
-appVersion: "1.0.0"
+version: 2.5.1
+appVersion: "2.5.1"
 kubeVersion: ">=1.26.0-0"
 home: https://github.com/vfcarida/ai-native-product-value-system
 sources:

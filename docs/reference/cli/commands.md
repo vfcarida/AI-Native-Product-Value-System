@@ -22,12 +22,24 @@
 
 ---
 
-## Diagnostics, FinOps, Brownfield & DevX Subcommands
+## Diagnostics, Control Plane, Governance, FinOps, Brownfield & DevX Subcommands
 
 ### `pvs doctor`
-Validate Python runtime, all 12 strict `config/*.yaml` Pydantic contracts, Cedar `PolicyEngine`, JSON schemas, and LLM provider environment readiness.
+Validate Python runtime, all 16 strict `config/*.yaml` Pydantic contracts, Cedar `PolicyEngine`, JSON schemas, and LLM provider environment readiness.
 ```bash
 pvs doctor [--repo-root .] [--json]
+```
+
+### `pvs serve`
+Run the production FastAPI/Uvicorn ASGI Control Plane exposing `/api/v1/runs`, `/api/v1/mcp`, `/.well-known/agent.json`, `/.well-known/oauth-protected-resource`, `/api/v1/a2a/*`, signed GitHub/Slack webhooks, `/health/*`, `/metrics`, and `/devx`.
+```bash
+pvs serve [--host 0.0.0.0] [--port 8000] [--workers 1] [--reload]
+```
+
+### `pvs governance export`
+Generate an auditor-ready EU AI Act (Annex IV / Article 14) + NIST AI RMF 1.0 Governance Audit Pack in JSON or Markdown, optionally running the live OWASP ASI01–ASI10 red-teaming gate.
+```bash
+pvs governance export [--format json] [--repo-root .] [--include-redteam] [--output governance-pack.json]
 ```
 
 ### `pvs route`

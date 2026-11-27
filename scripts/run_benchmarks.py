@@ -138,6 +138,9 @@ def bench_secret_detector(iterations: int) -> dict[str, Any]:
     )
     doc_10k = paragraph * 420  # ~40,000 chars (~10,000 tokens)
 
+    # Warm up lazy NLP/ML analyzer once before steady-state latency sampling
+    detector.detect("warmup scan for steady-state latency measurement")
+
     scan_runs = max(3, min(15, iterations // 20))
     samples: list[float] = []
     false_positives = 0

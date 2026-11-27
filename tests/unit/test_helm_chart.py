@@ -28,6 +28,10 @@ def test_helm_chart_metadata_and_values_schema_validation() -> None:
     assert chart["type"] == "application"
     assert re.match(r"^\d+\.\d+\.\d+", str(chart["version"]))
 
+    import product_value_system
+
+    assert str(chart["appVersion"]) == product_value_system.__version__
+
     values = yaml.safe_load((CHART_DIR / "values.yaml").read_text(encoding="utf-8"))
     schema = json.loads((CHART_DIR / "values.schema.json").read_text(encoding="utf-8"))
 
@@ -69,10 +73,14 @@ def test_helm_chart_enforces_restricted_pss_probes_privacy_and_zero_secrets() ->
     assert values["probes"]["readiness"]["path"] == "/health/ready"
     assert values["serviceMonitor"]["path"] == "/metrics"
 
-    # Privacy-preserving telemetry defaults
+    # Privacy-preserving telemetry & hardened Control Plane defaults
     assert values["config"]["otelCaptureMessageContent"] == "false"
     assert values["config"]["devxAggregateOnly"] == "true"
     assert values["config"]["devxAnonymize"] == "true"
+    assert values["config"]["enableControlPlane"] == "true"
+    assert values["config"]["enableProtocols"] == "true"
+    assert values["config"]["enableIntegrations"] == "true"
+    assert values["config"]["allowAnonymousDev"] == "false"
     assert values["networkPolicy"]["enabled"] is True
 
     # Zero leaked secrets anywhere in the Helm chart

@@ -363,7 +363,16 @@
         "logLevel": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] },
         "devxAggregateOnly": { "type": "string", "enum": ["true", "false"] },
         "devxAnonymize": { "type": "string", "enum": ["true", "false"] },
-        "otelCaptureMessageContent": { "type": "string", "enum": ["true", "false"] }
+        "otelCaptureMessageContent": { "type": "string", "enum": ["true", "false"] },
+        "enableControlPlane": { "type": "string", "enum": ["true", "false"] },
+        "enableProtocols": { "type": "string", "enum": ["true", "false"] },
+        "enableIntegrations": { "type": "string", "enum": ["true", "false"] },
+        "enableDevx": { "type": "string", "enum": ["true", "false"] },
+        "enableAudit": { "type": "string", "enum": ["true", "false"] },
+        "allowAnonymousDev": { "type": "string", "enum": ["true", "false"] },
+        "rateLimitPerMinute": { "type": "string", "pattern": "^[0-9]+$" },
+        "jwtIssuer": { "type": "string" },
+        "jwtAudience": { "type": "string" }
       }
     },
     "secrets": {
