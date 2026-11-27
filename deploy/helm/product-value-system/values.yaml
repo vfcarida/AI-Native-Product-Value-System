@@ -399,6 +399,39 @@ disasterRecovery:
       cpu: "1"
       memory: 1Gi
 
+# Optional Kubernetes RuntimeClass for kernel-level pod isolation (e.g. "gvisor" or "kata")
+runtimeClassName: ""
+
+# Automated Alembic pre-install/pre-upgrade database migration hook (v3.0)
+migrations:
+  enabled: false
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Quarterly EU AI Act + NIST AI RMF Governance Audit Pack CronJob (v3.0)
+governance:
+  enabled: false
+  schedule: "0 4 1 1,4,7,10 *" # Quarterly on Jan/Apr/Jul/Oct 1st at 04:00 UTC
+  format: "json"
+  includeRedteam: true
+  existingPvc: ""
+  successfulJobsHistoryLimit: 4
+  failedJobsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

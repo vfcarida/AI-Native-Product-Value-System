@@ -47,6 +47,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.runtimeClassName }}
+      runtimeClassName: {{ .Values.runtimeClassName | quote }}
+      {{- end }}
       {{- if and .Values.vault.enabled .Values.vault.createDedicatedServiceAccount }}
       serviceAccountName: {{ include "pvs.fullname" . }}-vault-auth
       automountServiceAccountToken: true

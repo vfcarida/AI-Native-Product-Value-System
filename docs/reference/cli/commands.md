@@ -42,6 +42,14 @@ Generate an auditor-ready EU AI Act (Annex IV / Article 14) + NIST AI RMF 1.0 Go
 pvs governance export [--format json] [--repo-root .] [--include-redteam] [--output governance-pack.json]
 ```
 
+### `pvs ops`
+Execute automated `PROD-015` Chaos Engineering GameDay scenarios (`GAMEDAY-001`–`004`), quarterly backup/restore Disaster Recovery drills, and privacy-preserving DORA AI 7-Capabilities + SPACE baseline snapshots.
+```bash
+pvs ops gameday [--scenario GAMEDAY-001] [--format json] [--output gameday-report.json]
+pvs ops dr-drill [--format json] [--output dr-drill-report.json]
+pvs ops dora-baseline [--config config/metrics.yaml] [--format json] [--output dora-baseline.json]
+```
+
 ### `pvs route`
 Classify prompt complexity (EVO-026) and inspect selected model tier, estimated cost per 1K tokens, and fallback chain.
 ```bash

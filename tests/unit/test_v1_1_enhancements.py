@@ -63,7 +63,7 @@ def test_package_version_synced_to_1_0_0_and_ks_2samp_emits_zero_warnings() -> N
 
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert product_value_system.__version__ == pyproject["project"]["version"]
-    assert product_value_system.__version__ == "2.5.1"
+    assert product_value_system.__version__ == "3.0.0"
 
     validator = SimulationValidator()
     with warnings.catch_warnings(record=True) as caught:

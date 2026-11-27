@@ -5,6 +5,27 @@ All notable changes to the **AI-Native Product Value System** are documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-11-27
+
+### Added
+
+- **Durable Async Worker, SSE Streaming & OAuth 2.1 Dynamic JWKS (`v2.6` → `v3.0`)**:
+  - Added `api/worker.py` (`RunJobQueue`, `SQLiteRunJobQueue`, `PostgresRunJobQueue` with atomic `FOR UPDATE SKIP LOCKED` claims + lease expiry reclaim + retries + `dead_letter`, `RunEventBus`, and lifespan-managed `DurableRunWorker`).
+  - Added `POST /api/v1/runs` (`execute_async=True`) pausing at `decision_gate` and auto-resuming via Control Plane `/approve` or signed Slack HITL callbacks.
+  - Added real-time W3C Server-Sent Events endpoints `GET /api/v1/runs/{run_id}/events` and `GET /api/v1/a2a/tasks/{task_id}/events` supporting `Last-Event-ID` replay and multi-tenant `404` isolation.
+  - Added `JWKSKeyResolver` in `api/auth.py` for OAuth 2.1 / OIDC dynamic JWKS (`kid`) caching with zero-downtime key rotation on cache miss, `alg` allowlisting, `scp`/`scope` claim mapping, and `jwks_uri` advertisement in RFC 9728 `/.well-known/oauth-protected-resource`.
+  - Added durable job & event migrations (`migrations/004_create_run_jobs_and_events.sql`, `migrations/postgres/005_create_run_jobs_and_events.sql` with unified RLS, and cross-dialect Alembic `004_create_run_jobs_and_events.py`).
+- **Kernel-Level Multi-Tenant Sandbox Isolation (`runtime/microvm_sandbox.py`)**:
+  - Added `OCIHardenedRuntimeProvider` supporting gVisor (`runsc`) and Kata Containers MicroVMs (`kata-runtime`) with fail-closed runtime verification (refusing silent downgrade to `runc`), Restricted PSS (`UID 1000`, `cap_drop=["ALL"]`, `read_only`, `no-new-privileges`, seccomp), Zip-Slip-protected archive extraction, and tenant labels.
+  - Added `E2BMicroVMSandboxProvider` (Firecracker MicroVM async REST client via `httpx.AsyncClient` and Vault-backed `E2B_API_KEY`) and `create_sandbox_provider()` factory (`docker` | `gvisor` | `kata` | `e2b`).
+- **Helm Operational Packaging (`Chart 3.0.0`)**:
+  - Added `templates/alembic-migration-job.yaml` (`helm.sh/hook: pre-install,pre-upgrade`) running `alembic upgrade head` under Restricted PSS UID 10001.
+  - Added `templates/governance-cronjob.yaml` quarterly EU AI Act + NIST AI RMF audit pack export `CronJob` (`pvs governance export --include-redteam`).
+  - Added Kubernetes `runtimeClassName` support in `templates/deployment.yaml` and validated `migrations`, `governance`, `runtimeClassName`, `config.sandboxProvider`, `config.enableWorker`, and `config.jwksUrl` in `values.schema.json`.
+- **Executable `PROD-015` Continuous Improvement & First Operational Cycle (`operations/gameday_runner.py` & `pvs ops`)**:
+  - Added `GameDayScenarioRunner` (`GAMEDAY-001`–`004` blameless reports + Kaizen backlog), `DRDrillVerifier` (live online SQLite backup → total loss → restore → SHA-256 + row parity + HMAC audit chain verification + measured RTO/RPO), and `DORAAIBaselineCollector` (aggregate-only, anonymized DORA AI 7-Capabilities + SPACE baseline).
+  - Added CLI subcommands `pvs ops gameday`, `pvs ops dr-drill`, and `pvs ops dora-baseline` (zero-warning `-W error` verified).
+
 ## [2.5.1] - 2026-11-27
 
 ### Added

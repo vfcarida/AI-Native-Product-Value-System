@@ -96,12 +96,14 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
     """Every required K8s template exists and has balanced Go template block directives."""
     expected_templates = {
         "_helpers.tpl",
+        "alembic-migration-job.yaml",
         "alertmanager-secret.yaml",
         "backup-cronjob.yaml",
         "backup-verification-cronjob.yaml",
         "configmap.yaml",
         "cronjob-archive.yaml",
         "deployment.yaml",
+        "governance-cronjob.yaml",
         "grafana-dashboards-configmap.yaml",
         "hpa.yaml",
         "ingress.yaml",
@@ -121,6 +123,17 @@ def test_helm_templates_complete_and_balanced_go_directives() -> None:
     }
     actual_templates = {p.name for p in TEMPLATES_DIR.iterdir() if p.is_file()}
     assert expected_templates.issubset(actual_templates)
+
+    mig_hook = (TEMPLATES_DIR / "alembic-migration-job.yaml").read_text(encoding="utf-8")
+    assert '"helm.sh/hook": pre-install,pre-upgrade' in mig_hook
+    assert "alembic" in mig_hook
+
+    gov_cron = (TEMPLATES_DIR / "governance-cronjob.yaml").read_text(encoding="utf-8")
+    assert "kind: CronJob" in gov_cron
+    assert "governance" in gov_cron and "export" in gov_cron
+
+    dep_raw = (TEMPLATES_DIR / "deployment.yaml").read_text(encoding="utf-8")
+    assert "runtimeClassName" in dep_raw
 
     open_re = re.compile(r"\{\{-?\s*(?:if|with|range|define|block)\b")
     end_re = re.compile(r"\{\{-?\s*end\b")

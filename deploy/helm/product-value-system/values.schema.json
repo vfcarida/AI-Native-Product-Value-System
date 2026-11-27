@@ -361,6 +361,7 @@
       "required": ["logLevel", "devxAggregateOnly", "devxAnonymize"],
       "properties": {
         "logLevel": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] },
+        "sandboxProvider": { "type": "string", "enum": ["docker", "gvisor", "kata", "e2b"] },
         "devxAggregateOnly": { "type": "string", "enum": ["true", "false"] },
         "devxAnonymize": { "type": "string", "enum": ["true", "false"] },
         "otelCaptureMessageContent": { "type": "string", "enum": ["true", "false"] },
@@ -375,6 +376,27 @@
         "jwtIssuer": { "type": "string" },
         "jwtAudience": { "type": "string" },
         "jwksUrl": { "type": "string" }
+      }
+    },
+    "runtimeClassName": { "type": "string" },
+    "migrations": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "backoffLimit": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "activeDeadlineSeconds": { "type": "integer", "minimum": 30, "maximum": 3600 }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "schedule": { "type": "string", "minLength": 9 },
+        "format": { "type": "string", "enum": ["json", "markdown"] },
+        "includeRedteam": { "type": "boolean" },
+        "existingPvc": { "type": "string" },
+        "successfulJobsHistoryLimit": { "type": "integer", "minimum": 1 },
+        "failedJobsHistoryLimit": { "type": "integer", "minimum": 1 }
       }
     },
     "secrets": {

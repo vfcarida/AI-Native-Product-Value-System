@@ -1,3 +1,23 @@
+# Release Notes: v3.0.0 (Async Durable Control Plane, SSE Streaming, Dynamic JWKS, Kernel Sandboxes & Executable PROD-015)
+
+**Date**: 2026-11-27  
+**Status**: v3.0.0 Enterprise-Ready Platform (Zero-Warning Suite, Kernel-Isolated Sandboxes, Automated Helm Ops & Executable SRE Drills)
+
+## Highlights Since v2.5.1
+
+1. **Durable Async Worker & Real-Time SSE Streaming**:
+   - Background `DurableRunWorker` backed by `SQLiteRunJobQueue` / `PostgresRunJobQueue` (`FOR UPDATE SKIP LOCKED`, lease expiry reclaim, retries, dead-letter queue) executes runs asynchronously, pauses at `decision_gate`, and resumes automatically upon Control Plane API or Slack HITL approval.
+   - Standard W3C Server-Sent Events streams (`GET /api/v1/runs/{run_id}/events` and `GET /api/v1/a2a/tasks/{task_id}/events`) with `Last-Event-ID` delta replay and strict multi-tenant isolation.
+2. **OAuth 2.1 / OIDC Dynamic JWKS Key Rotation**:
+   - `JWKSKeyResolver` supports RSA/EC (`RS256`/`ES256`) verification with TTL caching, automatic cache-miss key rotation on rotated `kid`, strict algorithm allowlisting, `scp`/`scope` permission mapping, and RFC 9728 `jwks_uri` advertisement.
+3. **Kernel-Level Multi-Tenant Sandbox Isolation**:
+   - Added `OCIHardenedRuntimeProvider` (gVisor `runsc` & Kata MicroVM `kata-runtime` with fail-closed runtime validation and Zip-Slip protection), `E2BMicroVMSandboxProvider` (Firecracker MicroVMs), `create_sandbox_provider()`, and Kubernetes `runtimeClassName` support.
+4. **Operational Helm Chart `3.0.0` & Executable `PROD-015` SRE Cycle**:
+   - Added pre-upgrade `alembic upgrade head` Helm hook (`alembic-migration-job.yaml`) and quarterly EU AI Act / NIST AI RMF `governance-cronjob.yaml` under Restricted PSS UID 10001.
+   - Added executable `PROD-015` engine (`GameDayScenarioRunner`, `DRDrillVerifier`, `DORAAIBaselineCollector`) exposed via `pvs ops gameday`, `pvs ops dr-drill`, and `pvs ops dora-baseline`.
+
+---
+
 # Release Notes: v2.5.1 (Enterprise Control Plane, Open Protocols, OWASP ASI01–ASI10 & Post-Audit Hardening)
 
 **Date**: 2026-11-27  

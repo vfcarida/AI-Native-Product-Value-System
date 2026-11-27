@@ -1,0 +1,78 @@
+{{- if .Values.governance.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pvs.fullname" . }}-governance-export
+  labels:
+    {{- include "pvs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-governance
+spec:
+  schedule: {{ .Values.governance.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.governance.successfulJobsHistoryLimit | default 4 }}
+  failedJobsHistoryLimit: {{ .Values.governance.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            {{- include "pvs.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: ai-governance
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "pvs.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: governance-export
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              command:
+                - python
+                - -W
+                - error
+                - -m
+                - product_value_system
+                - governance
+                - export
+                - --format
+                - {{ .Values.governance.format | default "json" | quote }}
+                {{- if .Values.governance.includeRedteam }}
+                - --include-redteam
+                {{- end }}
+                - --output
+                - /exports/governance-audit-pack.{{ if eq (.Values.governance.format | default "json") "markdown" }}md{{ else }}json{{ end }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "pvs.fullname" . }}-config
+                {{- if or .Values.secrets.existingSecret .Values.secrets.create }}
+                - secretRef:
+                    name: {{ include "pvs.secretName" . }}
+                    optional: true
+                {{- end }}
+              resources:
+                {{- toYaml .Values.governance.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: exports
+                  mountPath: /exports
+          volumes:
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi
+            - name: exports
+              {{- if .Values.governance.existingPvc }}
+              persistentVolumeClaim:
+                claimName: {{ .Values.governance.existingPvc }}
+              {{- else }}
+              emptyDir:
+                sizeLimit: 128Mi
+              {{- end }}
+{{- end }}

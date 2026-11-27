@@ -171,6 +171,61 @@ def register_p2_subparsers(subparsers: argparse._SubParsersAction[argparse.Argum
         help="Execute live OWASP ASI01-ASI10 red-team gate and embed results",
     )
 
+    # 7. pvs ops (Executable PROD-015 GameDay, DR Drill & DORA AI Baseline — v3.0)
+    ops_parser = subparsers.add_parser(
+        "ops",
+        help="Run executable PROD-015 Chaos GameDays, DR drills, and DORA AI baselines",
+    )
+    ops_sub = ops_parser.add_subparsers(dest="ops_action")
+
+    gd_parser = ops_sub.add_parser(
+        "gameday",
+        help="Execute automated Chaos Engineering GameDay scenarios (GAMEDAY-001..004)",
+    )
+    gd_parser.add_argument(
+        "--scenario",
+        action="append",
+        default=None,
+        help="Specific GameDay scenario ID(s) to execute (defaults to all)",
+    )
+    gd_parser.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
+        help="Report format (default: json)",
+    )
+    gd_parser.add_argument("--output", type=Path, default=None, help="Optional output file path")
+
+    dr_parser = ops_sub.add_parser(
+        "dr-drill",
+        help="Execute non-destructive backup/restore & HMAC audit integrity DR drill",
+    )
+    dr_parser.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
+        help="Report format (default: json)",
+    )
+    dr_parser.add_argument("--output", type=Path, default=None, help="Optional output file path")
+
+    dora_parser = ops_sub.add_parser(
+        "dora-baseline",
+        help="Collect aggregate-only DORA AI 7-Capabilities & SPACE baseline snapshot",
+    )
+    dora_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config/metrics.yaml"),
+        help="Path to DevX metrics YAML configuration",
+    )
+    dora_parser.add_argument(
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
+        help="Report format (default: json)",
+    )
+    dora_parser.add_argument("--output", type=Path, default=None, help="Optional output file path")
+
 
 def doctor_command(args: argparse.Namespace) -> int:
     """Execute ``pvs doctor`` diagnostics."""
@@ -365,3 +420,61 @@ def governance_command(args: argparse.Namespace) -> int:
     else:
         print(rendered)
     return EXIT_OK
+
+
+def ops_command(args: argparse.Namespace) -> int:
+    """Execute ``pvs ops {gameday|dr-drill|dora-baseline}`` operational readiness drills."""
+    import sys
+
+    action = getattr(args, "ops_action", None)
+    if action not in {"gameday", "dr-drill", "dora-baseline"}:
+        print(
+            "Usage: pvs ops {gameday|dr-drill|dora-baseline} [--format json|markdown]",
+            file=sys.stderr,
+        )
+        return 1
+
+    from product_value_system.operations.gameday_runner import (
+        DORAAIBaselineCollector,
+        DRDrillVerifier,
+        GameDayScenarioRunner,
+    )
+
+    async def _execute() -> tuple[bool, str]:
+        fmt = getattr(args, "format", "json")
+        if action == "gameday":
+            runner = GameDayScenarioRunner()
+            gd_report = await runner.run_suite(scenario_ids=getattr(args, "scenario", None))
+            text = (
+                gd_report.render_markdown()
+                if fmt == "markdown"
+                else json.dumps(gd_report.to_dict(), indent=2)
+            )
+            return gd_report.overall_passed, text
+        if action == "dr-drill":
+            dr_report = await DRDrillVerifier().execute_drill()
+            text = (
+                dr_report.render_markdown()
+                if fmt == "markdown"
+                else json.dumps(dr_report.to_dict(), indent=2)
+            )
+            return dr_report.passed, text
+        dora_report = await DORAAIBaselineCollector().collect(
+            config_path=getattr(args, "config", None)
+        )
+        text = (
+            dora_report.render_markdown()
+            if fmt == "markdown"
+            else json.dumps(dora_report.to_dict(), indent=2)
+        )
+        return True, text
+
+    passed, rendered = asyncio.run(_execute())
+    output_path: Path | None = getattr(args, "output", None)
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered, encoding="utf-8")
+        print(f"Operational drill report written to {output_path}")
+    else:
+        print(rendered)
+    return EXIT_OK if passed else EXIT_HEALTH_FAILURE
